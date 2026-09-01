@@ -13,7 +13,7 @@ Open source, Apache-2.0. No held-back edition. New here? Start with the [doctrin
 ## Quickstart
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/scanset/stoagraph/v0.2.1/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/curtisslone/stoagraph/v0.2.1/install.sh | sh
 stoagraph up        # mint secrets, pull the signed images, start, print a one-click login link
 ```
 
@@ -32,7 +32,7 @@ your tool on the values you allow and *provably* nowhere else.
 lives in this repo at the tag it installs, verifies the binary's SHA-256 against cosign-signed checksums
 before running anything, and prints `cosign verify` for the images. Prefer to read first: `curl -sSLO
 …/install.sh && less install.sh && sh install.sh`. Have Go?
-`go install github.com/scanset/stoagraph/stoa-kernel/cmd/stoagraph@latest`.</sub>
+`go install github.com/CurtisDSlone/stoagraph/stoa-kernel/cmd/stoagraph@latest`.</sub>
 
 ## Make it yours
 

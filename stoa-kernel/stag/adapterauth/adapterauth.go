@@ -11,9 +11,9 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/oauth"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy/mcpgate"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/store"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/oauth"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/mcpgate"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/store"
 )
 
 // Resolve produces the downstream Auth for srv. For an oauth server it fetches a fresh access token from

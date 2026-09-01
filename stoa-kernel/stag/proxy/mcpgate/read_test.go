@@ -9,11 +9,11 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	stag "github.com/scanset/stoagraph/stoa-kernel/stag"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/provider"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy/mcpgate"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/recipe"
+	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/mcpgate"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipe"
 )
 
 // recipeParse compiles a recipe source for a test, failing fast on a parse/lint error.

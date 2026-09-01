@@ -8,9 +8,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	stag "github.com/scanset/stoagraph/stoa-kernel/stag"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/recipe"
+	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipe"
 )
 
 // A push_files-shaped policy: only files under src/ may be written. The interesting part of the call is

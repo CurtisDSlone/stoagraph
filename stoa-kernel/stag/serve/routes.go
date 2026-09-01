@@ -9,9 +9,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/router"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/store"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/router"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/store"
 )
 
 // kw: route view tool recipe gatearg valid error resolution

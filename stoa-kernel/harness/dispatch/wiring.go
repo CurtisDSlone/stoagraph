@@ -13,7 +13,7 @@ import (
 
 	// The orchestrator may depend on the gate (harness -> stag); never the reverse. This is for the
 	// advertised-name convention only, so the separator has ONE definition on both sides of the wire.
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
 )
 
 // RouteSpec is one tool→server→recipe→gateArg binding — what a session is built from.

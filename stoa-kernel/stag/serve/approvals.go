@@ -8,7 +8,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/egress"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/egress"
 )
 
 // kw: approval view id tool args status token-present fingerprint recipe timestamps

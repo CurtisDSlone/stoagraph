@@ -23,11 +23,11 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/auth"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/provider"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy/mcpgate"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/router"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/auth"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/mcpgate"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/router"
 )
 
 // sessionIdleTimeout closes an MCP session (its streamable-HTTP transport) after this long with no

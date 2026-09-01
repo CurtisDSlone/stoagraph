@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	stag "github.com/scanset/stoagraph/stoa-kernel/stag"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/recipe"
+	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipe"
 )
 
 // An approval-gated recipe: prod is released ONLY when a signed_equality "$approved" gate on the

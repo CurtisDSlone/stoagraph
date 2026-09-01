@@ -15,8 +15,8 @@ import (
 	"sort"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/provider"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
 )
 
 // ReadChannel is the session's READ side (Planning/30): the bound context providers, served as MCP

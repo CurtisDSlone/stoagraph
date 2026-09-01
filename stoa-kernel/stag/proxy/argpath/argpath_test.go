@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy/argpath"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/argpath"
 )
 
 // The push_files shape: the scalars are the harmless part and the PAYLOAD is where the risk lives.

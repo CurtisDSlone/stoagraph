@@ -13,9 +13,9 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/scanset/stoagraph/stoa-kernel/harness/agent"
-	"github.com/scanset/stoagraph/stoa-kernel/harness/bind"
-	"github.com/scanset/stoagraph/stoa-kernel/harness/dispatch"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/agent"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/bind"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/dispatch"
 )
 
 // getEventMap returns the raw event map JSON (an empty array when the file is absent) for the editor.

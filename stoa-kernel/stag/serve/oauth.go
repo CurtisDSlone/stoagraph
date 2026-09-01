@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/oauth"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/oauth"
 )
 
 // pendingOAuth is an in-flight sign-in held between /api/oauth/start and the browser callback.

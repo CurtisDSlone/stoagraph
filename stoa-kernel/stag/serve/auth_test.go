@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/auth"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/recipestore"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/serve"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/store"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/auth"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipestore"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/serve"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/store"
 )
 
 var toks = auth.Tokens{Admin: "tok-admin", Approve: "tok-approve", Dispatch: "tok-dispatch", Operator: "tok-operator"}

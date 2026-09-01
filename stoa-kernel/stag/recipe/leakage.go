@@ -34,7 +34,7 @@ import (
 	"math"
 	"strings"
 
-	stag "github.com/scanset/stoagraph/stoa-kernel/stag"
+	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
 )
 
 // metaApprovalToken mirrors proxy.MetaApprovalToken (recipe cannot import proxy — cycle). It is the

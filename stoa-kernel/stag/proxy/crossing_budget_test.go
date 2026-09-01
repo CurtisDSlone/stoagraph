@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
 )
 
 func TestCrossingBudgetReserveAndRelease(t *testing.T) {

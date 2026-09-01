@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/auth"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/recipestore"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/serve"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/auth"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipestore"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/serve"
 )
 
 const brokenSrc = `recipe: broken

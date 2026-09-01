@@ -147,7 +147,7 @@ Intent: *"the agent may read our repo."* Actual effect:
 
 | call | verdict |
 |---|---|
-| `get_file_contents(owner=scanset, repo=stoagraph)` | ALLOW ✅ |
+| `get_file_contents(owner=curtis, repo=stoagraph)` | ALLOW ✅ |
 | `get_file_contents(owner=**mallory**, repo=stoagraph)` | **ALLOW** ❌ |
 
 `owner` was never judged, so *anybody's* repo named `stoagraph` passes. The fix is a route that binds
@@ -155,7 +155,7 @@ both arguments, and a recipe that sinks both — every sink must clear for the c
 
 ```yaml
 rules:
-  owner.allowed: {kind: set_membership, set: ["scanset"]}
+  owner.allowed: {kind: set_membership, set: ["curtis"]}
   repo.allowed:  {kind: set_membership, set: ["stoagraph"]}
 steps:
   - {id: propose_owner, kind: propose, out: owner}
@@ -167,7 +167,7 @@ steps:
 {"tool":"get_file_contents","server":"github","recipe":"github_repo_policy","gateArg":"owner,repo"}
 ```
 
-Now `mallory/stoagraph` and `scanset/secret-repo` are both denied.
+Now `mallory/stoagraph` and `curtis/secret-repo` are both denied.
 
 **When you write a route, ask: which arguments, if changed, would change who or what this touches?**
 Every one of those belongs in `gateArg`.
@@ -196,7 +196,7 @@ Each leaf carries the tool, the verdict, whether it was **forwarded**, the bound
 The audit value depends on the shape of the route:
 
 - **single-arg** — the raw value: `tmpl:account_unlocked`
-- **multi-arg** — the bound pairs: `owner=scanset repo=stoagraph`
+- **multi-arg** — the bound pairs: `owner=curtis repo=stoagraph`
 
 A leaf also carries its **releases** — the crossings where an untrusted value actually reached an
 authoritative sink. Releases appear **only on a forwarded call**. This matters precisely because of the

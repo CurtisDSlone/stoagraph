@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/provider"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
 )
 
 type fake struct {

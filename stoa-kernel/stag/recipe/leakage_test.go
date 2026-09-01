@@ -4,8 +4,8 @@ import (
 	"math"
 	"testing"
 
-	stag "github.com/scanset/stoagraph/stoa-kernel/stag"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/recipe"
+	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipe"
 )
 
 func mustParse(t *testing.T, src string) recipe.Parsed {

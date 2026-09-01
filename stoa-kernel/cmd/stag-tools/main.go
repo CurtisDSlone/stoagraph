@@ -32,7 +32,7 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/scanset/stoagraph/stoa-kernel/localtools"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/localtools"
 )
 
 func main() {

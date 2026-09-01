@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	stag "github.com/scanset/stoagraph/stoa-kernel/stag"
+	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
 )
 
 // child sub-recipe, SEALED (ends in exit): gates a target against the escalation set.

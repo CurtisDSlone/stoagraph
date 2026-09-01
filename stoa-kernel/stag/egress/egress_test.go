@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	stag "github.com/scanset/stoagraph/stoa-kernel/stag"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/egress"
+	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/egress"
 )
 
 // ev builds one audit leaf: an ALLOWED decision carrying the crossing it released. (The chain's unit is

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/provider"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
 )
 
 func writeBundle(t *testing.T, files map[string]string) string {

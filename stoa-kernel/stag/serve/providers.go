@@ -7,7 +7,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/store"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/store"
 )
 
 // kw: provider view name kind config enabled

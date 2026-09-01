@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/scanset/stoagraph/stoa-kernel/harness/model"
-	"github.com/scanset/stoagraph/stoa-kernel/harness/model/openai"
-	stag "github.com/scanset/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/model"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/model/openai"
+	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
 )
 
 var _ model.Proposer = openai.Client{}

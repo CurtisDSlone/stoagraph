@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/scanset/stoagraph/stoa-kernel/harness/dispatch"
-	"github.com/scanset/stoagraph/stoa-kernel/harness/ingress"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/egress"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/dispatch"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/ingress"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/egress"
 )
 
 // The webhook front door, end to end (Planning/32, the I2 domino): a SIGNED event arrives over HTTP,

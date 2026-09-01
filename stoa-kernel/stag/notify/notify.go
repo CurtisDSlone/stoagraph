@@ -14,7 +14,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
 )
 
 // Webhook returns a proxy.Gate.OnEscalate callback that POSTs each fresh escalation to url. It is

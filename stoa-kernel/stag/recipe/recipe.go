@@ -17,7 +17,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	stag "github.com/scanset/stoagraph/stoa-kernel/stag"
+	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
 	yaml "go.yaml.in/yaml/v3"
 )
 

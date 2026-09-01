@@ -2,7 +2,7 @@ package record
 
 // file-kw: release event trust crossing record hashed attestation four dimensions tamper-evident
 
-import "github.com/scanset/stoagraph/stoa-kernel/stag/internal/trust"
+import "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/internal/trust"
 
 // kw: release event trust crossing record
 type ReleaseEvent struct {

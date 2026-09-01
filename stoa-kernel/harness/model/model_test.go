@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	stag "github.com/scanset/stoagraph/stoa-kernel/stag"
+	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
 )
 
 const rh = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"

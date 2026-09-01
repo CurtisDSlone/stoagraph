@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/egress"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/egress"
 )
 
 func main() {

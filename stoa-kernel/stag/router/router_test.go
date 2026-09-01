@@ -5,9 +5,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/recipe"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/router"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipe"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/router"
 )
 
 func policy(name, tool, arg string) string {

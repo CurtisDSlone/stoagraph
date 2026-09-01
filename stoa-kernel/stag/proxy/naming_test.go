@@ -6,7 +6,7 @@ package proxy_test
 import (
 	"testing"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
 )
 
 // The advertised name must survive a round trip EXACTLY, including when the downstream's own tool name

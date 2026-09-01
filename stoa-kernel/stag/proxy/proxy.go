@@ -18,8 +18,8 @@ import (
 	"strings"
 	"sync"
 
-	stag "github.com/scanset/stoagraph/stoa-kernel/stag"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy/argpath"
+	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/argpath"
 )
 
 // MetaApprovalToken is a gate-only argument the ORCHESTRATOR attaches on an approved retry: it

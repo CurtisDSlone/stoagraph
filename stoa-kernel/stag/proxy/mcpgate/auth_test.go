@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy/mcpgate"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/mcpgate"
 )
 
 // authedMCP stands up a minimal MCP server (one tool) behind a header check — a stand-in for an

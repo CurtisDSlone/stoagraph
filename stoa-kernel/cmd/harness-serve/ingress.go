@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/scanset/stoagraph/stoa-kernel/harness/agent"
-	"github.com/scanset/stoagraph/stoa-kernel/harness/dispatch"
-	"github.com/scanset/stoagraph/stoa-kernel/harness/ingress"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/agent"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/dispatch"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/ingress"
 )
 
 // webhook is the event front door (Planning/32, I2): an external source POSTs a signed delivery, the

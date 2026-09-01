@@ -7,8 +7,8 @@ import (
 	"encoding/base64"
 	"testing"
 
-	stag "github.com/scanset/stoagraph/stoa-kernel/stag"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/egress"
+	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/egress"
 )
 
 func fixedKey(t testing.TB, b byte) (ed25519.PublicKey, ed25519.PrivateKey) {

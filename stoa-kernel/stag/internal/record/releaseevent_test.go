@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/internal/trust"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/internal/trust"
 )
 
 func baseEvent() ReleaseEvent {

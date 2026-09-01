@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/egress"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/provider"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/egress"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
 )
 
 // A chained read log verifies clean, and every leaf attests the exact content the model saw.

@@ -15,9 +15,9 @@ package skill
 import (
 	"crypto/ed25519"
 
-	"github.com/scanset/stoagraph/stoa-kernel/harness/bind"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/egress"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/provider"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/bind"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/egress"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
 )
 
 // Tier is the trust position a resolved skill earned.

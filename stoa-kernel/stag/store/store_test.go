@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/store"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/store"
 )
 
 func openTemp(t *testing.T) (*store.Store, string) {

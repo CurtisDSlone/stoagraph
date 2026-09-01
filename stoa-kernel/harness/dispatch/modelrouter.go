@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/scanset/stoagraph/stoa-kernel/harness/model"
-	"github.com/scanset/stoagraph/stoa-kernel/harness/model/openai"
-	"github.com/scanset/stoagraph/stoa-kernel/harness/store"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/model"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/model/openai"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/store"
 )
 
 // routeSystem steers the dispatch model. The output is constrained JSON; the deterministic Gate is

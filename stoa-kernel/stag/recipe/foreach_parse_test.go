@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	stag "github.com/scanset/stoagraph/stoa-kernel/stag"
+	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
 )
 
 const foreachSrc = `recipe: batch_policy

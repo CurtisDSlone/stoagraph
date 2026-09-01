@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/auth"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/auth"
 )
 
 func req(token string) *http.Request {

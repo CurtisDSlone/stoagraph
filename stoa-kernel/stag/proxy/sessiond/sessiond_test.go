@@ -12,10 +12,10 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	stag "github.com/scanset/stoagraph/stoa-kernel/stag"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/auth"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy/mcpgate"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy/sessiond"
+	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/auth"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/mcpgate"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/sessiond"
 )
 
 // Two recipes gating the SAME tool arg differently — the point of session→recipe: bind the same

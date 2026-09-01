@@ -26,7 +26,7 @@ func TestGateDependsOnNothingInTheOrchestrator(t *testing.T) {
 	if err != nil {
 		t.Fatalf("go list -deps ./stag/...: %v", err)
 	}
-	const orchestrator = "github.com/scanset/stoagraph/stoa-kernel/harness"
+	const orchestrator = "github.com/CurtisDSlone/stoagraph/stoa-kernel/harness"
 	var bad []string
 	for _, pkg := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		if strings.HasPrefix(pkg, orchestrator) {
@@ -48,7 +48,7 @@ func TestGateBinariesDependOnNothingInTheOrchestrator(t *testing.T) {
 		if err != nil {
 			t.Fatalf("go list -deps %s: %v", bin, err)
 		}
-		const orchestrator = "github.com/scanset/stoagraph/stoa-kernel/harness"
+		const orchestrator = "github.com/CurtisDSlone/stoagraph/stoa-kernel/harness"
 		for _, pkg := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 			if strings.HasPrefix(pkg, orchestrator) {
 				t.Errorf("ARCHITECTURE BREACH: gate binary %s links orchestrator package %s", bin, pkg)

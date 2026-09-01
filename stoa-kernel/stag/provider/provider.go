@@ -24,7 +24,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/internal/record"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/internal/record"
 )
 
 // Untrusted is the only trust class context ever carries — enforced by Gather.

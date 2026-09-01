@@ -9,7 +9,7 @@ package bind
 import (
 	"strings"
 
-	"github.com/scanset/stoagraph/stoa-kernel/harness/model"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/model"
 )
 
 // Doc is one piece of untrusted retrieved context — a labeled fragment for the Input slot. Source is

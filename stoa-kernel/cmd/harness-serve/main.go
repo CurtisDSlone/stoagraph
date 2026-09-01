@@ -20,12 +20,12 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/scanset/stoagraph/stoa-kernel/harness/agent"
-	"github.com/scanset/stoagraph/stoa-kernel/harness/dispatch"
-	"github.com/scanset/stoagraph/stoa-kernel/harness/ingress"
-	"github.com/scanset/stoagraph/stoa-kernel/harness/store"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/auth"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/egress"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/agent"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/dispatch"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/ingress"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/store"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/auth"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/egress"
 )
 
 type Server struct {

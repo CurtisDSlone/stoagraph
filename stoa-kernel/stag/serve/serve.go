@@ -18,14 +18,14 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/auth"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/egress"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/notify"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/oauth"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/recipestore"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/router"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/store"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/auth"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/egress"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/notify"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/oauth"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipestore"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/router"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/store"
 )
 
 // kw: server gate logpath pub priv policies recipes store approval-webhook

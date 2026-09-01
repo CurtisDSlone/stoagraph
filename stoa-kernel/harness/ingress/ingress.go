@@ -22,7 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	stag "github.com/scanset/stoagraph/stoa-kernel/stag"
+	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
 )
 
 // MaxBody caps a raw delivery: an oversize body is dropped, not parsed (fail closed).

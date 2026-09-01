@@ -5,9 +5,9 @@ import (
 	"reflect"
 	"testing"
 
-	stag "github.com/scanset/stoagraph/stoa-kernel/stag"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/recipe"
+	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipe"
 )
 
 const policySrc = `recipe: write_note_policy
@@ -182,7 +182,7 @@ version: 1
 rules:
   owner.allowed:
     kind: set_membership
-    set: ["scanset"]
+    set: ["curtis"]
   repo.allowed:
     kind: set_membership
     set: ["stoagraph"]
@@ -232,7 +232,7 @@ func TestDeniedMultiArgRecordsNoRelease(t *testing.T) {
 	// and the permitted call DOES release both crossings
 	g.Decide(context.Background(), proxy.ToolCall{
 		Tool: "get_file_contents",
-		Args: map[string]string{"owner": "scanset", "repo": "stoagraph"},
+		Args: map[string]string{"owner": "curtis", "repo": "stoagraph"},
 	})
 	if len(sink.recs) != 2 {
 		t.Fatalf("the allowed call must be recorded")

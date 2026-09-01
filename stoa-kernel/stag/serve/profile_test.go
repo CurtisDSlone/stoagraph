@@ -13,12 +13,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/auth"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/oauth"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/recipestore"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/serve"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/store"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/auth"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/oauth"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipestore"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/serve"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/store"
 )
 
 // gateWith stands the console API up over a config store, and registers one oauth server with `profile`

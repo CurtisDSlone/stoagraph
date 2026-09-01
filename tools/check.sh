@@ -75,7 +75,7 @@ if ! command -v docker >/dev/null 2>&1; then
 else
   missing=""; shelled=""
   for svc in stag-serve stag-proxy harness-serve; do
-    img="ghcr.io/scanset/stoagraph/$svc:latest"
+    img="ghcr.io/CurtisDSlone/stoagraph/$svc:latest"
     if ! docker image inspect "$img" >/dev/null 2>&1; then missing="$missing $svc"; continue; fi
     # a distroless image has no /bin/sh, so this must FAIL to run
     if docker run --rm --entrypoint /bin/sh "$img" -c 'exit 0' >/dev/null 2>&1; then shelled="$shelled $svc"; fi

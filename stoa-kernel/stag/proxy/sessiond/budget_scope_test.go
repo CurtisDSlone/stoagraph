@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/auth"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy/mcpgate"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy/sessiond"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/auth"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/mcpgate"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/sessiond"
 )
 
 func TestCrossingBudgetIsTokenScoped(t *testing.T) {

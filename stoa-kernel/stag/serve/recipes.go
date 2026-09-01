@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/recipestore"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipestore"
 )
 
 // kw: recipe detail name src validate result

@@ -9,7 +9,7 @@ responsibilities. If you are evaluating StoaGraph, read **Non-goals** as careful
 Report suspected vulnerabilities privately. Do not open a public issue for a security problem.
 
 The preferred channel is a GitHub private security advisory:
-https://github.com/scanset/stoagraph/security/advisories/new. You can also email security@scanset.io.
+https://github.com/CurtisDSlone/stoagraph/security/advisories/new. You can also email curtisdslone@gmail.com.
 
 We follow coordinated disclosure: please give us up to 90 days to ship a fix before you disclose
 publicly. We will acknowledge the report, keep you updated, and credit you when the fix ships unless you

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	stag "github.com/scanset/stoagraph/stoa-kernel/stag"
+	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
 )
 
 // the Planning/09 worked recipe, verbatim.

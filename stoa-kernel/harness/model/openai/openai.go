@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/scanset/stoagraph/stoa-kernel/harness/model"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/model"
 )
 
 const defaultMaxTokens int64 = 1024

@@ -25,18 +25,18 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/adapterauth"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/auth"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/egress"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/notify"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/oauth"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/provider"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy/mcpgate"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/proxy/sessiond"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/recipestore"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/router"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/store"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/adapterauth"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/auth"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/egress"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/notify"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/oauth"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/mcpgate"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/sessiond"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipestore"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/router"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/store"
 )
 
 // readRecorder returns a best-effort audit sink for READ crossings (Planning/30): one HASH-CHAINED

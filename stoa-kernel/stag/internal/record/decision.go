@@ -18,7 +18,7 @@ type DecisionRecord struct {
 	Tool       string
 	Verdict    string // allow | deny | escalate
 	Forwarded  bool   // did the call actually reach the tool?
-	Value      string // the bound gated argument(s): "hello", or "owner=scanset repo=stoagraph"
+	Value      string // the bound gated argument(s): "hello", or "owner=curtis repo=stoagraph"
 	Recipe     string
 	RecipeHash string
 	Fault      string         // why it was not allowed ("" when allowed)

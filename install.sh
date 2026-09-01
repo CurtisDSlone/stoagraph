@@ -1,7 +1,7 @@
 #!/bin/sh
 # StoaGraph installer.
 #
-#   curl -sSL https://raw.githubusercontent.com/scanset/stoagraph/v0.2.1/install.sh | sh
+#   curl -sSL https://raw.githubusercontent.com/CurtisDSlone/stoagraph/v0.2.1/install.sh | sh
 #
 # ---------------------------------------------------------------------------------------------------
 # About piping this into your shell.
@@ -18,12 +18,12 @@
 #
 # If you would rather read first (you should; we would):
 #
-#   curl -sSLO https://raw.githubusercontent.com/scanset/stoagraph/v0.2.1/install.sh
+#   curl -sSLO https://raw.githubusercontent.com/CurtisDSlone/stoagraph/v0.2.1/install.sh
 #   less install.sh && sh install.sh
 # ---------------------------------------------------------------------------------------------------
 set -eu
 
-REPO="scanset/stoagraph"
+REPO="CurtisDSlone/stoagraph"
 VERSION="${STOAGRAPH_VERSION:-v0.2.1}"
 BINDIR="${STOAGRAPH_BINDIR:-$HOME/.local/bin}"
 

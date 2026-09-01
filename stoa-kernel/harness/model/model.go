@@ -10,7 +10,7 @@ import (
 	"context"
 	"fmt"
 
-	stag "github.com/scanset/stoagraph/stoa-kernel/stag"
+	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
 )
 
 // kw: request bound context proposer reasons over as data

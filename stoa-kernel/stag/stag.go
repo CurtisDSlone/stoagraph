@@ -12,10 +12,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/internal/gate"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/internal/record"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/internal/release"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/internal/trust"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/internal/gate"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/internal/record"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/internal/release"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/internal/trust"
 )
 
 // Re-exported primitive types (the internal packages stay private).

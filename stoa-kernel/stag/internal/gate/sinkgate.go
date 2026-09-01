@@ -5,7 +5,7 @@ package gate
 import (
 	"fmt"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/internal/trust"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/internal/trust"
 )
 
 // kw: sink sensitivity authoritative benign

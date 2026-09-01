@@ -32,7 +32,7 @@ import (
 // and the compose file we fetch, so an install is reproducible instead of "whatever main looked like".
 var Version = "latest"
 
-const repoRaw = "https://raw.githubusercontent.com/scanset/stoagraph"
+const repoRaw = "https://raw.githubusercontent.com/curtisslone/stoagraph"
 
 func main() {
 	cmd := "help"
@@ -66,7 +66,7 @@ func usage() {
   stoagraph down     stop everything
   stoagraph version
 
-Docs: https://github.com/scanset/stoagraph
+Docs: https://github.com/CurtisDSlone/stoagraph
 `)
 }
 

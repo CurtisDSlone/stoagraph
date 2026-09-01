@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/scanset/stoagraph/stoa-kernel/harness/bind"
-	"github.com/scanset/stoagraph/stoa-kernel/harness/model"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/bind"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/model"
 )
 
 func TestAssembleTrustPosition(t *testing.T) {

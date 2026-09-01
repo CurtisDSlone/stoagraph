@@ -19,7 +19,7 @@ import (
 	"io"
 	"sync"
 
-	stag "github.com/scanset/stoagraph/stoa-kernel/stag"
+	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
 )
 
 // GenesisHash is the prev_hash of the first leaf: an empty chain has no prior.

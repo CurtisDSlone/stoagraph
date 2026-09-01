@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/scanset/stoagraph/stoa-kernel/stag/recipe"
-	"github.com/scanset/stoagraph/stoa-kernel/stag/recipestore"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipe"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipestore"
 )
 
 const goodRecipe = `recipe: write_note_policy
