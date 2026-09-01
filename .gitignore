@@ -1,4 +1,4 @@
-# StoaGraph (github.com/scanset/stoagraph)
+# StoaGraph (github.com/CurtisDSlone/stoagraph)
 #
 # EVERYTHING IN THIS REPO IS RELEASABLE. There is no open/commercial split: the gate, the
 # orchestrator, both consoles, the examples and the recipe library all ship. The ONLY things
@@ -49,3 +49,6 @@ out/
 
 # tool cache (syft etc.)
 /.cache/
+
+# Claude Code local settings (contains user preferences, not source)
+.claude/*.local.json

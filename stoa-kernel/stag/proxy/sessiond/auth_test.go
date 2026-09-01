@@ -6,10 +6,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/auth"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/mcpgate"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/sessiond"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // guardedDaemon spins a daemon with the control plane ON and no downstream (no tool call is made —

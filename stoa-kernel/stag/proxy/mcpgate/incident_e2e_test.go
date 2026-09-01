@@ -23,10 +23,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/mcpgate"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipe"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // e2eDial connects the gate (as MCP client) to a downstream server, returning the gate's session.

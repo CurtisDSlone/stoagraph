@@ -28,7 +28,7 @@ echo "== 1. is any SOURCE file ignored by git? =="
 # Do not widen this list to silence a failure — the failure is the point.
 ignored_src=$(git ls-files --others --ignored --exclude-standard \
   | grep -E '\.(go|ts|tsx|css|json|ya?ml|md|sh|py)$' \
-  | grep -vE '^(data/|frontend/node_modules/|frontend/\.next/|config/models\.json$|frontend/next-env\.d\.ts$)' || true)
+  | grep -vE '^(data/|frontend/node_modules/|frontend/\.next/|\.claude/|config/models\.json$|frontend/next-env\.d\.ts$)' || true)
 if [ -n "$ignored_src" ]; then
   bad "these source files are IGNORED and would be MISSING from a clone:"
   echo "$ignored_src" | sed 's/^/      /'

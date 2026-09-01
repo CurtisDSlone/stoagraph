@@ -37,10 +37,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/mcpgate"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipe"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // a downstream execution that actually ran — the blast radius unit.

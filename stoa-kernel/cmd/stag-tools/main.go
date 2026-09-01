@@ -31,8 +31,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/localtools"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func main() {

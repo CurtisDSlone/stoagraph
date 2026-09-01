@@ -8,12 +8,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/mcpgate"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipe"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // recipeParse compiles a recipe source for a test, failing fast on a parse/lint error.

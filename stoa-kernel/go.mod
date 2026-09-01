@@ -4,7 +4,7 @@
 //   harness/  the ORCHESTRATOR: dispatcher, agent loop, models. Holds the keys.
 //   cmd/      the binaries — each ships as its own container, so the topology is demonstrated,
 //             not hidden. The dependency runs ONE WAY only: harness -> stag, never the reverse.
-module github.com/curtisslone/stoagraph/stoa-kernel
+module github.com/CurtisDSlone/stoagraph/stoa-kernel
 
 go 1.25.0
 

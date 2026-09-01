@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/mcpgate"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // a tiny downstream MCP server exposing one resource, connected in-memory.

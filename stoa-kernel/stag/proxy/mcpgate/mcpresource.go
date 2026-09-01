@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // mcpResourceProvider proxies a connected downstream MCP server's resources as a READ-channel context

@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/mcpgate"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // TestDiscover stands up an in-memory MCP server exposing two tools and verifies

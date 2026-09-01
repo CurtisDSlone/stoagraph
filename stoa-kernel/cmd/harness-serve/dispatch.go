@@ -12,10 +12,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/agent"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/bind"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/dispatch"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // getEventMap returns the raw event map JSON (an empty array when the file is absent) for the editor.
