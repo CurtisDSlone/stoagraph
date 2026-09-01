@@ -53,7 +53,8 @@ jobs:
         with:
           go-version-file: stoa-kernel/go.mod
           cache-dependency-path: stoa-kernel/go.sum
-      - working-directory: stoa-kernel
+      - name: run architecture test
+        working-directory: stoa-kernel
         run: go test -v -run TestGate .
 
   # The images are the artifact people actually run. Build every one of them, so a broken Dockerfile
