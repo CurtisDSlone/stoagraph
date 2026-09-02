@@ -6,7 +6,7 @@
 // Allow — an unrouted tool or any non-Allow verdict is never forwarded.
 package proxy
 
-// file-kw: gating proxy tool boundary route recipe eval forward-iff-cleared fail-closed no-model mcp
+// file-kw: gating proxy tool boundary route recipe eval forward-iff-cleared fail-closed no-model mcp session-id audit-attribution live-predicate revoked crossing-budget per-binding
 
 import (
 	"context"
@@ -131,6 +131,36 @@ type Gate struct {
 	// bound token (sessiond.Registry) and shared across every gating server built for that token. Decide
 	// itself stays stateless; the budget is consulted in the transport layer (mcpgate.gatingHandler).
 	Budget *CrossingBudget
+	// Session is the non-reversible id of the bound session this gate serves, stamped onto every
+	// decision it records so the audit can group runs by agent. Empty for a gate that is not serving a
+	// bound session (the control plane's preview gate).
+	Session string
+	// Live reports whether this gate's session binding still exists. It is consulted on EVERY request,
+	// because the transport resolves a session ONCE at connect: the MCP SDK builds the server for a new
+	// transport session and then reuses it, so a check that lives only at connect never runs again and
+	// an already-connected agent outlives its own revocation. Revoking has to reach the agent already
+	// inside, not just lock the door behind it.
+	//
+	// nil means "always live" — a gate with no session to revoke (the control plane's preview gate).
+	Live func() bool
+}
+
+// kw: revoked session withdrawn per-request live evict already-connected
+// Revoked reports whether this gate's binding has been withdrawn. A gate with no Live predicate is
+// never revoked (fail-safe for gates that have no session).
+func (g Gate) Revoked() bool { return g.Live != nil && !g.Live() }
+
+// kw: session id audit digest never-the-token bearer-credential attribution
+// SessionID derives the audit-visible id of a session token. It is a truncated SHA-256 of the token,
+// NOT the token: the token is the agent's bearer credential and must never be written to a log that
+// is read by more parties than may hold it. Truncation to 128 bits keeps the log readable while
+// leaving the id collision-resistant for this purpose.
+func SessionID(token string) string {
+	if token == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:16])
 }
 
 // CrossingBudget is a session's forwarded-crossing counter. Reserve() is taken before a decision and
@@ -288,6 +318,7 @@ func (g Gate) record(ctx context.Context, d Decision, recipeName, recipeHash str
 		return
 	}
 	rec := stag.DecisionRecord{
+		Session:    g.Session,
 		Tool:       d.Tool,
 		Verdict:    d.Verdict.String(),
 		Forwarded:  d.Forward,

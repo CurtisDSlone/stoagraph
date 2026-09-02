@@ -85,9 +85,9 @@ Package egress is the v1 egress layer (rung 1 of the trust ladder, Planning/14):
 
 ### `stoa-kernel/stag/internal/record/decision.go`
 
-**kw:** decision · record · audit · unit · tool · verdict · forwarded · value · recipe · fault · releases
+**kw:** decision · record · audit · unit · tool · verdict · forwarded · value · recipe · fault · releases · session · attribution · which-agent
 
-- `Hash` (:29) — decision · canonical · hash · tamper-evident · leaf · payload
+- `Hash` (:38) — decision · canonical · hash · tamper-evident · leaf · payload
 
 ### `stoa-kernel/stag/internal/record/releaseevent.go`
 
@@ -190,9 +190,9 @@ Package argpath extracts the values a policy judges out of a tool call's RAW arg
 ### `stoa-kernel/stag/proxy/mcpgate/mcpgate.go`
 Package mcpgate is the quarantined MCP adapter for the gating proxy (Planning/17, Slice 0). It wires Model Context Protocol server/client handling to the transport-agnostic proxy.Gate: stag is an MCP SERVER to the agent 
 
-**kw:** mcp · adapter · gating · proxy · server · client · forward-iff-cleared · quarantined · tool · boundary
+**kw:** mcp · adapter · gating · proxy · server · client · forward-iff-cleared · quarantined · tool · boundary · capabilities · listchanged-false · honest-advertisement · revocation-per-request · middleware
 
-- `SchemaArgs` (:106) — schema · args · properties · json-schema · top-level · bind-time · coverage
+- `SchemaArgs` (:116) — schema · args · properties · json-schema · top-level · bind-time · coverage
 
 ### `stoa-kernel/stag/proxy/mcpgate/mcpresource.go`
 
@@ -209,7 +209,7 @@ Package mcpgate is the quarantined MCP adapter for the gating proxy (Planning/17
 ### `stoa-kernel/stag/proxy/proxy.go`
 Package proxy is the gating-proxy core (Planning/17, Slice 0): the transport-agnostic decision at the tool boundary, with NO MCP dependency. An external agent proposes a tool call; the Gate routes it to a recipe, runs th
 
-**kw:** gating · proxy · tool · boundary · route · recipe · eval · forward-iff-cleared · fail-closed · no-model · mcp
+**kw:** gating · proxy · tool · boundary · route · recipe · eval · forward-iff-cleared · fail-closed · no-model · mcp · session-id · audit-attribution · live-predicate · revoked · crossing-budget · per-binding
 
 - `ToolCall` (:38) — tool · call · name · args · raw · from · the · untrusted · agent
 - `Route` (:50) — route · recipe · hash · gated-arg · for · a · tool
@@ -217,14 +217,18 @@ Package proxy is the gating-proxy core (Planning/17, Slice 0): the transport-agn
 - `Sink` (:101) — sink · egress · record · release · event · (egress.JSONLSink · / · broker.MemSink · satisfy · this)
 - `Decision` (:106) — decision · tool · verdict · forward · value · events · fault · approval-id
 - `Gate` (:117) — gate · routes · sink · deterministic · tool-boundary · approvals · notify · crossing-budget
-- `Decide` (:177) — decide · route · eval · forward-iff-cleared · record · fail-closed · approval-loop
-- `Covered` (:325) — coverage · accounted · gated · passthrough · top-level · heads
-- `CoverageGaps` (:369) — coverage · bind-time · schema · properties · unaccounted
+- `Revoked` (:151) — revoked · session · withdrawn · per-request · live · evict · already-connected
+- `SessionID` (:158) — session · id · audit · digest · never-the-token · bearer-credential · attribution
+- `Decide` (:207) — decide · route · eval · forward-iff-cleared · record · fail-closed · approval-loop
+- `Covered` (:356) — coverage · accounted · gated · passthrough · top-level · heads
+- `CoverageGaps` (:400) — coverage · bind-time · schema · properties · unaccounted
 
 ### `stoa-kernel/stag/proxy/sessiond/sessiond.go`
 Package sessiond is the stag-proxy v2 daemon surface: a standing HTTP server where each MCP session is bound to a dispatcher-chosen recipe (Planning/24 v2, /25). The TRUSTED dispatcher POSTs /sessions to bind a session t
 
-**kw:** session · daemon · registry · token · router · session-to-recipe · streamable-http · bind · fail-closed · no-fork
+**kw:** session · daemon · registry · token · router · session-to-recipe · streamable-http · bind · fail-closed · no-fork · revoke · revocation · withdraw-authority · binding-vs-transport · unknown-token · jsonrpc-error · rebind
+
+- `Revoke` (:121) — revoke · session · binding · withdraw · authority · running-agent · only-way · disarm
 
 ### `stoa-kernel/stag/recipe/leakage.go`
 
@@ -396,7 +400,10 @@ Package store is the SQLite config store for the admin console's Adapters (Plann
 ### `stoa-kernel/harness/agent/agent.go`
 Package agent is the orchestrator's tool-use loop: a model proposes tool calls, each is routed THROUGH stag-proxy (which gates it), and results feed back. The model is the untrusted proposer; stag decides what is allowed
 
-**kw:** agent · loop · tool-use · propose · gate · verdict · forward · transcript · sse · max-turns · untrusted-proposer
+**kw:** agent · loop · tool-use · propose · gate · verdict · forward · transcript · sse · max-turns · untrusted-proposer · connect · transport · http · stdio · daemon-endpoint · bound-session-url
+
+- `ConnectAuto` (:168) — connect · transport · auto · http-vs-stdio · endpoint-or-command · daemon · spawn
+- `isHTTPEndpoint` (:177) — http · endpoint · detect · url · scheme · transport-choice
 
 ### `stoa-kernel/harness/agent/approval.go`
 
@@ -525,7 +532,7 @@ Command stag-tools serves a DECLARED set of local commands to an agent as MCP to
 ### `stoa-kernel/cmd/stag-verify/main.go`
 Command stag-verify replays a hash-chained stag audit log and reports whether the chain is INTACT — the "verify the audit yourself" half of verifiable control. It recomputes every leaf hash and the prev-hash links (egres
 
-**kw:** cli · verify · audit · chain · tamper-evident · replay · leaves · allow · deny · escalate · signed · checkpoint
+**kw:** cli · verify · audit · chain · tamper-evident · replay · leaves · allow · deny · escalate · signed · checkpoint · session-column · policy-column · interleaved-runs · which-agent · which-policy-version
 
 ### `stoa-kernel/cmd/stoagraph/main.go`
 Command stoagraph is the installer and launcher: one binary that gets you from nothing to a running, authenticated gate.  stoagraph up       mint the secrets, pull the signed images, start, print the login link stoagraph

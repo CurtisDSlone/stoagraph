@@ -1,0 +1,314 @@
+#!/usr/bin/env python3
+"""stoa-approve — the human at the gate.
+
+When policy says an action needs a person, the gate HOLDS the tool call and waits. This is the
+CLI that person uses: see what is held, read exactly what the agent proposed, and release or
+refuse it.
+
+    stoa-approve list                  what is held right now
+    stoa-approve list --all            include already-decided rows
+    stoa-approve show <id>             the full proposed call
+    stoa-approve approve <id> [-m ...] mint the signed release
+    stoa-approve deny <id> [-m ...]    refuse it; the denial sticks
+    stoa-approve watch                 poll, and decide as they arrive
+    stoa-approve session --route t:s:r:a   bind an MCP session for an agent
+
+WHY THIS IS A SEPARATE TOOL FROM THE AGENT'S PATH: approving reads the `approve` role secret,
+which the orchestrator is never given. Approval is not a privileged mode of the agent's client;
+it is a different secret held by a different process run by a different party — you. An agent
+that could run this could approve itself, and the human-in-the-loop would be decorative.
+
+Stdlib only, on purpose: the tool that authorizes production actions should not carry a
+dependency tree you have to audit.
+"""
+
+# file-kw: cli approvals human-in-the-loop approve deny watch session-bind local-binaries
+
+import argparse
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+# Everything about an instance lives under $STOA_HOME — never relative to this script, so the
+# source checkout can move or be deleted without stranding the tool that authorizes your actions.
+HOME_DIR = Path(os.environ.get("STOA_HOME", Path.home() / ".stoagraph"))
+TOKENS = Path(os.environ.get("STOA_TOKENS", HOME_DIR / "data" / "control.tokens"))
+GATE = os.environ.get("STOA_GATE_URL", "http://localhost:8080")
+PROXY = os.environ.get("STOA_PROXY_URL", "http://localhost:8091")
+
+BOLD, DIM, RED, GREEN, YELLOW, RESET = "\033[1m", "\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m"
+if not sys.stdout.isatty() or os.environ.get("NO_COLOR"):
+    BOLD = DIM = RED = GREEN = YELLOW = RESET = ""
+
+STATUS_COLOR = {"pending": YELLOW, "approved": GREEN, "denied": RED}
+
+
+def die(msg, code=1):
+    print(f"{RED}stoa-approve:{RESET} {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def token(role):
+    """Read one role secret from the file stag-serve minted (0600) on first start.
+
+    Env wins over the file so this works against a remote gate where there is no tokens file
+    to read — the same precedence the Go services use.
+    """
+    env = {"admin": "STAG_ADMIN_TOKEN", "approve": "STAG_APPROVE_TOKEN",
+           "dispatch": "STAG_DISPATCH_TOKEN", "operator": "HARNESS_OPERATOR_TOKEN"}[role]
+    if v := os.environ.get(env):
+        return v
+    if not TOKENS.exists():
+        die(f"no {TOKENS} and ${env} unset — is the gate running? (stoa up)")
+    try:
+        return json.loads(TOKENS.read_text())[role]
+    except (json.JSONDecodeError, KeyError) as e:
+        die(f"cannot read {role} token from {TOKENS}: {e}")
+
+
+def call(method, url, role, body=None):
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    req.add_header("Authorization", f"Bearer {token(role)}")
+    if data:
+        req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.loads(r.read() or "null")
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode(errors="replace")
+        try:
+            detail = json.loads(detail).get("error", detail)
+        except json.JSONDecodeError:
+            pass
+        # A 401 here is usually the security model working, not a bug. Say so, because the
+        # tempting "fix" — handing the caller a stronger token — is the one thing that breaks it.
+        if e.code == 401:
+            die(f"401 unauthorized — the {role} role was rejected.\n"
+                f"  This is the human-in-the-loop working. Do NOT substitute a different token.")
+        die(f"{method} {url} -> {e.code}: {detail}")
+    except urllib.error.URLError as e:
+        die(f"cannot reach {url}: {e.reason}\n  is the gate running? (stoa status)")
+
+
+def fmt_args(args, indent="      "):
+    if not args:
+        return f"{indent}{DIM}(no arguments){RESET}"
+    return "\n".join(f"{indent}{BOLD}{k}{RESET} = {v!r}" for k, v in args.items())
+
+
+def row(a):
+    st = a.get("status", "?")
+    c = STATUS_COLOR.get(st, "")
+    args = a.get("args") or {}
+    summary = ", ".join(f"{k}={v!r}" for k, v in list(args.items())[:3])
+    if len(args) > 3:
+        summary += ", …"
+    return (f"  {c}{st:<9}{RESET} {BOLD}{a['id'][:12]}{RESET}  {a.get('tool','?')}"
+            f"  {DIM}{summary}{RESET}")
+
+
+def cmd_list(args):
+    # Reading the queue needs only a read-capable role; `admin` is the human's gate key.
+    q = "" if args.all else "?status=pending"
+    rows = call("GET", f"{GATE}/api/approvals{q}", "admin") or []
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return
+    if not rows:
+        print(f"  {DIM}no {'' if args.all else 'pending '}approvals{RESET}")
+        return
+    for a in rows:
+        print(row(a))
+    pending = sum(1 for a in rows if a.get("status") == "pending")
+    if pending:
+        print(f"\n  {YELLOW}{pending} held{RESET} — stoa-approve show <id>")
+
+
+def cmd_show(args):
+    a = call("GET", f"{GATE}/api/approvals/{args.id}", "admin")
+    if args.json:
+        print(json.dumps(a, indent=2))
+        return
+    st = a.get("status", "?")
+    print(f"\n  {BOLD}{a['id']}{RESET}")
+    print(f"    status      {STATUS_COLOR.get(st,'')}{st}{RESET}")
+    print(f"    tool        {a.get('tool','?')}")
+    if a.get("recipe"):
+        print(f"    recipe      {a['recipe']}")
+    # The fingerprint is what the ed25519 release is signed OVER. The release is bound to this
+    # exact action, so approving cannot be replayed onto a different call.
+    print(f"    fingerprint {DIM}{a.get('fingerprint','')}{RESET}")
+    for label, key in (("created", "createdAt"), ("decided", "decidedAt")):
+        if a.get(key):
+            print(f"    {label:<11} {a[key]}")
+    if a.get("reason"):
+        print(f"    reason      {a['reason']}")
+    print(f"\n    {BOLD}proposed call{RESET}")
+    print(fmt_args(a.get("args") or {}))
+    if st == "pending":
+        print(f"\n    {GREEN}stoa-approve approve {a['id']}{RESET}"
+              f"   {RED}stoa-approve deny {a['id']}{RESET}")
+    print()
+
+
+def decide(id_, action, reason):
+    """approve/deny share a shape; both require the `approve` role and nothing weaker."""
+    r = call("POST", f"{GATE}/api/approvals/{id_}/{action}", "approve", {"reason": reason or ""})
+    c = GREEN if action == "approve" else RED
+    print(f"  {c}{r.get('status', action+'d')}{RESET} {id_}")
+    # The signed token goes to the ORCHESTRATOR, which presents it on the retry. Printing it
+    # here would invite pasting a capability around; the orchestrator fetches it itself.
+    if r.get("token"):
+        print(f"  {DIM}signed release minted (keyId {r.get('keyId','?')}) — "
+              f"the orchestrator retrieves it on retry{RESET}")
+
+
+def cmd_approve(args):
+    if not args.yes:
+        a = call("GET", f"{GATE}/api/approvals/{args.id}", "admin")
+        print(f"\n  {BOLD}{a.get('tool')}{RESET}")
+        print(fmt_args(a.get("args") or {}))
+        if input(f"\n  {GREEN}approve{RESET} this action? [y/N] ").strip().lower() not in ("y", "yes"):
+            die("cancelled", 130)
+    decide(args.id, "approve", args.message)
+
+
+def cmd_deny(args):
+    decide(args.id, "deny", args.message)
+
+
+def cmd_watch(args):
+    """Poll the queue and decide interactively as actions arrive.
+
+    Polling, not a webhook: this is a terminal a human sits at. `stag-serve -approval-webhook`
+    exists for the push case.
+    """
+    seen = set()
+    print(f"  {DIM}watching {GATE} — ctrl-c to stop{RESET}")
+    try:
+        while True:
+            for a in call("GET", f"{GATE}/api/approvals?status=pending", "admin") or []:
+                if a["id"] in seen:
+                    continue
+                seen.add(a["id"])
+                print(f"\n  {YELLOW}held{RESET} {BOLD}{a.get('tool')}{RESET}")
+                print(fmt_args(a.get("args") or {}))
+                if not args.decide:
+                    print(f"  {DIM}stoa-approve approve {a['id']}{RESET}")
+                    continue
+                ans = input(f"  [a]pprove / [d]eny / [s]kip? ").strip().lower()
+                if ans.startswith("a"):
+                    decide(a["id"], "approve", "approved at watch")
+                elif ans.startswith("d"):
+                    decide(a["id"], "deny", "denied at watch")
+                else:
+                    seen.discard(a["id"])
+            time.sleep(args.interval)
+    except KeyboardInterrupt:
+        print(f"\n  {DIM}stopped{RESET}")
+
+
+def cmd_session(args):
+    """Bind an MCP session and print the endpoint to hand your agent.
+
+    This uses `dispatch` — the machine-only role. It binds the session to a recipe, which is why
+    the AGENT cannot do it: if the agent chose its own recipe it would choose the empty one.
+    The agent gets only the opaque /mcp/<token> URL, never a control-plane secret.
+    """
+    routes = []
+    for spec in args.route:
+        parts = spec.split(":")
+        if len(parts) != 4:
+            die(f"--route wants tool:server:recipe:gateArg, got {spec!r}")
+        routes.append(dict(zip(("tool", "server", "recipe", "gateArg"), parts)))
+    r = call("POST", f"{PROXY}/sessions", "dispatch", {"routes": routes})
+    # A PARTIAL bind must be loud: the agent would otherwise be handed a task needing a tool it
+    # was never actually given, and that surfaces as confused model behaviour, not as config error.
+    for e in r.get("routeErrors") or []:
+        print(f"  {RED}route dropped{RESET} {e}", file=sys.stderr)
+    if args.json:
+        print(json.dumps(r, indent=2))
+        return
+    url = f"{PROXY}{r['path']}"
+    print(f"\n  {GREEN}session bound{RESET}")
+    print(f"  MCP endpoint (streamable HTTP) — give this to your agent:\n\n    {BOLD}{url}{RESET}\n")
+    print(f"  {DIM}Claude Code:  claude mcp add --transport http stoagraph {url}{RESET}")
+    # The 30-minute timeout closes the idle HTTP TRANSPORT; the token->recipe binding it holds does
+    # NOT expire. Saying "sessions close" here would be read as "authority lapses", and it does not:
+    # the binding lives until it is revoked or the daemon restarts.
+    print(f"  {DIM}The binding holds this policy until revoked: stoa-approve revoke <token>{RESET}\n")
+
+
+def cmd_revoke(args):
+    """Withdraw a bound session. The token stops resolving and its agent is served nothing.
+
+    This is the ONLY way to take authority back from a running agent. A binding holds a COMPILED
+    copy of its recipes, so editing or deleting the recipe (or the route) does NOT reach it — the
+    registry and the enforcement path diverge, and an empty route table can sit alongside an agent
+    still calling tools. Revoking the token is what actually closes the gate.
+
+    Uses `dispatch`, the same role that binds: whoever may choose a session's policy may withdraw it.
+    """
+    tok = args.token.rsplit("/", 1)[-1]  # accept a bare token or the whole /mcp/<token> URL
+    r = call("DELETE", f"{PROXY}/sessions/{tok}", "dispatch")
+    if args.json:
+        print(json.dumps(r, indent=2))
+        return
+    print(f"\n  {GREEN}session revoked{RESET}  {r.get('session','')}")
+    print(f"  {DIM}The binding is gone: an agent already connected is refused on its next call,{RESET}")
+    print(f"  {DIM}and the token no longer resolves for a new connection.{RESET}\n")
+
+
+def main():
+    p = argparse.ArgumentParser(prog="stoa-approve", description=__doc__.split("\n")[0],
+                                formatter_class=argparse.RawDescriptionHelpFormatter,
+                                epilog=f"gate: {GATE}   proxy: {PROXY}   tokens: {TOKENS}")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    ls = sub.add_parser("list", help="what is held right now")
+    ls.add_argument("--all", action="store_true", help="include decided rows")
+    ls.add_argument("--json", action="store_true")
+    ls.set_defaults(fn=cmd_list)
+
+    sh = sub.add_parser("show", help="the full proposed call")
+    sh.add_argument("id")
+    sh.add_argument("--json", action="store_true")
+    sh.set_defaults(fn=cmd_show)
+
+    ap = sub.add_parser("approve", help="mint the signed release")
+    ap.add_argument("id")
+    ap.add_argument("-m", "--message", help="reason, recorded in the audit log")
+    ap.add_argument("-y", "--yes", action="store_true", help="skip the confirmation")
+    ap.set_defaults(fn=cmd_approve)
+
+    dn = sub.add_parser("deny", help="refuse it; the denial sticks")
+    dn.add_argument("id")
+    dn.add_argument("-m", "--message", help="reason, recorded in the audit log")
+    dn.set_defaults(fn=cmd_deny)
+
+    w = sub.add_parser("watch", help="poll, and decide as they arrive")
+    w.add_argument("--interval", type=float, default=2.0)
+    w.add_argument("--decide", action="store_true", help="prompt to decide inline")
+    w.set_defaults(fn=cmd_watch)
+
+    se = sub.add_parser("session", help="bind an MCP session for an agent")
+    se.add_argument("--route", action="append", required=True, metavar="TOOL:SERVER:RECIPE:ARG")
+    se.add_argument("--json", action="store_true")
+    se.set_defaults(fn=cmd_session)
+
+    rv = sub.add_parser("revoke", help="withdraw a bound session (the only way to disarm a running agent)")
+    rv.add_argument("token", help="the session token, or the whole /mcp/<token> URL")
+    rv.add_argument("--json", action="store_true")
+    rv.set_defaults(fn=cmd_revoke)
+
+    args = p.parse_args()
+    args.fn(args)
+
+
+if __name__ == "__main__":
+    main()

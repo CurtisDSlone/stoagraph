@@ -258,7 +258,7 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Proxy == "" || req.Input == "" {
-		writeErr(w, 400, "need a stag-proxy command and an input")
+		writeErr(w, 400, "need a stag-proxy endpoint (http://.../mcp/<token>) or command, and an input")
 		return
 	}
 
@@ -275,7 +275,7 @@ func (s *Server) run(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	sess, tools, err := agent.Connect(ctx, req.Proxy)
+	sess, tools, err := agent.ConnectAuto(ctx, req.Proxy)
 	if err != nil {
 		emit(agent.Event{Kind: "error", Text: "connect stag-proxy: " + err.Error()})
 		return

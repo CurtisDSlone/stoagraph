@@ -7,7 +7,7 @@
 // per-run log fork.
 package sessiond
 
-// file-kw: session daemon registry token router session-to-recipe streamable-http bind fail-closed no-fork
+// file-kw: session daemon registry token router session-to-recipe streamable-http bind fail-closed no-fork revoke revocation withdraw-authority binding-vs-transport unknown-token jsonrpc-error rebind
 
 import (
 	"context"
@@ -108,6 +108,24 @@ func (r *Registry) Create(specs []router.Spec, providers []provider.ContextProvi
 	return tok, resolved.Errors, nil
 }
 
+// kw: revoke session binding withdraw authority running-agent only-way disarm
+// Revoke drops a session binding, so the token stops resolving and the agent holding it is served
+// nothing (an unknown token fails closed at /mcp/<token>: no binding, no gate).
+//
+// Revocation is the ONLY way to withdraw authority from a running agent. A binding holds a COMPILED
+// copy of its recipes, so deleting the recipe or the route from the registry does not disarm it —
+// the registry and the enforcement path diverge, and an operator reading an empty route table would
+// wrongly conclude nothing can be called. Revoking the token is what actually closes the gate.
+//
+// It reports whether a binding was removed, so a caller can tell a revoke from a no-op.
+func (r *Registry) Revoke(tok string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, ok := r.sessions[tok]
+	delete(r.sessions, tok)
+	return ok
+}
+
 // lookup resolves a token to its session binding.
 func (r *Registry) lookup(tok string) (boundSession, bool) {
 	r.mu.RLock()
@@ -168,6 +186,27 @@ type Deps struct {
 //     session's recipe. An unknown/absent token returns 400 (fail closed — no session, no gate).
 func Handler(reg *Registry, deps Deps) http.Handler {
 	mux := http.NewServeMux()
+
+	// DELETE /sessions/{token} REVOKES a binding. Same `dispatch` role as the binder: whoever may bind
+	// a session to any recipe may also withdraw one, and it grants no authority the binder lacks.
+	//
+	// It is deliberately NOT reachable with the session's own token — an agent that could revoke (or
+	// rebind) itself would be choosing its own policy, which is the thing the binder exists to prevent.
+	mux.HandleFunc("DELETE /sessions/{token}", deps.Auth.Guard(auth.RoleDispatch)(func(w http.ResponseWriter, r *http.Request) {
+		tok := r.PathValue("token")
+		if tok == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "need a session token"})
+			return
+		}
+		if !reg.Revoke(tok) {
+			// Report the miss rather than a bare 200: "already gone" and "never existed" look the same
+			// to an operator revoking in an incident, and that is exactly when they need to know.
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "no such session", "session": proxy.SessionID(tok)})
+			return
+		}
+		log.Printf("session revoked: %s — the token no longer resolves; the agent holding it is served nothing", proxy.SessionID(tok))
+		writeJSON(w, http.StatusOK, map[string]any{"revoked": true, "session": proxy.SessionID(tok)})
+	}))
 
 	// POST /sessions is the TRUSTED binder — it chooses the recipe. `dispatch` role required.
 	mux.HandleFunc("POST /sessions", deps.Auth.Guard(auth.RoleDispatch)(func(w http.ResponseWriter, r *http.Request) {
@@ -242,11 +281,38 @@ func Handler(reg *Registry, deps Deps) http.Handler {
 		}
 		// bs.budget is the token's ONE shared counter — every MCP session the agent opens under this token
 		// draws down the same N, so reconnecting cannot reset it.
-		gate := proxy.Gate{Routes: bs.router, Sink: deps.Sink, Approvals: deps.Approvals, OnEscalate: deps.OnEscalate, Budget: bs.budget}
+		// Session is the token's audit id (a digest, never the token) so every decision this gate
+		// records can be grouped back to the agent that made it.
+		// Live is re-evaluated on every request, so a revoke reaches THIS transport too — getServer runs
+		// only once per MCP session, and a check made only here would never run again.
+		gate := proxy.Gate{Routes: bs.router, Sink: deps.Sink, Approvals: deps.Approvals, OnEscalate: deps.OnEscalate, Budget: bs.budget,
+			Session: proxy.SessionID(tok), Live: func() bool { _, ok := reg.lookup(tok); return ok }}
 		read := mcpgate.ReadChannel{Providers: bs.providers, Record: deps.RecordRead}
 		return mcpgate.NewGatingServer(gate, deps.Fleet, read)
 	}, &mcp.StreamableHTTPOptions{SessionTimeout: sessionIdleTimeout})
-	mux.Handle("/mcp/", streamable)
+
+	// An unknown token must fail as a PROTOCOL error, not as a bare string. The SDK answers a nil
+	// getServer with `http.Error(w, "no server available", 400)` — plain text an MCP client cannot
+	// parse as JSON-RPC, so a revoked or mistyped token surfaces as an opaque transport failure and the
+	// operator is left guessing. The token is still refused either way; this only makes the refusal
+	// legible, and says the one thing that lets a client recover: rebind.
+	mux.Handle("/mcp/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tok := strings.TrimPrefix(r.URL.Path, "/mcp/")
+		if _, ok := reg.lookup(tok); !ok {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			// id:null — this refusal is not tied to any one request the client sent.
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"jsonrpc": "2.0", "id": nil,
+				"error": map[string]any{
+					"code":    -32001,
+					"message": "unknown or revoked session token — rebind to continue",
+				},
+			})
+			return
+		}
+		streamable.ServeHTTP(w, r)
+	}))
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "sessions": reg.Count()})

@@ -5,7 +5,7 @@
 // The third-party MCP SDK is isolated here; the kernel/broker/egress never import it.
 package mcpgate
 
-// file-kw: mcp adapter gating proxy server client forward-iff-cleared quarantined tool boundary
+// file-kw: mcp adapter gating proxy server client forward-iff-cleared quarantined tool boundary capabilities listchanged-false honest-advertisement revocation-per-request middleware
 
 import (
 	"context"
@@ -41,7 +41,17 @@ type ReadChannel struct {
 // prompt-injected document cannot name a capability the model has no way to know exists. Advertising is
 // visibility; Decide is still the enforcement, and it re-checks every call.
 func NewGatingServer(gate proxy.Gate, fleet Fleet, read ReadChannel) *mcp.Server {
-	s := mcp.NewServer(&mcp.Implementation{Name: "stag", Version: "0.1"}, nil)
+	// listChanged is advertised FALSE, deliberately. The SDK infers `{"listChanged":true}` as soon as a
+	// tool is added, but that is a protocol PROMISE to push notifications/tools/list_changed — and a
+	// session's tool surface is fixed at BIND, by design: routes are resolved once and the compiled
+	// router never changes for the life of the binding. So the notification would never fire, and a
+	// well-behaved client that trusts the capability caches its tool list forever and never re-lists.
+	// It then cannot see a tool added by a later route, and the operator concludes the backend is stuck
+	// when the truthful answer is "that surface belongs to a new binding". Claiming a capability we do
+	// not implement is worse than not having it: it makes correct clients behave incorrectly.
+	s := mcp.NewServer(&mcp.Implementation{Name: "stag", Version: "0.1"}, &mcp.ServerOptions{
+		Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
+	})
 	s.AddReceivingMiddleware(recordUnrouted(gate))
 	// The ROUTE DELEGATES, and the advertised NAME carries the delegation.
 	//
@@ -190,6 +200,21 @@ func downstreamResourceHandler(d Downstream, downstreamURI string, record func(c
 func recordUnrouted(gate proxy.Gate) mcp.Middleware {
 	return func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+			// REVOCATION, checked per request. The SDK resolves a session ONCE per transport and reuses
+			// the server it built, so an agent that connected before a revoke would otherwise keep its
+			// authority for the life of its connection — revoking would lock the door with the agent
+			// already inside. Every method is refused, not just tools/call: a revoked session must not
+			// keep listing tools either.
+			if gate.Revoked() {
+				ctr, isCall := req.(*mcp.CallToolRequest)
+				if method == "tools/call" && isCall {
+					// Record the attempt: a call arriving after revocation is exactly what an auditor
+					// asking "did anything try after we cut it off?" needs to see.
+					dec := gate.Decide(ctx, proxy.ToolCall{Tool: ctr.Params.Name, Args: decodeArgs(ctr.Params.Arguments), Raw: ctr.Params.Arguments})
+					return refusal(dec), nil
+				}
+				return nil, fmt.Errorf("session revoked: this binding no longer exists — rebind to continue")
+			}
 			ctr, ok := req.(*mcp.CallToolRequest)
 			if method != "tools/call" || !ok {
 				return next(ctx, method, req)

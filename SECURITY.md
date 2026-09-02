@@ -110,7 +110,9 @@ signed release** the human's approval produced: a per-action signature, not a cr
 - **Bounded, computable leakage.** The residual choice channel (above) is not open-ended: `recipe.Leakage`
   emits a signed, static ceiling on it. `-require-bounded` refuses any recipe whose leak is not finite
   (a free-text field reaching an external sink), and `-crossing-budget N` caps forwarded crossings per
-  session at the gate — so the per-session leak is a number, not a guess.
+  session at the gate — so the per-session leak is a number, not a guess. **"Per session" means per
+  *binding*, not per connection**: the budget lives on the bound token and is shared by every MCP
+  transport opened under it, so an agent cannot reset `N` by reconnecting ([`docs/sessions.md`](docs/sessions.md)).
 - **Tamper-evident audit.** Every decision — allow, deny, *and* escalate — is appended to a hash-chained
   log; anyone can recompute it with **`stag-verify`**, and checkpoints can be signed for offline
   verification. A non-forwarded decision **withholds the model's raw proposed value**: the log records

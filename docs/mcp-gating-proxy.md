@@ -49,7 +49,14 @@ stag-proxy -http :8091          # fronts every enabled downstream; each route na
 - `POST /sessions {routes:[{tool,server,recipe,gateArg}]}` → `{token, path}` — the control plane (trusted).
 - The agent connects to `/mcp/<token>` (streamable HTTP); every call is gated by that session's recipe,
   and the session's `tools/list` shows only the tools that recipe governs.
-- An unknown token → `400` (fail closed). Idle sessions are closed after 30 minutes.
+- `DELETE /sessions/{token}` revokes a binding — also `dispatch`, and checked on every request, so it
+  reaches an agent that is already connected.
+- An unknown or revoked token → `400` carrying a JSON-RPC error (`-32001`), fail closed.
+
+The 30-minute idle timeout closes the **transport**, not the binding: a token→recipe binding does not
+expire, and reconnecting on an old token resumes the same policy and the same drawn-down crossing
+budget. See [`sessions.md`](sessions.md) — the distinction is load-bearing, and conflating the two is
+what let an agent outlive its own revocation.
 
 ## What a refusal looks like
 

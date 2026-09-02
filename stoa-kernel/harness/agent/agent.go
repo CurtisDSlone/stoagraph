@@ -4,7 +4,7 @@
 // (Claude and OpenAI/OpenRouter both implement it).
 package agent
 
-// file-kw: agent loop tool-use propose gate verdict forward transcript sse max-turns untrusted-proposer
+// file-kw: agent loop tool-use propose gate verdict forward transcript sse max-turns untrusted-proposer connect transport http stdio daemon-endpoint bound-session-url
 
 import (
 	"context"
@@ -156,6 +156,27 @@ func Connect(ctx context.Context, proxyCmd string) (*mcp.ClientSession, []Tool, 
 		return nil, nil, err
 	}
 	return sess, tools, nil
+}
+
+// kw: connect transport auto http-vs-stdio endpoint-or-command daemon spawn
+// ConnectAuto dials stag-proxy by whichever transport the target names: an http(s) URL is a standing
+// DAEMON endpoint (the /mcp/<token> a dispatcher bound), anything else is a stdio command to spawn.
+//
+// The distinction is not cosmetic. Handing a bound session URL to the stdio path makes the harness
+// fork/exec the URL as a program — it fails with "no such file or directory", which reads as a missing
+// binary rather than the transport mismatch it is. One entry point, so a caller cannot pick wrong.
+func ConnectAuto(ctx context.Context, target string) (*mcp.ClientSession, []Tool, error) {
+	if isHTTPEndpoint(target) {
+		return ConnectHTTP(ctx, target)
+	}
+	return Connect(ctx, target)
+}
+
+// kw: http endpoint detect url scheme transport-choice
+// isHTTPEndpoint reports whether target names a daemon endpoint rather than a command to spawn.
+func isHTTPEndpoint(target string) bool {
+	t := strings.TrimSpace(target)
+	return strings.HasPrefix(t, "http://") || strings.HasPrefix(t, "https://")
 }
 
 // ConnectHTTP dials a standing stag-proxy DAEMON over streamable HTTP (session→recipe, Planning/24

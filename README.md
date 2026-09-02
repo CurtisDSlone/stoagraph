@@ -74,6 +74,7 @@ guarantees — see [SECURITY.md](SECURITY.md).
 - [docs/recipe-authoring.md](docs/recipe-authoring.md) — the policy language.
 - [docs/routes.md](docs/routes.md) — binding a tool to a policy: why an unrouted tool is denied, and which arguments a route must gate.
 - [docs/mcp-gating-proxy.md](docs/mcp-gating-proxy.md) — how the gate speaks MCP.
+- [docs/sessions.md](docs/sessions.md) — what a session is: a grant, not a connection. The crossing budget, revoking, and why a policy edit does not reach an agent that is already bound.
 - [docs/docker.md](docs/docker.md) — the containers, and why the secrets are split across them.
 - [docs/development.md](docs/development.md) — layout, ports, and running from source.
 - [examples/custom-tool/](examples/custom-tool/) — bring your own tool in about five minutes.

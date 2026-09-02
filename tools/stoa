@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+# stoa — run the StoaGraph backend as LOCAL BINARIES out of ~/.stoagraph. No Docker, no console.
+#
+#   stag-serve    :8080   the GATE — policy, approvals, audit. No model, no keys.
+#   stag-proxy    :8091   the GATE — MCP gating proxy. Your agent connects HERE.
+#   harness-serve :8090   the ORCHESTRATOR — OPT-IN (--with-harness). Only needed if you dispatch
+#                         runs through StoaGraph's own agent loop; an external agent speaking MCP
+#                         does not need it, and it is the only process that holds model API keys.
+#
+# EVERYTHING LIVES IN $STOA_HOME (default ~/.stoagraph) — recipes, tools, config, audit logs, keys.
+# The source checkout is build-time only; deleting it does not touch your instance. Every path is
+# passed as an EXPLICIT FLAG rather than inherited from a working directory, so `ps` shows you
+# exactly which store a process opened. A daemon whose state depends on where it was launched from
+# is a daemon that will one day quietly open the wrong database.
+#
+# ORDER IS LOAD-BEARING: stag-serve MINTS data/control.tokens (0600) on first start; every other
+# process only READS it. A consumer must never invent a secret nobody else knows.
+#
+#   stoa up [--with-harness]   start
+#   stoa down                  stop
+#   stoa status                what is running + pending approvals
+#   stoa logs [service]        tail a log
+#   stoa token <role>          print one control-plane token
+#   stoa home                  print $STOA_HOME
+#   stoa install               copy freshly-built binaries into $STOA_HOME/bin
+
+set -uo pipefail
+
+STOA_HOME="${STOA_HOME:-$HOME/.stoagraph}"
+BIN="$STOA_HOME/bin"
+DATA="$STOA_HOME/data"
+LOGS="$STOA_HOME/logs"
+RUN="$STOA_HOME/run"
+CONFIG="$STOA_HOME/config"
+RECIPES="$STOA_HOME/recipes"
+TOKENS="$DATA/control.tokens"
+
+GATE_ADDR="${STOA_GATE_ADDR:-:8080}"
+PROXY_ADDR="${STOA_PROXY_ADDR:-:8091}"
+HARNESS_ADDR="${STOA_HARNESS_ADDR:-:8090}"
+WITH_HARNESS=0
+
+port_of() { echo "${1##*:}"; }
+GATE_URL="http://localhost:$(port_of "$GATE_ADDR")"
+PROXY_URL="http://localhost:$(port_of "$PROXY_ADDR")"
+HARNESS_URL="http://localhost:$(port_of "$HARNESS_ADDR")"
+
+die() { printf '\033[31mstoa:\033[0m %s\n' "$*" >&2; exit 1; }
+ok()  { printf '  \033[32m✓\033[0m %s\n' "$*"; }
+bad() { printf '  \033[31m✗\033[0m %s\n' "$*"; }
+
+# wait_for polls health, but ALSO watches the pid: a process that dies on startup (port taken, bad
+# store path) is reported in about a second instead of after the full timeout.
+wait_for() { # url name pidfile
+  for _ in $(seq 1 40); do
+    if [ -n "${3:-}" ] && [ -f "$3" ] && ! kill -0 "$(cat "$3")" 2>/dev/null; then
+      bad "$2 exited — $LOGS/$(basename "$3" .pid).log"
+      tail -3 "$LOGS/$(basename "$3" .pid).log" 2>/dev/null | sed 's/^/      /'
+      return 1
+    fi
+    curl -sf -m 1 -o /dev/null "$1" && { ok "$2"; return 0; }
+    sleep 0.25
+  done
+  bad "$2 did not come up — $LOGS/"; return 1
+}
+
+running() { [ -f "$RUN/$1.pid" ] && kill -0 "$(cat "$RUN/$1.pid")" 2>/dev/null; }
+
+start() { # name binary args...
+  local name=$1; shift
+  if running "$name"; then ok "$name already running (pid $(cat "$RUN/$name.pid"))"; return 0; fi
+  "$@" >"$LOGS/$name.log" 2>&1 &
+  echo $! > "$RUN/$name.pid"
+}
+
+cmd_install() {
+  local src; src="$(cd "$(dirname "$0")/.." && pwd)/stoa-kernel/bin"
+  [ -d "$src" ] || die "no built binaries at $src — run tools/build.sh"
+  mkdir -p "$BIN"
+  for b in stag-serve stag-proxy harness-serve stag-tools stag-verify stag-probe harness; do
+    [ -x "$src/$b" ] && cp "$src/$b" "$BIN/" && printf '  installed %s\n' "$b"
+  done
+  echo "  -> $BIN"
+}
+
+cmd_up() {
+  mkdir -p "$DATA" "$LOGS" "$RUN" "$CONFIG" "$RECIPES" "$BIN"
+  chmod 700 "$STOA_HOME"
+  [ -x "$BIN/stag-serve" ] || die "no binaries in $BIN — run: stoa install"
+
+  echo "== the GATE ==  $STOA_HOME"
+  start stag-serve "$BIN/stag-serve" -addr "$GATE_ADDR" \
+    -store "$DATA/config.db" -recipes-dir "$RECIPES" -tokens "$TOKENS" \
+    -approval-key "$DATA/approval.key" -log "$DATA/decisions.jsonl" \
+    -oauth-dir "$DATA/oauth" -public-url "$GATE_URL"
+  wait_for "$GATE_URL/health" "stag-serve    $GATE_URL" "$RUN/stag-serve.pid" || exit 1
+
+  # Same store and recipe dir as the gate — they SHARE state; pointing them at different
+  # directories yields a proxy that cannot see the policies you just authored.
+  start stag-proxy "$BIN/stag-proxy" -http "$PROXY_ADDR" \
+    -store "$DATA/config.db" -recipes-dir "$RECIPES" -tokens "$TOKENS" \
+    -log "$DATA/decisions.jsonl" -read-log "$DATA/reads.jsonl" -oauth-dir "$DATA/oauth"
+  wait_for "$PROXY_URL/health" "stag-proxy    $PROXY_URL" "$RUN/stag-proxy.pid" || exit 1
+
+  if [ "$WITH_HARNESS" = 1 ]; then
+    echo "== the ORCHESTRATOR =="
+    [ -f "$CONFIG/models.json" ] || \
+      echo "  ! no $CONFIG/models.json — cp $CONFIG/models.example.json $CONFIG/models.json"
+    start harness-serve "$BIN/harness-serve" -addr "$HARNESS_ADDR" \
+      -models "$CONFIG/models.json" -event-map "$CONFIG/event_map.json" \
+      -tokens "$TOKENS" -approvals-url "$GATE_URL" -daemon-url "$PROXY_URL"
+    wait_for "$HARNESS_URL/health" "harness-serve $HARNESS_URL" "$RUN/harness-serve.pid" || exit 1
+  fi
+
+  echo
+  echo "  approvals   stoa-approve list"
+  echo "  bind MCP    stoa-approve session --route <tool>:<server>:<recipe>:<arg>"
+  echo "  stop        stoa down"
+}
+
+cmd_down() {
+  local any=0
+  for name in harness-serve stag-proxy stag-serve; do
+    if running "$name"; then kill "$(cat "$RUN/$name.pid")" 2>/dev/null && ok "stopped $name"; any=1; fi
+    rm -f "$RUN/$name.pid"
+  done
+  [ "$any" = 1 ] || echo "  nothing running"
+}
+
+cmd_status() {
+  echo "  home  $STOA_HOME"
+  for svc in "stag-serve $GATE_URL" "stag-proxy $PROXY_URL" "harness-serve $HARNESS_URL"; do
+    set -- $svc
+    if curl -sf -m 1 -o /dev/null "$2/health"; then ok "$1  $2"; else bad "$1  down"; fi
+  done
+  if [ -f "$TOKENS" ] && curl -sf -m 1 -o /dev/null "$GATE_URL/health"; then
+    local n
+    n=$(curl -sf -m 2 -H "Authorization: Bearer $(cmd_token admin)" \
+          "$GATE_URL/api/approvals?status=pending" | grep -o '"id"' | wc -l)
+    echo "  ${n:-0} pending approval(s)   $(ls "$RECIPES" 2>/dev/null | wc -l) recipe(s)"
+  fi
+}
+
+cmd_logs() { tail -f "$LOGS/${1:-stag-serve}.log"; }
+
+# The role secrets the GATE minted. `approve` and `dispatch` are DIFFERENT secrets — that split is
+# what stops the process running model output from authorizing its own escalations.
+cmd_token() {
+  [ -f "$TOKENS" ] || die "no $TOKENS — run: stoa up"
+  python3 -c "import json;print(json.load(open('$TOKENS'))['$1'])"
+}
+
+case "${1:-help}" in
+  up)      shift; [ "${1:-}" = "--with-harness" ] && WITH_HARNESS=1; cmd_up ;;
+  down)    cmd_down ;;
+  restart) cmd_down; cmd_up ;;
+  status)  cmd_status ;;
+  install) cmd_install ;;
+  home)    echo "$STOA_HOME" ;;
+  logs)    shift; cmd_logs "${1:-}" ;;
+  token)   shift; cmd_token "${1:?role: admin|approve|dispatch|operator}" ;;
+  *) sed -n '2,30p' "$0" | sed 's/^# \?//' ;;
+esac

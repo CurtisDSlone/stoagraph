@@ -198,7 +198,12 @@
         "deny",
         "escalate",
         "signed",
-        "checkpoint"
+        "checkpoint",
+        "session-column",
+        "policy-column",
+        "interleaved-runs",
+        "which-agent",
+        "which-policy-version"
       ],
       "layer": "binary",
       "package": "main",
@@ -239,12 +244,44 @@
         "transcript",
         "sse",
         "max-turns",
-        "untrusted-proposer"
+        "untrusted-proposer",
+        "connect",
+        "transport",
+        "http",
+        "stdio",
+        "daemon-endpoint",
+        "bound-session-url"
       ],
       "layer": "orchestrator",
       "package": "agent",
       "path": "stoa-kernel/harness/agent/agent.go",
-      "symbols": []
+      "symbols": [
+        {
+          "kw": [
+            "connect",
+            "transport",
+            "auto",
+            "http-vs-stdio",
+            "endpoint-or-command",
+            "daemon",
+            "spawn"
+          ],
+          "line": 168,
+          "name": "ConnectAuto"
+        },
+        {
+          "kw": [
+            "http",
+            "endpoint",
+            "detect",
+            "url",
+            "scheme",
+            "transport-choice"
+          ],
+          "line": 177,
+          "name": "isHTTPEndpoint"
+        }
+      ]
     },
     {
       "doc": "",
@@ -1323,7 +1360,10 @@
         "value",
         "recipe",
         "fault",
-        "releases"
+        "releases",
+        "session",
+        "attribution",
+        "which-agent"
       ],
       "layer": "gate",
       "package": "record",
@@ -1338,7 +1378,7 @@
             "leaf",
             "payload"
           ],
-          "line": 29,
+          "line": 38,
           "name": "Hash"
         }
       ]
@@ -2037,7 +2077,12 @@
         "forward-iff-cleared",
         "quarantined",
         "tool",
-        "boundary"
+        "boundary",
+        "capabilities",
+        "listchanged-false",
+        "honest-advertisement",
+        "revocation-per-request",
+        "middleware"
       ],
       "layer": "gate",
       "package": "mcpgate",
@@ -2053,7 +2098,7 @@
             "bind-time",
             "coverage"
           ],
-          "line": 106,
+          "line": 116,
           "name": "SchemaArgs"
         }
       ]
@@ -2142,7 +2187,13 @@
         "forward-iff-cleared",
         "fail-closed",
         "no-model",
-        "mcp"
+        "mcp",
+        "session-id",
+        "audit-attribution",
+        "live-predicate",
+        "revoked",
+        "crossing-budget",
+        "per-binding"
       ],
       "layer": "gate",
       "package": "proxy",
@@ -2234,6 +2285,32 @@
         },
         {
           "kw": [
+            "revoked",
+            "session",
+            "withdrawn",
+            "per-request",
+            "live",
+            "evict",
+            "already-connected"
+          ],
+          "line": 151,
+          "name": "Revoked"
+        },
+        {
+          "kw": [
+            "session",
+            "id",
+            "audit",
+            "digest",
+            "never-the-token",
+            "bearer-credential",
+            "attribution"
+          ],
+          "line": 158,
+          "name": "SessionID"
+        },
+        {
+          "kw": [
             "decide",
             "route",
             "eval",
@@ -2242,7 +2319,7 @@
             "fail-closed",
             "approval-loop"
           ],
-          "line": 177,
+          "line": 207,
           "name": "Decide"
         },
         {
@@ -2254,7 +2331,7 @@
             "top-level",
             "heads"
           ],
-          "line": 325,
+          "line": 356,
           "name": "Covered"
         },
         {
@@ -2265,7 +2342,7 @@
             "properties",
             "unaccounted"
           ],
-          "line": 369,
+          "line": 400,
           "name": "CoverageGaps"
         }
       ]
@@ -2282,12 +2359,34 @@
         "streamable-http",
         "bind",
         "fail-closed",
-        "no-fork"
+        "no-fork",
+        "revoke",
+        "revocation",
+        "withdraw-authority",
+        "binding-vs-transport",
+        "unknown-token",
+        "jsonrpc-error",
+        "rebind"
       ],
       "layer": "gate",
       "package": "sessiond",
       "path": "stoa-kernel/stag/proxy/sessiond/sessiond.go",
-      "symbols": []
+      "symbols": [
+        {
+          "kw": [
+            "revoke",
+            "session",
+            "binding",
+            "withdraw",
+            "authority",
+            "running-agent",
+            "only-way",
+            "disarm"
+          ],
+          "line": 121,
+          "name": "Revoke"
+        }
+      ]
     },
     {
       "doc": "",

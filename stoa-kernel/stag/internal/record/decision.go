@@ -1,6 +1,6 @@
 package record
 
-// file-kw: decision record audit unit tool verdict forwarded value recipe fault releases
+// file-kw: decision record audit unit tool verdict forwarded value recipe fault releases session attribution which-agent
 
 // DecisionRecord is ONE gate decision — the unit of the audit chain.
 //
@@ -15,6 +15,15 @@ package record
 // would assert a crossing that never happened. The record states what HAPPENED, never what merely
 // evaluated.
 type DecisionRecord struct {
+	// Session identifies the bound session that produced this decision. It is a NON-REVERSIBLE digest
+	// of the session token, never the token itself: the token is the agent's bearer credential, and an
+	// audit log is read by more parties than may hold it.
+	//
+	// Without this the log cannot answer "which agent did this?" — only "what policy judged this call?".
+	// Decisions from different sessions interleave in one chain and are otherwise indistinguishable
+	// whenever they share a policy version. Empty for decisions made outside a bound session (the
+	// control plane's own preview gate).
+	Session    string
 	Tool       string
 	Verdict    string // allow | deny | escalate
 	Forwarded  bool   // did the call actually reach the tool?

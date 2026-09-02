@@ -8,7 +8,7 @@
 //	stag-verify -pub operator.pub.key -checkpoint data/checkpoint.json data/decisions.jsonl
 package main
 
-// file-kw: cli verify audit chain tamper-evident replay leaves allow deny escalate signed checkpoint
+// file-kw: cli verify audit chain tamper-evident replay leaves allow deny escalate signed checkpoint session-column policy-column interleaved-runs which-agent which-policy-version
 
 import (
 	"bufio"
@@ -66,7 +66,15 @@ func main() {
 			if d.Forwarded {
 				verb += "→forwarded"
 			}
+			// session + policy version are what let an auditor separate interleaved runs: decisions
+			// from different agents share a chain, and are otherwise identical whenever the policy is.
 			row := fmt.Sprintf("  #%d  %-18s %-22s %s", lf.Seq, verb, d.Tool, d.Recipe)
+			if d.Session != "" {
+				row += "  session=" + short(d.Session)
+			}
+			if d.RecipeHash != "" {
+				row += "  policy=" + short(d.RecipeHash)
+			}
 			if d.Value != "" {
 				row += "  value=" + d.Value
 			}
@@ -108,4 +116,13 @@ func verifySigned(pubPath, ckptPath string, log []byte) error {
 		return err
 	}
 	return nil
+}
+
+// short renders a digest as its first 8 hex chars — enough to distinguish sessions and policy
+// versions at a glance without turning every audit row into two lines.
+func short(h string) string {
+	if len(h) <= 8 {
+		return h
+	}
+	return h[:8]
 }
