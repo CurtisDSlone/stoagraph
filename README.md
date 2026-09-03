@@ -13,7 +13,7 @@ Open source, Apache-2.0. No held-back edition. New here? Start with the [doctrin
 ## Quickstart
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/curtisslone/stoagraph/v0.2.1/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/CurtisDSlone/stoagraph/v0.3.1/install.sh | sh
 stoagraph up        # mint secrets, pull the signed images, start, print a one-click login link
 ```
 
