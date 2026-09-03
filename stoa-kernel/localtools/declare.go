@@ -190,25 +190,39 @@ func (t Tool) argvTemplate() []string {
 	}
 	switch strings.ToLower(filepath.Ext(t.Script)) {
 	case ".sh":
-		return append([]string{"sh", t.Script}, t.argNamesAsPlaceholders()...)
+		return append([]string{"sh", t.Script}, t.argNamesAsFlags()...)
 	case ".py":
-		return append([]string{"python3", t.Script}, t.argNamesAsPlaceholders()...)
+		return append([]string{"python3", t.Script}, t.argNamesAsFlags()...)
 	default:
-		return append([]string{t.Script}, t.argNamesAsPlaceholders()...) // shebang / executable bit
+		return append([]string{t.Script}, t.argNamesAsFlags()...) // shebang / executable bit
 	}
 }
 
-// argNamesAsPlaceholders passes a script's declared args positionally, each as its own argv element —
-// so a value can never be re-split or re-parsed. Sorted for determinism.
-func (t Tool) argNamesAsPlaceholders() []string {
+// argNamesAsFlags passes a script's declared args as NAMED flags — `--path <value>` — each value its
+// own argv element, so it can never be re-split or re-parsed.
+//
+// Named, not positional, and the difference is a correctness bug this replaced. Args is a
+// map[string]Arg: Go randomizes map iteration and a YAML mapping carries no order anyway, so the
+// order had to be imposed, and sorting the names was the obvious way. But that makes the contract
+// "alphabetical by argument name", which is invisible at the call site: declare {path, find, replace}
+// and the script receives find, path, replace. A script written to the order its author wrote the
+// YAML in gets its arguments SILENTLY transposed — no error at load, no error at run, just a tool
+// that reads one value as another. Renaming an arg reorders argv the same silent way.
+//
+// Flags remove the class: order stops carrying meaning, `ps` shows which value is which, and a script
+// that asks for a flag nobody passes fails loudly instead of quietly reading its neighbour.
+//
+// Still sorted, because the argv must be deterministic — the audit replays decisions, and "same
+// recipe + same call -> same invocation" has to hold at the tool boundary too.
+func (t Tool) argNamesAsFlags() []string {
 	names := make([]string, 0, len(t.Args))
 	for n := range t.Args {
 		names = append(names, n)
 	}
 	slices.Sort(names)
-	out := make([]string, len(names))
-	for i, n := range names {
-		out[i] = "{" + n + "}"
+	out := make([]string, 0, 2*len(names))
+	for _, n := range names {
+		out = append(out, "--"+n, "{"+n+"}")
 	}
 	return out
 }

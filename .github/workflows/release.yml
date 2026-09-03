@@ -15,8 +15,11 @@ permissions:
   id-token: write # keyless cosign signing (OIDC)
   attestations: write
 
-env:
-  REGISTRY: ghcr.io/${{ github.repository }}
+# NOTE: there is deliberately no top-level REGISTRY here. `github.repository` preserves the owner's
+# CASE (CurtisDSlone/stoagraph), and an OCI reference must be lowercase — cosign refuses to parse a
+# reference with an uppercase owner, so every image built, pushed, and then failed to sign. A
+# top-level `env:` cannot hold a computed value, so the lowercase reference is derived per job in a
+# step and read from that step's output.
 
 jobs:
   # Nothing ships that has not passed the same gate a contributor runs locally.
@@ -64,10 +67,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # OCI references must be lowercase; github.repository keeps the owner's case. Derive it once
+      # here rather than hardcoding the owner, so the workflow still follows the repo if it moves
+      # again — an ownership change is what broke this in the first place.
+      - id: registry
+        run: echo "ref=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ matrix.service }}
+          images: ${{ steps.registry.outputs.ref }}/${{ matrix.service }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern=v{{version}}
@@ -90,7 +99,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: sign the image (keyless — no key to steal or rotate)
-        run: cosign sign --yes "${{ env.REGISTRY }}/${{ matrix.service }}@${{ steps.build.outputs.digest }}"
+        run: cosign sign --yes "${{ steps.registry.outputs.ref }}/${{ matrix.service }}@${{ steps.build.outputs.digest }}"
 
   # The installer binary, for people who do not want to build anything. Checksums are published so the
   # one-liner can VERIFY what it downloaded instead of asking you to trust a pipe into your shell.

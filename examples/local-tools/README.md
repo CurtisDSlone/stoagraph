@@ -79,5 +79,5 @@ allowlist besides. Two independent layers, because this one is worth getting wro
 
 - `tools.yaml` — the declared toolset. Start here.
 - `recipes/read_file_policy.yaml` — gates `read_file`'s `path` to a named set.
-- `scripts/check.sh` — a `script:` tool; declared args are passed positionally, each as its own argv
+- `scripts/check.sh` — a `script:` tool; declared args arrive as NAMED FLAGS (`--path <value>`), each value its own argv
   element, so a value with spaces or semicolons is still exactly one argument.

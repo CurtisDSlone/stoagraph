@@ -47,8 +47,9 @@ tools:
       path:
         description: the path to show history for
 
-  # A script tool: declared args are passed positionally, each as its OWN argv element, so a value with
-  # spaces or semicolons is still exactly one argument to the script.
+  # A script tool: declared args arrive as NAMED FLAGS — `--path <value>` — each value its own argv
+  # element, so a value with spaces or semicolons is still exactly one argument. Read them by name
+  # (getopts, argparse); the order you declare them in here does not reach the script.
   - name: run_checks
     description: Run the project's check suite.
     script: ./scripts/check.sh

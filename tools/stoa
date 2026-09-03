@@ -23,6 +23,8 @@
 #   stoa token <role>          print one control-plane token
 #   stoa home                  print $STOA_HOME
 #   stoa install               copy freshly-built binaries into $STOA_HOME/bin
+#   stoa mcp <tool:server:recipe:arg>…  bind a session; prints the /mcp/<token> URL for your agent
+#   stoa env [--approve]       print role secrets as exports (approve withheld unless asked)
 
 set -uo pipefail
 
@@ -74,13 +76,81 @@ start() { # name binary args...
 }
 
 cmd_install() {
-  local src; src="$(cd "$(dirname "$0")/.." && pwd)/stoa-kernel/bin"
-  [ -d "$src" ] || die "no built binaries at $src — run tools/build.sh"
+  # Resolve the CHECKOUT, not wherever this script was invoked from. `stoa` is normally reached through
+  # a symlink on PATH (~/.local/bin/stoa), and $0 is then the symlink — so a plain dirname lands in
+  # ~/.local and looks for ~/.local/stoa-kernel/bin, which does not exist. Follow the link first.
+  local self="$0"
+  while [ -L "$self" ]; do
+    local target; target="$(readlink "$self")"
+    case "$target" in
+      /*) self="$target" ;;
+      *)  self="$(dirname "$self")/$target" ;;
+    esac
+  done
+  local src; src="$(cd "$(dirname "$self")/.." && pwd)/stoa-kernel/bin"
+  # STOA_SRC overrides, for a checkout somewhere this cannot infer.
+  [ -n "${STOA_SRC:-}" ] && src="$STOA_SRC/stoa-kernel/bin"
+  [ -d "$src" ] || die "no built binaries at $src — run tools/build.sh (or set STOA_SRC=/path/to/checkout)"
+
+  # A running process holds its binary open: cp fails with "Text file busy". Say so plainly rather than
+  # half-installing — a half-installed gate is a gate whose parts disagree about the record format.
+  for b in stag-serve stag-proxy harness-serve; do
+    running "$b" && die "$b is running — stop first:  stoa down"
+  done
+
   mkdir -p "$BIN"
   for b in stag-serve stag-proxy harness-serve stag-tools stag-verify stag-probe harness; do
     [ -x "$src/$b" ] && cp "$src/$b" "$BIN/" && printf '  installed %s\n' "$b"
   done
   echo "  -> $BIN"
+}
+
+# cmd_mcp — the last mile: turn a running gate into an MCP endpoint an agent can actually use.
+#
+# Binding is deliberately a separate act from starting the gate. The BINDER chooses the recipe, and an
+# agent that chose its own policy would choose the empty one — so this asks for the route explicitly
+# rather than inferring "everything registered", which would hand out authority nobody wrote down.
+# cmd_env — print the role secrets as shell exports, so a shell can hold them instead of a file.
+#
+# WHAT THIS BUYS, HONESTLY. It is NOT a boundary against an agent running as you: that agent can read
+# ~/.stoagraph/data/control.tokens (0600, same uid) exactly as easily as it can read its own environ.
+# What it does buy:
+#
+#   * an agent that reads FILES — grepping the workspace, tailing a log, following a path a poisoned
+#     document suggested — does not stumble onto a secret that is not on disk;
+#   * you can decline to export `approve` at all in the shell the agent runs in, which is the whole
+#     point: the human's secret lives in the human's shell.
+#
+# So `stoa env` omits STAG_APPROVE_TOKEN by default. `stoa env --approve` prints it, for the terminal
+# where YOU decide escalations — and nowhere else.
+cmd_env() {
+  [ -f "$TOKENS" ] || die "no $TOKENS — run: stoa up"
+  local with_approve=0
+  [ "${1:-}" = "--approve" ] && with_approve=1
+  python3 -c '
+import json, sys
+t = json.load(open(sys.argv[1])); approve = sys.argv[2] == "1"
+print("export STAG_ADMIN_TOKEN=%r" % t["admin"])
+print("export STAG_DISPATCH_TOKEN=%r" % t["dispatch"])
+print("export HARNESS_OPERATOR_TOKEN=%r" % t["operator"])
+if approve:
+    print("export STAG_APPROVE_TOKEN=%r" % t["approve"])
+else:
+    print("# STAG_APPROVE_TOKEN withheld — `stoa env --approve` prints it.")
+    print("# Export it ONLY in the shell where you decide escalations, never where an agent runs:")
+    print("#   an agent that could approve its own escalations makes the whole control decorative.")
+' "$TOKENS" "$with_approve"
+}
+
+cmd_mcp() {
+  [ $# -ge 1 ] || die "usage: stoa mcp <tool>:<server>:<recipe>:<gateArg> [more…]
+       e.g. stoa mcp get_pods:kube:k8s_read_policy:namespace
+
+  A route names all four parts because the gate never guesses: which tool, on which
+  server, under which policy, gating which argument."
+  local args=()
+  for spec in "$@"; do args+=(--route "$spec"); done
+  "$(dirname "$0")/stoa-approve" session "${args[@]}"
 }
 
 cmd_up() {
@@ -156,6 +226,8 @@ case "${1:-help}" in
   restart) cmd_down; cmd_up ;;
   status)  cmd_status ;;
   install) cmd_install ;;
+  mcp)     shift; cmd_mcp "$@" ;;
+  env)     shift; cmd_env "${1:-}" ;;
   home)    echo "$STOA_HOME" ;;
   logs)    shift; cmd_logs "${1:-}" ;;
   token)   shift; cmd_token "${1:?role: admin|approve|dispatch|operator}" ;;
