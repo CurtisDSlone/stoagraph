@@ -15,8 +15,8 @@ rules:
   ns.safe: {kind: set_membership, set: ["dev", "staging"]}
 steps:
   - {id: p, kind: propose, out: ns}
-  - {id: drain, kind: invoke, tool: k8s.drain, args: {node: ns}, rule: ns.safe, actor: "policy:platform"}
-  - {id: check, kind: invoke, tool: k8s.status, args: {node: ns}, rule: ns.safe, actor: "policy:platform"}
+  - {id: drain, kind: invoke, tool: k8s.drain, args: {node: {slot: ns, rule: ns.safe}}, actor: "policy:platform"}
+  - {id: check, kind: invoke, tool: k8s.status, args: {node: {slot: ns, rule: ns.safe}}, actor: "policy:platform"}
 `
 
 func TestInvokeParses(t *testing.T) {
@@ -31,10 +31,10 @@ func TestInvokeParses(t *testing.T) {
 	if drain.Tool != "k8s.drain" {
 		t.Errorf("tool not compiled: %q", drain.Tool)
 	}
-	if drain.Args["node"] != "ns" {
-		t.Errorf("args must compile as argname -> slot: %+v", drain.Args)
+	if drain.ArgRules["node"].Slot != "ns" {
+		t.Errorf("args must compile as argname -> slot: %+v", drain.ArgRules)
 	}
-	if drain.Rule == nil || drain.RuleID != "ns.safe" {
+	if drain.ArgRules["node"].Rule == nil || drain.ArgRules["node"].RuleID != "ns.safe" {
 		t.Errorf("invoke must bind its rule: %+v", drain)
 	}
 }
@@ -55,7 +55,7 @@ func TestInvokeRidesInSemanticHash(t *testing.T) {
 		t.Error("changing the authorized tool must change the semantic hash")
 	}
 	// same tool, different source slot
-	argSwap := strings.Replace(invokeSrc, "args: {node: ns}, rule: ns.safe, actor: \"policy:platform\"}\n  - {id: check", "args: {host: ns}, rule: ns.safe, actor: \"policy:platform\"}\n  - {id: check", 1)
+	argSwap := strings.Replace(invokeSrc, "args: {node: {slot: ns, rule: ns.safe}}, actor: \"policy:platform\"}\n  - {id: check", "args: {host: {slot: ns, rule: ns.safe}}, actor: \"policy:platform\"}\n  - {id: check", 1)
 	swapped, err := Parse([]byte(argSwap))
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +74,7 @@ version: 1
 rules: {ok: {kind: set_membership, set: ["dev"]}}
 steps:
   - {id: p, kind: propose, out: ns}
-  - {id: i, kind: invoke, args: {node: ns}, rule: ok, actor: a}
+  - {id: i, kind: invoke, args: {node: {slot: ns, rule: ok}}, actor: a}
 `},
 		{"no args", `
 recipe: r
@@ -82,7 +82,7 @@ version: 1
 rules: {ok: {kind: set_membership, set: ["dev"]}}
 steps:
   - {id: p, kind: propose, out: ns}
-  - {id: i, kind: invoke, tool: t, rule: ok, actor: a}
+  - {id: i, kind: invoke, tool: t, actor: a}
 `},
 		{"no rule", `
 recipe: r
@@ -90,7 +90,7 @@ version: 1
 rules: {ok: {kind: set_membership, set: ["dev"]}}
 steps:
   - {id: p, kind: propose, out: ns}
-  - {id: i, kind: invoke, tool: t, args: {node: ns}, actor: a}
+  - {id: i, kind: invoke, tool: t, args: {node: {slot: ns}}, actor: a}
 `},
 		{"empty args map", `
 recipe: r
@@ -98,7 +98,7 @@ version: 1
 rules: {ok: {kind: set_membership, set: ["dev"]}}
 steps:
   - {id: p, kind: propose, out: ns}
-  - {id: i, kind: invoke, tool: t, args: {}, rule: ok, actor: a}
+  - {id: i, kind: invoke, tool: t, args: {}, actor: a}
 `},
 		{"unknown rule ref", `
 recipe: r
@@ -106,7 +106,7 @@ version: 1
 rules: {ok: {kind: set_membership, set: ["dev"]}}
 steps:
   - {id: p, kind: propose, out: ns}
-  - {id: i, kind: invoke, tool: t, args: {node: ns}, rule: nope, actor: a}
+  - {id: i, kind: invoke, tool: t, args: {node: {slot: ns, rule: nope}}, actor: a}
 `},
 		{"illegal key", `
 recipe: r
@@ -114,7 +114,7 @@ version: 1
 rules: {ok: {kind: set_membership, set: ["dev"]}}
 steps:
   - {id: p, kind: propose, out: ns}
-  - {id: i, kind: invoke, tool: t, args: {node: ns}, rule: ok, actor: a, sensitivity: authoritative}
+  - {id: i, kind: invoke, tool: t, args: {node: {slot: ns, rule: ok}}, actor: a, sensitivity: authoritative}
 `},
 	}
 	for _, c := range cases {
@@ -133,7 +133,7 @@ version: 1
 rules: {ok: {kind: set_membership, set: ["dev"]}}
 steps:
   - {id: p, kind: propose, out: ns}
-  - {id: i, kind: invoke, tool: t, args: {node: undeclared}, rule: ok, actor: a}
+  - {id: i, kind: invoke, tool: t, args: {node: {slot: undeclared, rule: ok}}, actor: a}
 `
 	if _, err := Parse([]byte(src)); err == nil {
 		t.Error("an invoke arg fed by an undeclared slot must be rejected")
@@ -150,7 +150,7 @@ rules: {ok: {kind: set_membership, set: ["dev"]}}
 steps:
   - {id: p, kind: propose, out: list}
   - {id: fe, kind: foreach, in: list, as: item}
-  - {id: i, kind: invoke, tool: t, args: {node: item}, rule: ok, actor: a}
+  - {id: i, kind: invoke, tool: t, args: {node: {slot: item, rule: ok}}, actor: a}
 `
 	_, err := Parse([]byte(src))
 	if err == nil {
@@ -170,8 +170,8 @@ version: 1
 rules: {ok: {kind: set_membership, set: ["dev"]}}
 steps:
   - {id: p, kind: propose, out: ns}
-  - {id: a, kind: invoke, tool: k8s.drain, args: {node: ns}, rule: ok, actor: a}
-  - {id: b, kind: invoke, tool: k8s.drain, args: {node: ns}, rule: ok, actor: a}
+  - {id: a, kind: invoke, tool: k8s.drain, args: {node: {slot: ns, rule: ok}}, actor: a}
+  - {id: b, kind: invoke, tool: k8s.drain, args: {node: {slot: ns, rule: ok}}, actor: a}
 `
 	if _, err := Parse([]byte(src)); err == nil {
 		t.Error("two invokes authorizing the same tool must be rejected")
@@ -190,7 +190,7 @@ func TestInvokeCap(t *testing.T) {
 		b.WriteString(", kind: invoke, tool: t")
 		b.WriteString(string(rune('a' + i%26)))
 		b.WriteString(string(rune('a' + i/26)))
-		b.WriteString(", args: {node: ns}, rule: ok, actor: a}\n")
+		b.WriteString(", args: {node: {slot: ns, rule: ok}}, actor: a}\n")
 	}
 	if _, err := Parse([]byte(b.String())); err == nil {
 		t.Errorf("a recipe over the invoke cap (%d) must be rejected", invokeCap)
@@ -206,7 +206,7 @@ version: 1
 rules: {ok: {kind: set_membership, set: ["dev"]}}
 steps:
   - {id: p, kind: propose, out: ns}
-  - {id: i, kind: invoke, tool: k8s.delete_namespace, args: {node: ns}, rule: ok, actor: a}
+  - {id: i, kind: invoke, tool: k8s.delete_namespace, args: {node: {slot: ns, rule: ok}}, actor: a}
 `
 	p, err := Parse([]byte(src))
 	if err != nil {
@@ -221,5 +221,76 @@ steps:
 	}
 	if !found {
 		t.Errorf("an invoke on a destructive-looking tool must caution: %v", cs)
+	}
+}
+
+// PER-ARGUMENT RULES ARE THE POINT. Each argument names its own rule, and the rule an
+// argument is cleared by is part of the policy's identity — swapping two arguments' rules
+// is a different policy even though the same rules and slots appear.
+func TestPerArgumentRulesRideInSemanticHash(t *testing.T) {
+	base := `
+recipe: r
+version: 1
+rules:
+  img: {kind: set_membership, set: ["badport"]}
+  port: {kind: set_membership, set: ["8080"]}
+steps:
+  - {id: p_i, kind: propose, out: image}
+  - {id: p_v, kind: propose, out: value}
+  - {id: fix, kind: invoke, tool: t,
+     args: {image: {slot: image, rule: img}, value: {slot: value, rule: port}}, actor: a}
+`
+	swapped := strings.Replace(base,
+		"args: {image: {slot: image, rule: img}, value: {slot: value, rule: port}}",
+		"args: {image: {slot: image, rule: port}, value: {slot: value, rule: img}}", 1)
+
+	a, err := Parse([]byte(base))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := Parse([]byte(swapped))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.SemanticHash == b.SemanticHash {
+		t.Error("which rule clears which argument must change the policy identity")
+	}
+	if a.Recipe.Steps[2].ArgRules["image"].RuleID != "img" {
+		t.Errorf("each argument must bind its OWN rule: %+v", a.Recipe.Steps[2].ArgRules)
+	}
+	if a.Recipe.Steps[2].ArgRules["value"].RuleID != "port" {
+		t.Errorf("each argument must bind its OWN rule: %+v", a.Recipe.Steps[2].ArgRules)
+	}
+}
+
+// An argument missing its rule is rejected: an argument nobody wrote a rule for is not
+// thereby permitted.
+func TestInvokeArgumentWithoutRuleRejected(t *testing.T) {
+	src := `
+recipe: r
+version: 1
+rules: {ok: {kind: set_membership, set: ["dev"]}}
+steps:
+  - {id: p, kind: propose, out: ns}
+  - {id: i, kind: invoke, tool: t, args: {node: {slot: ns}}, actor: a}
+`
+	if _, err := Parse([]byte(src)); err == nil {
+		t.Error("an argument with no rule must be rejected")
+	}
+}
+
+// The old single-rule form is no longer accepted: a step-level `rule` on an invoke is an
+// error, not silently ignored.
+func TestInvokeStepLevelRuleRejected(t *testing.T) {
+	src := `
+recipe: r
+version: 1
+rules: {ok: {kind: set_membership, set: ["dev"]}}
+steps:
+  - {id: p, kind: propose, out: ns}
+  - {id: i, kind: invoke, tool: t, args: {node: {slot: ns, rule: ok}}, rule: ok, actor: a}
+`
+	if _, err := Parse([]byte(src)); err == nil {
+		t.Error("a step-level rule on an invoke must be rejected")
 	}
 }

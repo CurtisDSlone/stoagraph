@@ -153,12 +153,25 @@ expresses a whole sequence — drain, then verify, then notify — with **no mod
 recipe: drain_policy
 version: 1
 rules:
-  ns.safe: {kind: set_membership, set: ["dev", "staging"]}
+  ns.safe:   {kind: set_membership, set: ["dev", "staging"]}
+  mode.safe: {kind: set_membership, set: ["graceful"]}
 steps:
-  - {id: p, kind: propose, out: ns}
-  - {id: drain, kind: invoke, tool: k8s.drain,  args: {node: ns}, rule: ns.safe, actor: "policy:platform"}
-  - {id: check, kind: invoke, tool: k8s.status, args: {node: ns}, rule: ns.safe, actor: "policy:platform"}
+  - {id: p_ns,   kind: propose, out: ns}
+  - {id: p_mode, kind: propose, out: mode}
+  - {id: drain, kind: invoke, tool: k8s.drain,
+     args: {node: {slot: ns,   rule: ns.safe},
+            mode: {slot: mode, rule: mode.safe}}, actor: "policy:platform"}
+  - {id: check, kind: invoke, tool: k8s.status,
+     args: {node: {slot: ns, rule: ns.safe}}, actor: "policy:platform"}
 ```
+
+**Every argument carries its own rule.** `args` maps an argument name to the slot that supplies
+it and the rule that must clear it. This is required, not optional: an invoke's arguments are
+usually different *kinds* of value — a target, an operation, a payload — and a single rule shared
+across them could only be the union of what each may be. That union is a flat set of permitted
+strings with no idea which argument it is looking at, so it would clear a payload sitting in the
+target's slot. Per-argument rules make the policy state what it means, and the audit then records
+*which rule cleared which argument*.
 
 **Authorization and transport are separate.** The kernel performs no I/O. An `invoke` step
 resolves its arguments from slots, clears each against its `rule` exactly as an authoritative
@@ -171,9 +184,10 @@ the gate against **that tool's own route and its own recipe**. Authorizing a cal
 authority to make it. A recipe that names `k8s.delete_namespace` in an `invoke` still meets that
 tool's own hard-deny policy and stops there — a policy cannot launder an action by naming it.
 
-**All-or-nothing per call, and per recipe.** One unreleased argument authorizes no call at all,
-and a recipe that later denies, escalates or faults retracts *every* call it authorized: the
-executor is handed nothing it may run.
+**All-or-nothing per call, and per recipe.** One unreleased argument authorizes no call at all —
+and no crossing is recorded for the arguments that *did* clear, because that call never happened.
+A recipe that later denies, escalates or faults retracts *every* call it authorized: the executor
+is handed nothing it may run.
 
 **It halts; it does not roll back.** The sequence stops at the first call the gate refuses or
 the transport cannot carry. Steps that already ran stay run, and the result names the step it
@@ -182,6 +196,8 @@ stopped on. StoaGraph does not claim a transaction it cannot provide over third-
 ### What the linter refuses
 
 - **an undeclared argument slot** — declare-before-use reaches inside `args:`.
+- **an argument with no rule** — an argument nobody wrote a rule for is not thereby permitted.
+- **a step-level `rule:`** — rules belong to arguments, not to the step.
 - **two invokes naming the same tool** — one action, one authorizing step.
 - **more than 16 invokes** — a sequence longer than a reviewer reads in one sitting is not a
   reviewed sequence.

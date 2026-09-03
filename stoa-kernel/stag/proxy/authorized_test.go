@@ -17,8 +17,7 @@ func invokeRecipeFor(t *testing.T, tool string) (stag.Recipe, string) {
 	rule := stag.ReleaseRule{Kind: stag.RuleSetMembership, Set: []string{"dev", "staging"}}
 	return stag.Recipe{Steps: []stag.Step{
 		{Id: "p", Kind: stag.NodePropose, Out: "ns"},
-		{Id: "one", Kind: stag.NodeInvoke, Tool: tool, Args: map[string]string{"node": "ns"},
-			Rule: &rule, RuleID: "ns.safe", Actor: "policy:test"},
+		{Id: "one", Kind: stag.NodeInvoke, Tool: tool, ArgRules: map[string]stag.ArgRule{"node": {Slot: "ns", Rule: &rule, RuleID: "ns.safe"}}, Actor: "policy:test"},
 	}}, "h-invoke"
 }
 
@@ -67,8 +66,7 @@ func TestFanOutDoesNotMultiplyAuthorizations(t *testing.T) {
 	rule := stag.ReleaseRule{Kind: stag.RuleSetMembership, Set: []string{"dev", "staging"}}
 	r := stag.Recipe{Steps: []stag.Step{
 		{Id: "p", Kind: stag.NodePropose, Out: "ns"},
-		{Id: "one", Kind: stag.NodeInvoke, Tool: "k8s.drain", Args: map[string]string{"node": "ns"},
-			Rule: &rule, RuleID: "ns.safe", Actor: "policy:test"},
+		{Id: "one", Kind: stag.NodeInvoke, Tool: "k8s.drain", ArgRules: map[string]stag.ArgRule{"node": {Slot: "ns", Rule: &rule, RuleID: "ns.safe"}}, Actor: "policy:test"},
 	}}
 	g := Gate{Routes: Router{"plan": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "items[].ns"}}}
 	call := ToolCall{Tool: "plan", Raw: []byte(`{"items":[{"ns":"dev"},{"ns":"staging"}]}`)}
@@ -87,8 +85,7 @@ func TestFanOutOneRefusedAuthorizesNothing(t *testing.T) {
 	rule := stag.ReleaseRule{Kind: stag.RuleSetMembership, Set: []string{"dev", "staging"}}
 	r := stag.Recipe{Steps: []stag.Step{
 		{Id: "p", Kind: stag.NodePropose, Out: "ns"},
-		{Id: "one", Kind: stag.NodeInvoke, Tool: "k8s.drain", Args: map[string]string{"node": "ns"},
-			Rule: &rule, RuleID: "ns.safe", Actor: "policy:test"},
+		{Id: "one", Kind: stag.NodeInvoke, Tool: "k8s.drain", ArgRules: map[string]stag.ArgRule{"node": {Slot: "ns", Rule: &rule, RuleID: "ns.safe"}}, Actor: "policy:test"},
 	}}
 	g := Gate{Routes: Router{"plan": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "items[].ns"}}}
 	call := ToolCall{Tool: "plan", Raw: []byte(`{"items":[{"ns":"dev"},{"ns":"prod"}]}`)}

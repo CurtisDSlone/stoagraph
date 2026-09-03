@@ -2725,7 +2725,7 @@
             "by",
             "name"
           ],
-          "line": 167,
+          "line": 168,
           "name": "Resolver"
         },
         {
@@ -2743,7 +2743,7 @@
             "does",
             "that)"
           ],
-          "line": 350,
+          "line": 351,
           "name": "frontParse"
         },
         {
@@ -2753,7 +2753,7 @@
             "contradiction",
             "dead-declaration"
           ],
-          "line": 696,
+          "line": 699,
           "name": "lintPassThrough"
         },
         {
@@ -2764,7 +2764,7 @@
             "non-blocking",
             "authoritative-looking"
           ],
-          "line": 724,
+          "line": 727,
           "name": "Cautions"
         },
         {
@@ -2780,7 +2780,7 @@
             "keys",
             "teaching"
           ],
-          "line": 748,
+          "line": 751,
           "name": "hygiene"
         },
         {
@@ -2793,7 +2793,7 @@
             "allowlist",
             "templating"
           ],
-          "line": 823,
+          "line": 826,
           "name": "strVal"
         },
         {
@@ -2803,7 +2803,7 @@
             "required",
             "byte-exact"
           ],
-          "line": 842,
+          "line": 845,
           "name": "quotedStr"
         },
         {
@@ -2814,7 +2814,7 @@
             "kernel",
             "predicate"
           ],
-          "line": 854,
+          "line": 857,
           "name": "intVal"
         },
         {
@@ -2827,7 +2827,7 @@
             "value",
             "unauthorable"
           ],
-          "line": 866,
+          "line": 869,
           "name": "parseIngredient"
         },
         {
@@ -2840,7 +2840,7 @@
             "sorted",
             "set"
           ],
-          "line": 903,
+          "line": 906,
           "name": "parseRule"
         },
         {
@@ -2854,7 +2854,7 @@
             "exit",
             "distinct"
           ],
-          "line": 996,
+          "line": 999,
           "name": "parseStep"
         },
         {
@@ -2869,7 +2869,7 @@
             "dead",
             "declarations"
           ],
-          "line": 1229,
+          "line": 1260,
           "name": "lint"
         }
       ]
@@ -3639,11 +3639,24 @@
         },
         {
           "kw": [
+            "arg",
+            "rule",
+            "per-argument",
+            "slot",
+            "binding",
+            "invoke",
+            "precise"
+          ],
+          "line": 167,
+          "name": "ArgRule"
+        },
+        {
+          "kw": [
             "recipe",
             "ingredients",
             "steps"
           ],
-          "line": 159,
+          "line": 174,
           "name": "Recipe"
         },
         {
@@ -3657,7 +3670,7 @@
             "executor",
             "re-cross"
           ],
-          "line": 179,
+          "line": 194,
           "name": "AuthorizedCall"
         },
         {
@@ -3668,7 +3681,7 @@
             "per",
             "sink"
           ],
-          "line": 187,
+          "line": 202,
           "name": "SinkOutcome"
         },
         {
@@ -3680,7 +3693,7 @@
             "fail",
             "escalate"
           ],
-          "line": 196,
+          "line": 211,
           "name": "GateOutcome"
         },
         {
@@ -3693,7 +3706,7 @@
             "events",
             "fault"
           ],
-          "line": 204,
+          "line": 219,
           "name": "EvalResult"
         },
         {
@@ -3709,7 +3722,7 @@
             "foreach",
             "single-arg"
           ],
-          "line": 217,
+          "line": 232,
           "name": "Eval"
         },
         {
@@ -3720,8 +3733,20 @@
             "inputs",
             "propose-by-name"
           ],
-          "line": 226,
+          "line": 241,
           "name": "EvalArgs"
+        },
+        {
+          "kw": [
+            "sorted",
+            "argument",
+            "names",
+            "deterministic",
+            "audit",
+            "invoke"
+          ],
+          "line": 272,
+          "name": "sortedArgs"
         },
         {
           "kw": [
@@ -3732,7 +3757,7 @@
             "iteration",
             "audit"
           ],
-          "line": 257,
+          "line": 284,
           "name": "sortedKeys"
         }
       ]

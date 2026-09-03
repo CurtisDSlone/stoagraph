@@ -24,8 +24,8 @@ rules:
   step.ok: {kind: set_membership, set: ["alpha", "beta"]}
 steps:
   - {id: p, kind: propose, out: which}
-  - {id: one, kind: invoke, tool: d__step_one, args: {name: which}, rule: step.ok, actor: "policy:test"}
-  - {id: two, kind: invoke, tool: d__step_two, args: {name: which}, rule: step.ok, actor: "policy:test"}
+  - {id: one, kind: invoke, tool: d__step_one, args: {name: {slot: which, rule: step.ok}}, actor: "policy:test"}
+  - {id: two, kind: invoke, tool: d__step_two, args: {name: {slot: which, rule: step.ok}}, actor: "policy:test"}
 `
 
 // the target policy each step re-crosses: TIGHTER than the plan's, to prove the plan cannot

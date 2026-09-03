@@ -149,10 +149,25 @@ type Step struct {
 	Escalate    bool   // gate on-fail: false=Deny (default), true=Escalate
 	Cases       []Case // branch
 	Default     string // branch
-	// invoke: the tool this step AUTHORIZES, and its arguments as
-	// argname -> slot name (resolved from slots at authorization time).
-	Tool string
-	Args map[string]string
+	// invoke: the tool this step AUTHORIZES, and its arguments — each bound to a slot
+	// and cleared by ITS OWN rule.
+	Tool     string
+	ArgRules map[string]ArgRule
+}
+
+// ArgRule binds one argument of an invoke: which slot supplies it, and which rule must
+// clear it.
+//
+// Each argument carries its own rule because an invoke's arguments are usually different
+// KINDS of value — a target name, an operation, a payload. A single rule shared across them
+// cannot say which argument may be what: it degenerates into a flat set of permitted strings
+// that would clear a payload sitting in the target's slot. Per-argument rules make the policy
+// state what it means, and the audit record then names which rule cleared which argument.
+// kw: arg rule per-argument slot binding invoke precise
+type ArgRule struct {
+	Slot   string       // the slot supplying this argument
+	Rule   *ReleaseRule // the rule that must clear it; nil never clears (fail closed)
+	RuleID string       // the rule's label, recorded on the crossing
 }
 
 // kw: recipe ingredients steps
@@ -249,6 +264,18 @@ func evalWith(r Recipe, bind func(string) string, recipeHash string) EvalResult 
 		res.Authorized = nil
 	}
 	return res
+}
+
+// sortedArgs orders an invoke's argument names so its crossings are recorded deterministically
+// (Go map iteration is randomized; the audit must not be).
+// kw: sorted argument names deterministic audit invoke
+func sortedArgs(m map[string]ArgRule) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
 }
 
 // sortedKeys orders map keys so an invoke's crossings are recorded deterministically
@@ -426,21 +453,25 @@ walk:
 				fault("invoke inside foreach " + step.Id)
 				break walk
 			}
-			if step.Tool == "" || len(step.Args) == 0 || step.Rule == nil {
-				fault("invoke " + step.Id) // no tool, no args, or no rule: fail closed (inv 8)
+			if step.Tool == "" || len(step.ArgRules) == 0 {
+				fault("invoke " + step.Id) // no tool or no arguments: fail closed (inv 8)
 				break walk
 			}
-			resolved := make(map[string]string, len(step.Args))
+			resolved := make(map[string]string, len(step.ArgRules))
+			var pending []ReleaseEvent
 			ok := true
 			// argument names in sorted order, so the crossings a call records are
 			// deterministic regardless of map iteration order.
-			for _, arg := range sortedKeys(step.Args) {
-				s, present := slots[step.Args[arg]]
+			for _, arg := range sortedArgs(step.ArgRules) {
+				ar := step.ArgRules[arg]
+				s, present := slots[ar.Slot]
 				subj := s.Class
 				if !present {
 					subj = TrustClass(-1) // severed label, fails closed
 				}
-				released := present && step.Rule.Release(s.Value)
+				// EACH argument is cleared by ITS OWN rule. A nil rule never clears:
+				// an argument nobody wrote a rule for is not thereby permitted.
+				released := present && ar.Rule != nil && ar.Rule.Release(s.Value)
 				v := gate.GateSink(subj, SinkAuthoritative, released)
 				res.Sinks = append(res.Sinks, SinkOutcome{Field: step.Tool + "." + arg, Subject: subj, Sink: SinkAuthoritative, Released: released, Verdict: v})
 				verdicts = append(verdicts, v)
@@ -450,10 +481,13 @@ walk:
 				}
 				resolved[arg] = s.Value
 				if subj != Authoritative {
-					res.Events = append(res.Events, ReleaseEvent{
-						SubjectClass: subj, SubjectOrigin: s.Origin, CollectedField: step.Args[arg],
+					// buffered, not recorded yet: a call is all-or-nothing, so an argument
+					// that cleared while a SIBLING failed must not leave a crossing behind.
+					// The record states what happened, not what merely evaluated.
+					pending = append(pending, ReleaseEvent{
+						SubjectClass: subj, SubjectOrigin: s.Origin, CollectedField: ar.Slot,
 						TargetClass: Authoritative, TargetField: step.Tool + "." + arg,
-						AuthorizingRule: step.RuleID, Actor: step.Actor,
+						AuthorizingRule: ar.RuleID, Actor: step.Actor,
 						Ordering:   elem*stepCount + int64(i),
 						RecipeHash: recipeHash,
 					})
@@ -462,6 +496,7 @@ walk:
 			// all-or-nothing per call: one unreleased argument authorizes no call at all.
 			// A partially-cleared call is exactly the hole the coverage contract closes.
 			if ok {
+				res.Events = append(res.Events, pending...) // the call happens: its crossings are real
 				res.Authorized = append(res.Authorized, AuthorizedCall{
 					StepID: step.Id, Tool: step.Tool, Args: resolved,
 					Ordinal: elem*stepCount + int64(i),

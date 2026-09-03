@@ -160,6 +160,7 @@ type rawStep struct {
 	defltReci string            // composition: default_recipe target (mutually exclusive with deflt)
 	tool      string            // invoke: the tool this step authorizes
 	args      map[string]string // invoke: argname -> slot name
+	argRules  map[string]string // invoke: argname -> rule id (each argument its own rule)
 	argOrder  []string          // invoke: authored arg order, for a stable semantic hash
 }
 
@@ -607,11 +608,12 @@ func finish(fr front, warns []string, src []byte) (Parsed, []string, error) {
 			}
 		case stag.NodeInvoke:
 			// tool and args ride in the semantic hash: WHICH action a policy authorizes,
-			// and which slot feeds each argument, is the policy's identity.
-			e["tool"], e["rule"], e["actor"] = st.tool, st.ruleRef, st.actor
+			// which slot feeds each argument, and WHICH RULE clears it, are the policy's
+			// identity. Changing an argument's rule is a different policy.
+			e["tool"], e["actor"] = st.tool, st.actor
 			args := map[string]any{}
 			for k, v := range st.args {
-				args[k] = v
+				args[k] = map[string]any{"slot": v, "rule": st.argRules[k]}
 			}
 			e["args"] = args
 			if st.gto != "" {
@@ -647,9 +649,10 @@ func finish(fr front, warns []string, src []byte) (Parsed, []string, error) {
 		}
 		if st.kind == stag.NodeInvoke {
 			out.Tool = st.tool
-			out.Args = make(map[string]string, len(st.args))
-			for k, v := range st.args {
-				out.Args[k] = v
+			out.ArgRules = make(map[string]stag.ArgRule, len(st.args))
+			for k, slotName := range st.args {
+				r := registry[st.argRules[k]] // one registry entry binds label and predicate
+				out.ArgRules[k] = stag.ArgRule{Slot: slotName, Rule: &r, RuleID: st.argRules[k]}
 			}
 		}
 		for _, c := range st.cases {
@@ -1034,7 +1037,7 @@ func parseStep(idx int, n *yaml.Node) (rawStep, error) {
 		stag.NodeGate:    {"id": true, "kind": true, "in": true, "rule": true, "on_fail": true},
 		stag.NodeBranch:  {"id": true, "kind": true, "in": true, "cases": true, "default": true, "default_recipe": true},
 		stag.NodeForeach: {"id": true, "kind": true, "in": true, "as": true, "goto": true},
-		stag.NodeInvoke:  {"id": true, "kind": true, "tool": true, "args": true, "rule": true, "actor": true, "goto": true},
+		stag.NodeInvoke:  {"id": true, "kind": true, "tool": true, "args": true, "actor": true, "goto": true},
 		stag.NodeExit:    {"id": true, "kind": true},
 	}[kind]
 	for i := 0; i < len(n.Content); i += 2 {
@@ -1189,29 +1192,57 @@ func parseStep(idx int, n *yaml.Node) (rawStep, error) {
 			return rawStep{}, errf(n, "invoke %q args must be a non-empty mapping of argname -> slot", id)
 		}
 		st.args = map[string]string{}
+		st.argRules = map[string]string{}
+		// Each argument is `<name>: {slot: <slot>, rule: <rule>}`. Per-argument rules are
+		// required, not optional: an invoke's arguments are different KINDS of value, and one
+		// rule shared across them could only be the union of what each may be — a flat set
+		// that would clear a payload sitting in the target's slot.
 		for i := 0; i < len(an.Content); i += 2 {
 			k, err := strVal(an.Content[i], "arg name")
-			if err != nil {
-				return rawStep{}, err
-			}
-			v, err := strVal(an.Content[i+1], "arg slot")
 			if err != nil {
 				return rawStep{}, err
 			}
 			if !nameOK(k) {
 				return rawStep{}, errf(an.Content[i], "invalid arg name %q", k)
 			}
-			if !nameOK(v) {
-				return rawStep{}, errf(an.Content[i+1], "invalid slot name %q for arg %q", v, k)
-			}
 			if _, dup := st.args[k]; dup {
 				return rawStep{}, errf(an.Content[i], "duplicate arg %q on invoke %q", k, id)
 			}
-			st.args[k] = v
+			spec := an.Content[i+1]
+			if spec.Kind != yaml.MappingNode {
+				return rawStep{}, errf(spec, "invoke %q arg %q must be a mapping {slot: <slot>, rule: <rule>}: every argument carries its own rule", id, k)
+			}
+			var slotName, ruleName string
+			for j := 0; j < len(spec.Content); j += 2 {
+				key, err := strVal(spec.Content[j], "arg key")
+				if err != nil {
+					return rawStep{}, err
+				}
+				val, err := strVal(spec.Content[j+1], "arg value")
+				if err != nil {
+					return rawStep{}, err
+				}
+				switch key {
+				case "slot":
+					slotName = val
+				case "rule":
+					ruleName = val
+				default:
+					return rawStep{}, errf(spec.Content[j], "key %q not legal for invoke arg %q (want slot, rule)", key, k)
+				}
+			}
+			if slotName == "" || ruleName == "" {
+				return rawStep{}, errf(spec, "invoke %q arg %q needs both slot and rule", id, k)
+			}
+			if !nameOK(slotName) {
+				return rawStep{}, errf(spec, "invalid slot name %q for arg %q", slotName, k)
+			}
+			if !ruleIdOK(ruleName) {
+				return rawStep{}, errf(spec, "invalid rule id %q for arg %q", ruleName, k)
+			}
+			st.args[k] = slotName
+			st.argRules[k] = ruleName
 			st.argOrder = append(st.argOrder, k)
-		}
-		if st.ruleRef, err = need("rule", "rule"); err != nil {
-			return rawStep{}, err
 		}
 		if st.actor, err = need("actor", "actor"); err != nil {
 			return rawStep{}, errf(n, "actor is required on invoke %q: an authorized call names who is accountable", id)
@@ -1327,6 +1358,12 @@ func lint(ingredients map[string]stag.Slot, registry map[string]stag.ReleaseRule
 				return nil, errf(st.node, "tool %q is authorized by more than one invoke", st.tool)
 			}
 			tools[st.tool] = true
+			// every per-argument rule must be registered, and counts as used
+			for _, arg := range st.argOrder {
+				if err := ref(st, st.argRules[arg]); err != nil {
+					return nil, errf(st.node, "invoke %q arg %q: %v", st.id, arg, err)
+				}
+			}
 		}
 		if st.ruleRef != "" {
 			if err := ref(st, st.ruleRef); err != nil {

@@ -19,10 +19,8 @@ func nsSafe() *ReleaseRule {
 func invokeRecipe() Recipe {
 	return Recipe{Steps: []Step{
 		{Id: "p", Kind: NodePropose, Out: "ns"},
-		{Id: "drain", Kind: NodeInvoke, Tool: "k8s.drain", Args: map[string]string{"node": "ns"},
-			Rule: nsSafe(), RuleID: "ns.safe", Actor: "policy:platform"},
-		{Id: "check", Kind: NodeInvoke, Tool: "k8s.status", Args: map[string]string{"node": "ns"},
-			Rule: nsSafe(), RuleID: "ns.safe", Actor: "policy:platform"},
+		{Id: "drain", Kind: NodeInvoke, Tool: "k8s.drain", ArgRules: map[string]ArgRule{"node": {Slot: "ns", Rule: nsSafe(), RuleID: "ns.safe"}}, Actor: "policy:platform"},
+		{Id: "check", Kind: NodeInvoke, Tool: "k8s.status", ArgRules: map[string]ArgRule{"node": {Slot: "ns", Rule: nsSafe(), RuleID: "ns.safe"}}, Actor: "policy:platform"},
 	}}
 }
 
@@ -117,11 +115,9 @@ func TestInvokeBranchSelectsSequence(t *testing.T) {
 		{Id: "route", Kind: NodeBranch, In: "ns",
 			Cases:   []Case{{Rule: &prod, Goto: "careful"}},
 			Default: "quick"},
-		{Id: "quick", Kind: NodeInvoke, Tool: "k8s.drain", Args: map[string]string{"node": "ns"},
-			Rule: nsSafe(), RuleID: "ns.safe", Actor: "a", Goto: "done"},
+		{Id: "quick", Kind: NodeInvoke, Tool: "k8s.drain", ArgRules: map[string]ArgRule{"node": {Slot: "ns", Rule: nsSafe(), RuleID: "ns.safe"}}, Actor: "a", Goto: "done"},
 		{Id: "done", Kind: NodeExit},
-		{Id: "careful", Kind: NodeInvoke, Tool: "k8s.snapshot", Args: map[string]string{"node": "ns"},
-			Rule: &prod, RuleID: "ns.prod", Actor: "a"},
+		{Id: "careful", Kind: NodeInvoke, Tool: "k8s.snapshot", ArgRules: map[string]ArgRule{"node": {Slot: "ns", Rule: &prod, RuleID: "ns.prod"}}, Actor: "a"},
 	}}
 	dev := Eval(r, "dev", "h")
 	if dev.Verdict != Allow || len(dev.Authorized) != 1 || dev.Authorized[0].Tool != "k8s.drain" {
@@ -140,10 +136,10 @@ func TestInvokeFailsClosed(t *testing.T) {
 		name string
 		step Step
 	}{
-		{"severed slot", Step{Id: "i", Kind: NodeInvoke, Tool: "t", Args: map[string]string{"a": "nope"}, Rule: nsSafe(), RuleID: "r", Actor: "a"}},
-		{"absent rule", Step{Id: "i", Kind: NodeInvoke, Tool: "t", Args: map[string]string{"a": "ns"}, RuleID: "r", Actor: "a"}},
-		{"empty tool", Step{Id: "i", Kind: NodeInvoke, Args: map[string]string{"a": "ns"}, Rule: nsSafe(), RuleID: "r", Actor: "a"}},
-		{"no args", Step{Id: "i", Kind: NodeInvoke, Tool: "t", Rule: nsSafe(), RuleID: "r", Actor: "a"}},
+		{"severed slot", Step{Id: "i", Kind: NodeInvoke, Tool: "t", ArgRules: map[string]ArgRule{"a": {Slot: "nope", Rule: nsSafe(), RuleID: "r"}}, Actor: "a"}},
+		{"absent rule", Step{Id: "i", Kind: NodeInvoke, Tool: "t", ArgRules: map[string]ArgRule{"a": {Slot: "ns", RuleID: "r"}}, Actor: "a"}},
+		{"empty tool", Step{Id: "i", Kind: NodeInvoke, ArgRules: map[string]ArgRule{"a": {Slot: "ns", Rule: nsSafe(), RuleID: "r"}}, Actor: "a"}},
+		{"no args", Step{Id: "i", Kind: NodeInvoke, Tool: "t", Actor: "a"}},
 	}
 	for _, c := range cases {
 		r := Recipe{Steps: []Step{{Id: "p", Kind: NodePropose, Out: "ns"}, c.step}}
@@ -164,8 +160,7 @@ func TestInvokeInsideForeachIsRefused(t *testing.T) {
 	r := Recipe{Steps: []Step{
 		{Id: "p", Kind: NodePropose, Out: "list"},
 		{Id: "fe", Kind: NodeForeach, In: "list", As: "item"},
-		{Id: "i", Kind: NodeInvoke, Tool: "k8s.drain", Args: map[string]string{"node": "item"},
-			Rule: nsSafe(), RuleID: "ns.safe", Actor: "a"},
+		{Id: "i", Kind: NodeInvoke, Tool: "k8s.drain", ArgRules: map[string]ArgRule{"node": {Slot: "item", Rule: nsSafe(), RuleID: "ns.safe"}}, Actor: "a"},
 	}}
 	res := Eval(r, `["dev","staging"]`, "h")
 	if res.Fault == "" || res.Verdict != Deny {
