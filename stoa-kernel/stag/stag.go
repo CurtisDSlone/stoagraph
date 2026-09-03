@@ -11,6 +11,7 @@ package stag
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/internal/gate"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/internal/record"
@@ -74,6 +75,7 @@ const (
 	NodeBranch
 	NodeGate
 	NodeForeach
+	NodeInvoke
 	NodeExit
 )
 
@@ -94,6 +96,8 @@ func (k NodeKind) String() string {
 		return "gate"
 	case NodeForeach:
 		return "foreach"
+	case NodeInvoke:
+		return "invoke"
 	case NodeExit:
 		return "exit"
 	default:
@@ -114,6 +118,8 @@ func ParseNodeKind(s string) (NodeKind, error) {
 		return NodeGate, nil
 	case "foreach":
 		return NodeForeach, nil
+	case "invoke":
+		return NodeInvoke, nil
 	case "exit":
 		return NodeExit, nil
 	default:
@@ -143,6 +149,10 @@ type Step struct {
 	Escalate    bool   // gate on-fail: false=Deny (default), true=Escalate
 	Cases       []Case // branch
 	Default     string // branch
+	// invoke: the tool this step AUTHORIZES, and its arguments as
+	// argname -> slot name (resolved from slots at authorization time).
+	Tool string
+	Args map[string]string
 }
 
 // kw: recipe ingredients steps
@@ -158,6 +168,19 @@ type Recipe struct {
 	// A route-side declaration would leave the signed record unable to tell a gated argument from
 	// one silently waved through.
 	PassThrough []string
+}
+
+// AuthorizedCall is one tool call a recipe has AUTHORIZED. The kernel performs no I/O:
+// it resolves the call's arguments from slots, clears each against the step's rule, and
+// emits this. The executor is transport — and it re-crosses every call through the gate
+// against that tool's OWN route and recipe, so authorizing a call is never authority to
+// make it. A recipe cannot launder an action by naming it.
+// kw: authorized call invoke tool args ordinal executor re-cross
+type AuthorizedCall struct {
+	StepID  string            `json:"step_id"`
+	Tool    string            `json:"tool"`
+	Args    map[string]string `json:"args"`
+	Ordinal int64             `json:"ordinal"`
 }
 
 // kw: sink outcome verdict per sink
@@ -183,7 +206,11 @@ type EvalResult struct {
 	Sinks   []SinkOutcome
 	Gates   []GateOutcome
 	Events  []ReleaseEvent
-	Fault   string // "" = none; else fail-closed structural halt (inv 8/10)
+	// Authorized is the ordered sequence of calls this recipe cleared, in source order.
+	// It is EMPTY unless the recipe reached Allow: a denied or faulted walk authorizes
+	// nothing. The executor may run these and only these.
+	Authorized []AuthorizedCall
+	Fault      string // "" = none; else fail-closed structural halt (inv 8/10)
 }
 
 // kw: eval recipe path walk forward-only compose kernel invariant foreach single-arg
@@ -215,7 +242,25 @@ func evalWith(r Recipe, bind func(string) string, recipeHash string) EvalResult 
 	}
 	res, verdicts := walk(r, idx, slots, bind, recipeHash, 0, 0, 0)
 	res.Verdict = gate.AndAll(verdicts...)
+	// An authorization is only an authorization if the WHOLE recipe cleared. A later step
+	// that denies, escalates or faults retracts every call an earlier step authorized —
+	// the executor is handed nothing it may run. Fail closed (inv 8).
+	if res.Verdict != Allow || res.Fault != "" {
+		res.Authorized = nil
+	}
 	return res
+}
+
+// sortedKeys orders map keys so an invoke's crossings are recorded deterministically
+// (Go map iteration is randomized; the audit must not be).
+// kw: sorted keys deterministic map iteration audit
+func sortedKeys(m map[string]string) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
 }
 
 // walk walks the recipe graph from step `start` to a terminal, returning the
@@ -367,6 +412,67 @@ walk:
 				}
 			}
 			break walk // foreach is a tail construct: it consumed the rest of the path
+		case NodeInvoke:
+			// AUTHORIZATION, not transport: the kernel never calls out. Eval resolves the
+			// call's arguments from slots, clears each exactly as an authoritative sink
+			// does (the step that clears the crossing records it, inv 2), and appends an
+			// AuthorizedCall the executor must re-cross. Eval stays a pure function of its
+			// inputs, so an auditor can replay the authorization offline.
+			//
+			// Refused inside a foreach: that is the ONE construct where an attacker-chosen
+			// list length multiplies author-written calls. Everywhere else the number of
+			// authorized calls is fixed by the recipe source.
+			if depth > 0 {
+				fault("invoke inside foreach " + step.Id)
+				break walk
+			}
+			if step.Tool == "" || len(step.Args) == 0 || step.Rule == nil {
+				fault("invoke " + step.Id) // no tool, no args, or no rule: fail closed (inv 8)
+				break walk
+			}
+			resolved := make(map[string]string, len(step.Args))
+			ok := true
+			// argument names in sorted order, so the crossings a call records are
+			// deterministic regardless of map iteration order.
+			for _, arg := range sortedKeys(step.Args) {
+				s, present := slots[step.Args[arg]]
+				subj := s.Class
+				if !present {
+					subj = TrustClass(-1) // severed label, fails closed
+				}
+				released := present && step.Rule.Release(s.Value)
+				v := gate.GateSink(subj, SinkAuthoritative, released)
+				res.Sinks = append(res.Sinks, SinkOutcome{Field: step.Tool + "." + arg, Subject: subj, Sink: SinkAuthoritative, Released: released, Verdict: v})
+				verdicts = append(verdicts, v)
+				if !released {
+					ok = false
+					continue
+				}
+				resolved[arg] = s.Value
+				if subj != Authoritative {
+					res.Events = append(res.Events, ReleaseEvent{
+						SubjectClass: subj, SubjectOrigin: s.Origin, CollectedField: step.Args[arg],
+						TargetClass: Authoritative, TargetField: step.Tool + "." + arg,
+						AuthorizingRule: step.RuleID, Actor: step.Actor,
+						Ordering:   elem*stepCount + int64(i),
+						RecipeHash: recipeHash,
+					})
+				}
+			}
+			// all-or-nothing per call: one unreleased argument authorizes no call at all.
+			// A partially-cleared call is exactly the hole the coverage contract closes.
+			if ok {
+				res.Authorized = append(res.Authorized, AuthorizedCall{
+					StepID: step.Id, Tool: step.Tool, Args: resolved,
+					Ordinal: elem*stepCount + int64(i),
+				})
+			}
+			n, ok2 := hop(i, step.Goto)
+			if !ok2 {
+				fault("edge " + step.Id)
+				break walk
+			}
+			i = n
 		case NodeExit:
 			break walk // explicit terminal: halt the path, add no verdict and no crossing
 		default:

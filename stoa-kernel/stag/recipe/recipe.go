@@ -42,7 +42,16 @@ const (
 	maxDepth       = 32
 	maxNodes       = 10000
 	maxPassThrough = 64
+	// invokeCap bounds how many calls ONE policy may authorize. It is not a runtime
+	// bound (the count is fixed by the recipe source) but a reviewability bound: a
+	// sequence a human cannot read in one sitting is not a reviewed sequence.
+	invokeCap = 16
 )
+
+// destructiveLooking names tools whose effect is usually irreversible. Authorizing one from
+// a recipe is legal — that is the feature — but it is the kind of decision that should be
+// seen. kw: invoke lint destructive-looking tool names caution
+var destructiveLooking = []string{"delete", "destroy", "drop", "purge", "remove", "wipe", "terminate", "revoke", "transfer", "payout", "refund"}
 
 // authoritativeLooking names arguments that usually PARAMETERIZE an action's effect. Declaring one
 // as passthrough is legal — the operator may have a reason — but it is the kind of decision that
@@ -148,7 +157,10 @@ type rawStep struct {
 	escalate  bool
 	cases     []rawCase
 	deflt     string
-	defltReci string // composition: default_recipe target (mutually exclusive with deflt)
+	defltReci string            // composition: default_recipe target (mutually exclusive with deflt)
+	tool      string            // invoke: the tool this step authorizes
+	args      map[string]string // invoke: argname -> slot name
+	argOrder  []string          // invoke: authored arg order, for a stable semantic hash
 }
 
 // kw: resolver composition sub-recipe source by name
@@ -593,6 +605,18 @@ func finish(fr front, warns []string, src []byte) (Parsed, []string, error) {
 			if st.gto != "" {
 				e["goto"] = st.gto
 			}
+		case stag.NodeInvoke:
+			// tool and args ride in the semantic hash: WHICH action a policy authorizes,
+			// and which slot feeds each argument, is the policy's identity.
+			e["tool"], e["rule"], e["actor"] = st.tool, st.ruleRef, st.actor
+			args := map[string]any{}
+			for k, v := range st.args {
+				args[k] = v
+			}
+			e["args"] = args
+			if st.gto != "" {
+				e["goto"] = st.gto
+			}
 		}
 		stepForms[i] = e
 	}
@@ -620,6 +644,13 @@ func finish(fr front, warns []string, src []byte) (Parsed, []string, error) {
 		if st.ruleRef != "" {
 			r := registry[st.ruleRef] // one registry entry binds label and predicate
 			out.Rule, out.RuleID = &r, st.ruleRef
+		}
+		if st.kind == stag.NodeInvoke {
+			out.Tool = st.tool
+			out.Args = make(map[string]string, len(st.args))
+			for k, v := range st.args {
+				out.Args[k] = v
+			}
 		}
 		for _, c := range st.cases {
 			cr := registry[c.rule]
@@ -695,6 +726,18 @@ func Cautions(p Parsed) []string {
 	for _, a := range p.Recipe.PassThrough {
 		if authoritativeLooking[a] {
 			out = append(out, fmt.Sprintf("passthrough %q looks authoritative: this policy forwards it UNGATED, so nothing bounds its value", a))
+		}
+	}
+	for _, st := range p.Recipe.Steps {
+		if st.Kind != stag.NodeInvoke {
+			continue
+		}
+		low := strings.ToLower(st.Tool)
+		for _, d := range destructiveLooking {
+			if strings.Contains(low, d) {
+				out = append(out, fmt.Sprintf("invoke %q authorizes %q, whose effect is usually irreversible: the executor re-gates it against that tool's own recipe, but this policy is what proposes it", st.Id, st.Tool))
+				break
+			}
 		}
 	}
 	sort.Strings(out)
@@ -991,6 +1034,7 @@ func parseStep(idx int, n *yaml.Node) (rawStep, error) {
 		stag.NodeGate:    {"id": true, "kind": true, "in": true, "rule": true, "on_fail": true},
 		stag.NodeBranch:  {"id": true, "kind": true, "in": true, "cases": true, "default": true, "default_recipe": true},
 		stag.NodeForeach: {"id": true, "kind": true, "in": true, "as": true, "goto": true},
+		stag.NodeInvoke:  {"id": true, "kind": true, "tool": true, "args": true, "rule": true, "actor": true, "goto": true},
 		stag.NodeExit:    {"id": true, "kind": true},
 	}[kind]
 	for i := 0; i < len(n.Content); i += 2 {
@@ -1134,6 +1178,44 @@ func parseStep(idx int, n *yaml.Node) (rawStep, error) {
 			return rawStep{}, errf(byKey["as"], "invalid name %q for as slot", as)
 		}
 		st.as = as
+	case stag.NodeInvoke:
+		// an invoke AUTHORIZES a call: it needs the tool, the arguments that
+		// parameterize it, the rule that clears them, and the actor accountable.
+		if st.tool, err = need("tool", "tool"); err != nil {
+			return rawStep{}, err
+		}
+		an, ok := byKey["args"]
+		if !ok || an.Kind != yaml.MappingNode || len(an.Content) == 0 {
+			return rawStep{}, errf(n, "invoke %q args must be a non-empty mapping of argname -> slot", id)
+		}
+		st.args = map[string]string{}
+		for i := 0; i < len(an.Content); i += 2 {
+			k, err := strVal(an.Content[i], "arg name")
+			if err != nil {
+				return rawStep{}, err
+			}
+			v, err := strVal(an.Content[i+1], "arg slot")
+			if err != nil {
+				return rawStep{}, err
+			}
+			if !nameOK(k) {
+				return rawStep{}, errf(an.Content[i], "invalid arg name %q", k)
+			}
+			if !nameOK(v) {
+				return rawStep{}, errf(an.Content[i+1], "invalid slot name %q for arg %q", v, k)
+			}
+			if _, dup := st.args[k]; dup {
+				return rawStep{}, errf(an.Content[i], "duplicate arg %q on invoke %q", k, id)
+			}
+			st.args[k] = v
+			st.argOrder = append(st.argOrder, k)
+		}
+		if st.ruleRef, err = need("rule", "rule"); err != nil {
+			return rawStep{}, err
+		}
+		if st.actor, err = need("actor", "actor"); err != nil {
+			return rawStep{}, errf(n, "actor is required on invoke %q: an authorized call names who is accountable", id)
+		}
 	}
 	if gn, ok := byKey["goto"]; ok && kind != stag.NodeBranch && kind != stag.NodeGate {
 		if st.gto, err = strVal(gn, "goto"); err != nil {
@@ -1165,6 +1247,7 @@ func lint(ingredients map[string]stag.Slot, registry map[string]stag.ReleaseRule
 		declared[name] = true
 	}
 	foreachCount := 0
+	invokeCount := 0
 	for _, st := range steps {
 		if st.kind == stag.NodePropose {
 			if declared[st.out] {
@@ -1195,6 +1278,28 @@ func lint(ingredients map[string]stag.Slot, registry map[string]stag.ReleaseRule
 		if st.kind == stag.NodeExit {
 			continue // a pure terminal: consumes no slot
 		}
+		if st.kind == stag.NodeInvoke {
+			// an invoke consumes its slots through args, not `in`
+			invokeCount++
+			if invokeCount > invokeCap {
+				return nil, errf(st.node, "at most %d invoke steps per recipe: a sequence longer than a reviewer can read in one sitting is not a reviewed sequence", invokeCap)
+			}
+			if foreachCount > 0 {
+				// the ONE construct where an attacker-chosen list length multiplies
+				// author-written calls. Everywhere else the count is fixed by the source.
+				return nil, errf(st.node, "invoke %q is inside a foreach body: an attacker-chosen list length would multiply the calls this policy authorizes (not supported in v1)", st.id)
+			}
+			for _, arg := range st.argOrder {
+				slot := st.args[arg]
+				if !declared[slot] {
+					return nil, errf(st.node, "undeclared slot %q for arg %q on invoke %q (declare-before-use)", slot, arg, st.id)
+				}
+				if _, isIng := ingredients[slot]; isIng {
+					usedIngredient[slot] = true
+				}
+			}
+			continue
+		}
 		if !declared[st.in] {
 			return nil, errf(st.node, "undeclared slot %q (declare-before-use)", st.in)
 		}
@@ -1213,7 +1318,16 @@ func lint(ingredients map[string]stag.Slot, registry map[string]stag.ReleaseRule
 		return nil
 	}
 	fields := map[string]bool{}
+	tools := map[string]bool{}
 	for _, st := range steps {
+		if st.kind == stag.NodeInvoke {
+			// one action, one authorizing step: the same discipline unique-fields gives
+			// authoritative sinks, so no action is claimed by two steps.
+			if tools[st.tool] {
+				return nil, errf(st.node, "tool %q is authorized by more than one invoke", st.tool)
+			}
+			tools[st.tool] = true
+		}
 		if st.ruleRef != "" {
 			if err := ref(st, st.ruleRef); err != nil {
 				return nil, err

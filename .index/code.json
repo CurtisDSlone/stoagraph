@@ -853,6 +853,150 @@
       "symbols": []
     },
     {
+      "doc": "Package dispatch executes a recipe's AUTHORIZED calls. The kernel authorizes; this package is transport \u2014 and the separation is the point.  stag.Eval performs no I/O: an `invoke` step resolves its arguments from slots, c",
+      "keywords": [
+        "dispatch",
+        "executor",
+        "authorized",
+        "calls",
+        "re-cross",
+        "gate",
+        "transport",
+        "halt",
+        "no-rollback",
+        "sequence",
+        "invoke"
+      ],
+      "layer": "gate",
+      "package": "dispatch",
+      "path": "stoa-kernel/stag/dispatch/dispatch.go",
+      "symbols": [
+        {
+          "kw": [
+            "decider",
+            "seam",
+            "gate",
+            "decide",
+            "re-cross"
+          ],
+          "line": 29,
+          "name": "Decider"
+        },
+        {
+          "kw": [
+            "transport",
+            "downstream",
+            "carry",
+            "cleared",
+            "call"
+          ],
+          "line": 36,
+          "name": "Transport"
+        },
+        {
+          "kw": [
+            "step",
+            "result",
+            "verdict",
+            "made",
+            "error",
+            "approval",
+            "per-call",
+            "outcome"
+          ],
+          "line": 42,
+          "name": "StepResult"
+        },
+        {
+          "kw": [
+            "sequence",
+            "result",
+            "complete",
+            "halted-at",
+            "steps"
+          ],
+          "line": 57,
+          "name": "Result"
+        },
+        {
+          "kw": [
+            "execute",
+            "sequence",
+            "order",
+            "halt",
+            "first-refusal",
+            "re-cross",
+            "verbatim"
+          ],
+          "line": 66,
+          "name": "Execute"
+        }
+      ]
+    },
+    {
+      "doc": "",
+      "keywords": [
+        "local",
+        "transport",
+        "declared",
+        "tools",
+        "argv",
+        "discipline",
+        "carry",
+        "authorized",
+        "call",
+        "exit-code",
+        "halt"
+      ],
+      "layer": "gate",
+      "package": "dispatch",
+      "path": "stoa-kernel/stag/dispatch/localtools.go",
+      "symbols": [
+        {
+          "kw": [
+            "local",
+            "transport",
+            "declared",
+            "surface",
+            "run",
+            "inherit",
+            "argv",
+            "discipline"
+          ],
+          "line": 20,
+          "name": "LocalTransport"
+        },
+        {
+          "kw": [
+            "new",
+            "local",
+            "transport",
+            "from",
+            "declared",
+            "config"
+          ],
+          "line": 25,
+          "name": "NewLocalTransport"
+        },
+        {
+          "kw": [
+            "call",
+            "run",
+            "declared",
+            "tool",
+            "exit",
+            "code",
+            "error",
+            "halt",
+            "truncated",
+            "timeout"
+          ],
+          "line": 32,
+          "name": "Call"
+        }
+      ]
+    },
+    {
       "doc": "",
       "keywords": [
         "generic",
@@ -2098,8 +2242,71 @@
             "bind-time",
             "coverage"
           ],
-          "line": 116,
+          "line": 117,
           "name": "SchemaArgs"
+        },
+        {
+          "kw": [
+            "execute",
+            "authorized",
+            "plan",
+            "sequence",
+            "re-cross",
+            "halt",
+            "report",
+            "agent"
+          ],
+          "line": 369,
+          "name": "executeAuthorized"
+        },
+        {
+          "kw": [
+            "call",
+            "error",
+            "transport",
+            "tool-error",
+            "render"
+          ],
+          "line": 414,
+          "name": "callErr"
+        },
+        {
+          "kw": [
+            "text",
+            "of",
+            "result",
+            "content",
+            "concat"
+          ],
+          "line": 423,
+          "name": "textOf"
+        },
+        {
+          "kw": [
+            "raw",
+            "args",
+            "json",
+            "encode",
+            "authorized",
+            "call"
+          ],
+          "line": 438,
+          "name": "rawArgs"
+        },
+        {
+          "kw": [
+            "first",
+            "line",
+            "truncate",
+            "tool",
+            "output",
+            "for",
+            "the",
+            "agent-visible",
+            "summary"
+          ],
+          "line": 451,
+          "name": "firstLine"
         }
       ]
     },
@@ -2280,7 +2487,7 @@
             "notify",
             "crossing-budget"
           ],
-          "line": 117,
+          "line": 122,
           "name": "Gate"
         },
         {
@@ -2293,7 +2500,7 @@
             "evict",
             "already-connected"
           ],
-          "line": 151,
+          "line": 156,
           "name": "Revoked"
         },
         {
@@ -2306,7 +2513,7 @@
             "bearer-credential",
             "attribution"
           ],
-          "line": 158,
+          "line": 163,
           "name": "SessionID"
         },
         {
@@ -2319,7 +2526,7 @@
             "fail-closed",
             "approval-loop"
           ],
-          "line": 207,
+          "line": 212,
           "name": "Decide"
         },
         {
@@ -2331,7 +2538,7 @@
             "top-level",
             "heads"
           ],
-          "line": 356,
+          "line": 366,
           "name": "Covered"
         },
         {
@@ -2342,7 +2549,7 @@
             "properties",
             "unaccounted"
           ],
-          "line": 400,
+          "line": 410,
           "name": "CoverageGaps"
         }
       ]
@@ -2458,7 +2665,7 @@
             "are",
             "errors"
           ],
-          "line": 57,
+          "line": 66,
           "name": "Parse"
         },
         {
@@ -2468,7 +2675,7 @@
             "warnings",
             "returned"
           ],
-          "line": 69,
+          "line": 78,
           "name": "ParseDraft"
         },
         {
@@ -2476,7 +2683,7 @@
             "line-anchored",
             "error"
           ],
-          "line": 90,
+          "line": 99,
           "name": "errf"
         },
         {
@@ -2486,7 +2693,7 @@
             "ascii",
             "closed"
           ],
-          "line": 98,
+          "line": 107,
           "name": "nameOK"
         },
         {
@@ -2497,7 +2704,7 @@
             "dotted",
             "segments"
           ],
-          "line": 112,
+          "line": 121,
           "name": "ruleIdOK"
         },
         {
@@ -2506,7 +2713,7 @@
             "step",
             "intermediate"
           ],
-          "line": 129,
+          "line": 138,
           "name": "rawCase"
         },
         {
@@ -2518,7 +2725,7 @@
             "by",
             "name"
           ],
-          "line": 155,
+          "line": 167,
           "name": "Resolver"
         },
         {
@@ -2536,7 +2743,7 @@
             "does",
             "that)"
           ],
-          "line": 338,
+          "line": 350,
           "name": "frontParse"
         },
         {
@@ -2546,7 +2753,7 @@
             "contradiction",
             "dead-declaration"
           ],
-          "line": 665,
+          "line": 696,
           "name": "lintPassThrough"
         },
         {
@@ -2557,7 +2764,7 @@
             "non-blocking",
             "authoritative-looking"
           ],
-          "line": 693,
+          "line": 724,
           "name": "Cautions"
         },
         {
@@ -2573,7 +2780,7 @@
             "keys",
             "teaching"
           ],
-          "line": 705,
+          "line": 748,
           "name": "hygiene"
         },
         {
@@ -2586,7 +2793,7 @@
             "allowlist",
             "templating"
           ],
-          "line": 780,
+          "line": 823,
           "name": "strVal"
         },
         {
@@ -2596,7 +2803,7 @@
             "required",
             "byte-exact"
           ],
-          "line": 799,
+          "line": 842,
           "name": "quotedStr"
         },
         {
@@ -2607,7 +2814,7 @@
             "kernel",
             "predicate"
           ],
-          "line": 811,
+          "line": 854,
           "name": "intVal"
         },
         {
@@ -2620,7 +2827,7 @@
             "value",
             "unauthorable"
           ],
-          "line": 823,
+          "line": 866,
           "name": "parseIngredient"
         },
         {
@@ -2633,7 +2840,7 @@
             "sorted",
             "set"
           ],
-          "line": 860,
+          "line": 903,
           "name": "parseRule"
         },
         {
@@ -2647,7 +2854,7 @@
             "exit",
             "distinct"
           ],
-          "line": 953,
+          "line": 996,
           "name": "parseStep"
         },
         {
@@ -2662,7 +2869,7 @@
             "dead",
             "declarations"
           ],
-          "line": 1147,
+          "line": 1229,
           "name": "lint"
         }
       ]
@@ -3342,7 +3549,7 @@
             "enum",
             "register"
           ],
-          "line": 53,
+          "line": 54,
           "name": "CanonicalHash"
         },
         {
@@ -3352,7 +3559,7 @@
             "re-export",
             "fail-closed"
           ],
-          "line": 56,
+          "line": 57,
           "name": "ParseTrustClass"
         },
         {
@@ -3364,7 +3571,7 @@
             "class",
             "origin"
           ],
-          "line": 61,
+          "line": 62,
           "name": "Slot"
         },
         {
@@ -3377,7 +3584,7 @@
             "branch",
             "gate"
           ],
-          "line": 68,
+          "line": 69,
           "name": "NodeKind"
         },
         {
@@ -3388,7 +3595,7 @@
             "canonical",
             "register"
           ],
-          "line": 85,
+          "line": 87,
           "name": "String"
         },
         {
@@ -3401,7 +3608,7 @@
             "of",
             "string"
           ],
-          "line": 105,
+          "line": 109,
           "name": "ParseNodeKind"
         },
         {
@@ -3413,7 +3620,7 @@
             "forward",
             "edge"
           ],
-          "line": 125,
+          "line": 131,
           "name": "Case"
         },
         {
@@ -3427,7 +3634,7 @@
             "forward-only",
             "edges"
           ],
-          "line": 131,
+          "line": 137,
           "name": "Step"
         },
         {
@@ -3436,8 +3643,22 @@
             "ingredients",
             "steps"
           ],
-          "line": 149,
+          "line": 159,
           "name": "Recipe"
+        },
+        {
+          "kw": [
+            "authorized",
+            "call",
+            "invoke",
+            "tool",
+            "args",
+            "ordinal",
+            "executor",
+            "re-cross"
+          ],
+          "line": 179,
+          "name": "AuthorizedCall"
         },
         {
           "kw": [
@@ -3447,7 +3668,7 @@
             "per",
             "sink"
           ],
-          "line": 164,
+          "line": 187,
           "name": "SinkOutcome"
         },
         {
@@ -3459,7 +3680,7 @@
             "fail",
             "escalate"
           ],
-          "line": 173,
+          "line": 196,
           "name": "GateOutcome"
         },
         {
@@ -3472,7 +3693,7 @@
             "events",
             "fault"
           ],
-          "line": 181,
+          "line": 204,
           "name": "EvalResult"
         },
         {
@@ -3488,7 +3709,7 @@
             "foreach",
             "single-arg"
           ],
-          "line": 190,
+          "line": 217,
           "name": "Eval"
         },
         {
@@ -3499,8 +3720,20 @@
             "inputs",
             "propose-by-name"
           ],
-          "line": 199,
+          "line": 226,
           "name": "EvalArgs"
+        },
+        {
+          "kw": [
+            "sorted",
+            "keys",
+            "deterministic",
+            "map",
+            "iteration",
+            "audit"
+          ],
+          "line": 257,
+          "name": "sortedKeys"
         }
       ]
     },

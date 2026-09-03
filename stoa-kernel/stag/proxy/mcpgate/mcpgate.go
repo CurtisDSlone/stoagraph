@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"strings"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
@@ -82,7 +83,7 @@ func NewGatingServer(gate proxy.Gate, fleet Fleet, read ReadChannel) *mcp.Server
 		// the fleet's *mcp.Tool is shared, and mutating it would rename the tool for every other reader.
 		ad := *decl
 		ad.Name = adv
-		s.AddTool(&ad, gatingHandler(gate, d.Session, rt.Tool))
+		s.AddTool(&ad, gatingHandler(gate, fleet, d.Session, rt.Tool))
 	}
 	for _, p := range read.Providers {
 		s.AddResourceTemplate(contextTemplate(p.Name()), contextHandler(p, read.Record))
@@ -324,7 +325,7 @@ func contextFrame(it provider.ContextItem) string {
 // downstreamTool is the tool's name ON THE SERVER, which is NOT the name the agent called: the agent
 // calls the advertised `<server>__<tool>`, and the downstream has never heard of that. The gate
 // decides on what the agent asked for and forwards what the server understands.
-func gatingHandler(gate proxy.Gate, downstream *mcp.ClientSession, downstreamTool string) mcp.ToolHandler {
+func gatingHandler(gate proxy.Gate, fleet Fleet, downstream *mcp.ClientSession, downstreamTool string) mcp.ToolHandler {
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		// req.Params.Name is the ADVERTISED name — the Router key, and what the audit records.
 		call := proxy.ToolCall{Tool: req.Params.Name, Args: decodeArgs(req.Params.Arguments), Raw: req.Params.Arguments}
@@ -342,11 +343,120 @@ func gatingHandler(gate proxy.Gate, downstream *mcp.ClientSession, downstreamToo
 			// a tool-level error the agent sees; the downstream server is never called.
 			return refusal(dec), nil
 		}
+		// A PLAN: the recipe's `invoke` steps authorized a sequence. The tool the agent called
+		// is the trigger, not a call — it is NOT forwarded. Each authorized call is instead put
+		// back through the gate against its OWN route and recipe, so the plan's clearance is
+		// never the target's clearance and a policy cannot launder an action by naming it.
+		if len(dec.Authorized) > 0 {
+			gate.Budget.Release() // the plan itself does not cross; each executed step reserves its own
+			return executeAuthorized(ctx, gate, fleet, dec), nil
+		}
 		// cleared: forward under the DOWNSTREAM's own tool name, with the ORIGINAL raw arguments to
 		// preserve fidelity, minus the gate-only approval_token meta arg (Stage 5) — it authorizes the
 		// release, it is not a real tool argument, and it must not leak into the downstream call or its logs.
 		return downstream.CallTool(ctx, &mcp.CallToolParams{Name: downstreamTool, Arguments: stripMeta(req.Params.Arguments)})
 	}
+}
+
+// executeAuthorized carries a plan's authorized calls, re-crossing each through the gate, and
+// reports the outcome to the agent. It is the MCP-side binding of stag/dispatch: the same halt
+// discipline (stop at the first refusal, no rollback) and the same honesty about what ran.
+//
+// The agent is told which steps were made and where the sequence stopped, because an agent that
+// cannot see a partial execution will retry one — and a retry of a half-done sequence is a worse
+// failure than the halt.
+// kw: execute authorized plan sequence re-cross halt report agent
+func executeAuthorized(ctx context.Context, gate proxy.Gate, fleet Fleet, dec proxy.Decision) *mcp.CallToolResult {
+	var b strings.Builder
+	fmt.Fprintf(&b, "stag: policy authorized %d call(s)\n", len(dec.Authorized))
+	halted := ""
+	for _, c := range dec.Authorized {
+		// each step reserves its own crossing: a sequence of N costs N against the budget.
+		if !gate.Budget.Reserve() {
+			over := gate.RecordDenied(ctx, proxy.ToolCall{Tool: c.Tool, Args: c.Args}, "session crossing budget exhausted")
+			fmt.Fprintf(&b, "  %-10s %-16s NOT MADE (%s)\n", c.StepID, c.Tool, over.Fault)
+			halted = c.StepID
+			break
+		}
+		sub := proxy.ToolCall{Tool: c.Tool, Args: c.Args, Raw: rawArgs(c.Args)}
+		sd := gate.Decide(ctx, sub) // THE re-crossing: the target's own route and recipe
+		if !sd.Forward {
+			gate.Budget.Release()
+			fmt.Fprintf(&b, "  %-10s %-16s NOT MADE (%v)\n", c.StepID, c.Tool, sd.Verdict)
+			halted = c.StepID
+			break
+		}
+		route := gate.Routes[c.Tool]
+		down, _, lerr := fleet.Lookup(route.Server, route.Tool)
+		if lerr != nil {
+			fmt.Fprintf(&b, "  %-10s %-16s FAILED (%v)\n", c.StepID, c.Tool, lerr)
+			halted = c.StepID
+			break
+		}
+		out, cerr := down.Session.CallTool(ctx, &mcp.CallToolParams{Name: route.Tool, Arguments: sub.Raw})
+		if cerr != nil || (out != nil && out.IsError) {
+			fmt.Fprintf(&b, "  %-10s %-16s FAILED (%s)\n", c.StepID, c.Tool, callErr(out, cerr))
+			halted = c.StepID
+			break
+		}
+		fmt.Fprintf(&b, "  %-10s %-16s made: %s\n", c.StepID, c.Tool, firstLine(textOf(out)))
+	}
+	if halted != "" {
+		fmt.Fprintf(&b, "sequence HALTED at %q; earlier steps already ran and were not rolled back\n", halted)
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: b.String()}}}
+	}
+	b.WriteString("sequence complete\n")
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: b.String()}}}
+}
+
+// callErr renders a downstream failure, whether it arrived as a transport error or a tool error.
+// kw: call error transport tool-error render
+func callErr(res *mcp.CallToolResult, err error) string {
+	if err != nil {
+		return err.Error()
+	}
+	return firstLine(textOf(res))
+}
+
+// textOf concatenates a result's text content.
+// kw: text of result content concat
+func textOf(res *mcp.CallToolResult) string {
+	if res == nil {
+		return ""
+	}
+	var b strings.Builder
+	for _, c := range res.Content {
+		if tc, ok := c.(*mcp.TextContent); ok {
+			b.WriteString(tc.Text)
+		}
+	}
+	return b.String()
+}
+
+// rawArgs renders authorized args as a JSON object for the downstream call.
+// kw: raw args json encode authorized call
+func rawArgs(args map[string]string) json.RawMessage {
+	m := make(map[string]any, len(args))
+	for k, v := range args {
+		m[k] = v
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return json.RawMessage(`{}`)
+	}
+	return b
+}
+
+// kw: first line truncate tool output for the agent-visible summary
+func firstLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	if len(s) > 160 {
+		s = s[:160] + "…"
+	}
+	return s
 }
 
 // stripMeta removes the approval_token meta arg from raw call arguments, preserving all other

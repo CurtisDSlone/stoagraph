@@ -111,6 +111,11 @@ type Decision struct {
 	Events     []stag.ReleaseEvent
 	Fault      string
 	ApprovalID string // set when an escalate is (or awaits) a human approval; "" otherwise
+	// Authorized is the sequence of calls this recipe's `invoke` steps cleared, for the
+	// executor to carry (stag/dispatch). It is EMPTY unless the decision forwarded: a
+	// refused decision authorizes nothing. Authorizing a call is not authority to make
+	// it — the executor re-crosses every one of these against that tool's own route.
+	Authorized []stag.AuthorizedCall
 }
 
 // kw: gate routes sink deterministic tool-boundary approvals notify crossing-budget
@@ -300,6 +305,11 @@ func (g Gate) Decide(ctx context.Context, call ToolCall) Decision {
 		auditVal = redactedValue(slots)
 	}
 	d := Decision{Tool: call.Tool, Verdict: res.Verdict, Forward: forward, Value: auditVal, Events: res.Events, Fault: res.Fault, ApprovalID: approvalIDForView(res.Verdict, approvedID, fingerprint, needsApproval)}
+	// a refused decision hands out no plan: the kernel already retracted them, and the
+	// boundary states it again so no caller can read a sequence off a call that was denied.
+	if forward {
+		d.Authorized = res.Authorized
+	}
 	g.record(ctx, d, route.RecipeName, route.RecipeHash)
 	return d
 }
@@ -525,6 +535,18 @@ func evalSlots(recipe stag.Recipe, slots []slot, hash string, multi bool) (stag.
 		out.Events = append(out.Events, r.Events...)
 		if out.Fault == "" {
 			out.Fault = r.Fault
+		}
+		// Authorizations are NOT accumulated across combinations. A fan-out evaluates the
+		// same recipe once per value combination, so appending would let one proposal
+		// multiply the actions a policy authorizes (N elements -> N copies of the
+		// sequence). The authorized sequence is the RECIPE's; the fold keeps the first
+		// and lets the verdict decide whether any of it survives.
+		if len(r.Authorized) != len(out.Authorized) {
+			// combinations disagree on what cleared: refuse the whole decision (inv 8)
+			out.Verdict = stag.Deny
+			if out.Fault == "" {
+				out.Fault = "gate: value combinations authorized different sequences"
+			}
 		}
 	}
 	return out, nil

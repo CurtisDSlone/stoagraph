@@ -60,7 +60,7 @@ To DENY everything, use an unsatisfiable set: `{kind: set_membership, set: ["__n
 > fact), not by a range, unless the range itself is the whole policy. This was found by replaying an
 > external red-team suite against the gate; see the project transcripts.
 
-## Steps — the six node kinds
+## Steps — the seven node kinds
 
 The graph is built from a closed set of node kinds. Edges are **forward-only** (a `goto` always
 points to a later step), so a recipe is a DAG that always terminates.
@@ -81,6 +81,7 @@ points to a later step), so a recipe is a DAG that always terminates.
   `{id: apply, kind: sink, in: replicas, field: k8s.scale.apply, sensitivity: authoritative, rule: count.ok, actor: "policy:platform", goto: done}`
 - **`exit`** — a terminal node. `{id: done, kind: exit}`
 - **`foreach`** — iterate a body over elements (advanced; see the composed examples).
+- **`invoke`** — authorize a tool call. See [Sequencing several tools](#sequencing-several-tools).
 
 ## Verdicts
 
@@ -142,6 +143,74 @@ steps:
   - {id: escgate, kind: gate, in: ns, rule: ns.never, on_fail: escalate}
   - {id: exit_esc, kind: exit}
 ```
+
+## Sequencing several tools
+
+An **`invoke`** step authorizes a tool call. One recipe can authorize several, so a policy
+expresses a whole sequence — drain, then verify, then notify — with **no model anywhere in it**.
+
+```yaml
+recipe: drain_policy
+version: 1
+rules:
+  ns.safe: {kind: set_membership, set: ["dev", "staging"]}
+steps:
+  - {id: p, kind: propose, out: ns}
+  - {id: drain, kind: invoke, tool: k8s.drain,  args: {node: ns}, rule: ns.safe, actor: "policy:platform"}
+  - {id: check, kind: invoke, tool: k8s.status, args: {node: ns}, rule: ns.safe, actor: "policy:platform"}
+```
+
+**Authorization and transport are separate.** The kernel performs no I/O. An `invoke` step
+resolves its arguments from slots, clears each against its `rule` exactly as an authoritative
+sink does — recording a crossing per argument — and emits an *authorized call*. A separate
+executor carries it. So `Eval` stays a pure function of the recipe and the arguments, and an
+auditor can replay an authorization offline and get the same answer.
+
+**An authorized call is re-gated before it is made.** The executor puts every call back through
+the gate against **that tool's own route and its own recipe**. Authorizing a call is not
+authority to make it. A recipe that names `k8s.delete_namespace` in an `invoke` still meets that
+tool's own hard-deny policy and stops there — a policy cannot launder an action by naming it.
+
+**All-or-nothing per call, and per recipe.** One unreleased argument authorizes no call at all,
+and a recipe that later denies, escalates or faults retracts *every* call it authorized: the
+executor is handed nothing it may run.
+
+**It halts; it does not roll back.** The sequence stops at the first call the gate refuses or
+the transport cannot carry. Steps that already ran stay run, and the result names the step it
+stopped on. StoaGraph does not claim a transaction it cannot provide over third-party tools.
+
+### What the linter refuses
+
+- **an undeclared argument slot** — declare-before-use reaches inside `args:`.
+- **two invokes naming the same tool** — one action, one authorizing step.
+- **more than 16 invokes** — a sequence longer than a reviewer reads in one sitting is not a
+  reviewed sequence.
+- **an invoke inside a `foreach` body** — this is the one construct where an *attacker-chosen*
+  list length would multiply author-written calls (64 elements × 3 invokes = 192 actions from one
+  proposal). Everywhere else the count is fixed by the recipe source. Refused, not tuned.
+
+Authorizing a destructive-looking tool (`delete`, `purge`, `transfer`, …) raises a **caution**,
+not a rejection — same discipline as `passthrough`: the reviewer sees it, which is the point.
+
+### `invoke` vs `foreach`
+
+They both fan out, and they answer different questions:
+
+| | `foreach` | `invoke` |
+| --- | --- | --- |
+| what varies | the **value** — one tool, N elements | the **tool** — N tools, named in the source |
+| how many calls | **one** gated tool call, whose payload is a list | **N** calls, each with its own audit leaf |
+| who picks the count | the agent (the list is untrusted; hence the cap) | the author (fixed at lint time) |
+
+`foreach` asks *"is every value in this payload allowed?"*. `invoke` asks *"may this sequence of
+actions run?"*.
+
+### Not in v1
+
+- **branching on a result.** An invoke's arguments come from `propose` slots, never from an
+  earlier call's response. The whole sequence is therefore knowable *before* anything runs — which
+  is what lets a human review it. You can still `branch` to select *which* sequence is authorized.
+- **compensating steps.** There is no declared undo. A denial mid-sequence halts and stops.
 
 ## The coverage contract (`passthrough`)
 

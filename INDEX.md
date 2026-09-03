@@ -19,6 +19,25 @@ Package auth is the control-plane authentication for stag (Planning/31): bearer 
 
 **kw:** control-plane · auth · bearer · roles · constant-time · fail-closed · tokens · dispatch · cannot · approve
 
+### `stoa-kernel/stag/dispatch/dispatch.go`
+Package dispatch executes a recipe's AUTHORIZED calls. The kernel authorizes; this package is transport — and the separation is the point.  stag.Eval performs no I/O: an `invoke` step resolves its arguments from slots, c
+
+**kw:** dispatch · executor · authorized · calls · re-cross · gate · transport · halt · no-rollback · sequence · invoke
+
+- `Decider` (:29) — decider · seam · gate · decide · re-cross
+- `Transport` (:36) — transport · downstream · carry · cleared · call
+- `StepResult` (:42) — step · result · verdict · made · error · approval · per-call · outcome
+- `Result` (:57) — sequence · result · complete · halted-at · steps
+- `Execute` (:66) — execute · sequence · order · halt · first-refusal · re-cross · verbatim
+
+### `stoa-kernel/stag/dispatch/localtools.go`
+
+**kw:** local · transport · declared · tools · argv · discipline · carry · authorized · call · exit-code · halt
+
+- `LocalTransport` (:20) — local · transport · declared · surface · run · inherit · argv · discipline
+- `NewLocalTransport` (:25) — new · local · transport · from · declared · config
+- `Call` (:32) — call · run · declared · tool · exit · code · error · halt · truncated · timeout
+
 ### `stoa-kernel/stag/egress/chain.go`
 
 **kw:** generic · hash-chain · tamper-evident · log · any-record · read · ingress · evidence · verify
@@ -192,7 +211,12 @@ Package mcpgate is the quarantined MCP adapter for the gating proxy (Planning/17
 
 **kw:** mcp · adapter · gating · proxy · server · client · forward-iff-cleared · quarantined · tool · boundary · capabilities · listchanged-false · honest-advertisement · revocation-per-request · middleware
 
-- `SchemaArgs` (:116) — schema · args · properties · json-schema · top-level · bind-time · coverage
+- `SchemaArgs` (:117) — schema · args · properties · json-schema · top-level · bind-time · coverage
+- `executeAuthorized` (:369) — execute · authorized · plan · sequence · re-cross · halt · report · agent
+- `callErr` (:414) — call · error · transport · tool-error · render
+- `textOf` (:423) — text · of · result · content · concat
+- `rawArgs` (:438) — raw · args · json · encode · authorized · call
+- `firstLine` (:451) — first · line · truncate · tool · output · for · the · agent-visible · summary
 
 ### `stoa-kernel/stag/proxy/mcpgate/mcpresource.go`
 
@@ -216,12 +240,12 @@ Package proxy is the gating-proxy core (Planning/17, Slice 0): the transport-agn
 - `Router` (:98) — router · advertised · name · to · route · unique-per-fleet
 - `Sink` (:101) — sink · egress · record · release · event · (egress.JSONLSink · / · broker.MemSink · satisfy · this)
 - `Decision` (:106) — decision · tool · verdict · forward · value · events · fault · approval-id
-- `Gate` (:117) — gate · routes · sink · deterministic · tool-boundary · approvals · notify · crossing-budget
-- `Revoked` (:151) — revoked · session · withdrawn · per-request · live · evict · already-connected
-- `SessionID` (:158) — session · id · audit · digest · never-the-token · bearer-credential · attribution
-- `Decide` (:207) — decide · route · eval · forward-iff-cleared · record · fail-closed · approval-loop
-- `Covered` (:356) — coverage · accounted · gated · passthrough · top-level · heads
-- `CoverageGaps` (:400) — coverage · bind-time · schema · properties · unaccounted
+- `Gate` (:122) — gate · routes · sink · deterministic · tool-boundary · approvals · notify · crossing-budget
+- `Revoked` (:156) — revoked · session · withdrawn · per-request · live · evict · already-connected
+- `SessionID` (:163) — session · id · audit · digest · never-the-token · bearer-credential · attribution
+- `Decide` (:212) — decide · route · eval · forward-iff-cleared · record · fail-closed · approval-loop
+- `Covered` (:366) — coverage · accounted · gated · passthrough · top-level · heads
+- `CoverageGaps` (:410) — coverage · bind-time · schema · properties · unaccounted
 
 ### `stoa-kernel/stag/proxy/sessiond/sessiond.go`
 Package sessiond is the stag-proxy v2 daemon surface: a standing HTTP server where each MCP session is bound to a dispatcher-chosen recipe (Planning/24 v2, /25). The TRUSTED dispatcher POSTs /sessions to bind a session t
@@ -241,24 +265,24 @@ Package recipe is the recipe boundary: the only door through which authored YAML
 
 - `Header` (:25) — recipe · header · name · version
 - `Parsed` (:31) — parsed · recipe · compiled · registry · two · hashes
-- `Parse` (:57) — parse · strict · sign-time · warnings · are · errors
-- `ParseDraft` (:69) — parse · draft · warnings · returned
-- `errf` (:90) — line-anchored · error
-- `nameOK` (:98) — name · grammar · ascii · closed
-- `ruleIdOK` (:112) — rule · id · grammar · dotted · segments
-- `rawCase` (:129) — raw · step · intermediate
-- `Resolver` (:155) — resolver · composition · sub-recipe · source · by · name
-- `frontParse` (:338) — front-parse · prelims · decode · hygiene · schema · (no · cross-step · lint · — · finish · does · that)
-- `lintPassThrough` (:665) — passthrough · lint · contradiction · dead-declaration
-- `Cautions` (:693) — passthrough · caution · advisory · non-blocking · authoritative-looking
-- `hygiene` (:705) — hygiene · walk · iterative · caps · anchors · aliases · merge · duplicate · keys · teaching
-- `strVal` (:780) — scalar · string · raw · text · tag · allowlist · templating
-- `quotedStr` (:799) — scalar · quoted · required · byte-exact
-- `intVal` (:811) — scalar · canonical · integer · kernel · predicate
-- `parseIngredient` (:823) — ingredient · origin · trust · closed · keys · value · unauthorable
-- `parseRule` (:860) — rule · registry · per-kind · required · forbidden · sorted · set
-- `parseStep` (:953) — step · per-kind · key · tables · vocabulary · foreach · exit · distinct
-- `lint` (:1147) — lint · declare-before-use · edges · reachability · guaranteed-deny · guarded · segment · dead · declarations
+- `Parse` (:66) — parse · strict · sign-time · warnings · are · errors
+- `ParseDraft` (:78) — parse · draft · warnings · returned
+- `errf` (:99) — line-anchored · error
+- `nameOK` (:107) — name · grammar · ascii · closed
+- `ruleIdOK` (:121) — rule · id · grammar · dotted · segments
+- `rawCase` (:138) — raw · step · intermediate
+- `Resolver` (:167) — resolver · composition · sub-recipe · source · by · name
+- `frontParse` (:350) — front-parse · prelims · decode · hygiene · schema · (no · cross-step · lint · — · finish · does · that)
+- `lintPassThrough` (:696) — passthrough · lint · contradiction · dead-declaration
+- `Cautions` (:724) — passthrough · caution · advisory · non-blocking · authoritative-looking
+- `hygiene` (:748) — hygiene · walk · iterative · caps · anchors · aliases · merge · duplicate · keys · teaching
+- `strVal` (:823) — scalar · string · raw · text · tag · allowlist · templating
+- `quotedStr` (:842) — scalar · quoted · required · byte-exact
+- `intVal` (:854) — scalar · canonical · integer · kernel · predicate
+- `parseIngredient` (:866) — ingredient · origin · trust · closed · keys · value · unauthorable
+- `parseRule` (:903) — rule · registry · per-kind · required · forbidden · sorted · set
+- `parseStep` (:996) — step · per-kind · key · tables · vocabulary · foreach · exit · distinct
+- `lint` (:1229) — lint · declare-before-use · edges · reachability · guaranteed-deny · guarded · segment · dead · declarations
 
 ### `stoa-kernel/stag/recipestore/recipestore.go`
 Package recipestore is the recipe-authoring core for the admin console: validate recipe YAML through the REAL parser + linter and persist valid recipes. Validate returns whether a draft parses, its lint error or warnings
@@ -348,20 +372,22 @@ Package stag is the public entry point to the StAG kernel: Eval, the recipe eval
 
 **kw:** stag · public · api · recipe · eval · compose · kernel · invariant · facade · re-export · graph · walk · branch · gate
 
-- `CanonicalHash` (:53) — facade · re-exports · one · hashing · discipline · one · enum · register
-- `ParseTrustClass` (:56) — parse · inverses · re-export · fail-closed
-- `Slot` (:61) — bind · graph · slot · value · class · origin
-- `NodeKind` (:68) — recipe · node · kind · propose · sink · branch · gate
-- `String` (:85) — node · kind · string · canonical · register
-- `ParseNodeKind` (:105) — parse · node · kind · fail-closed · inverse · of · string
-- `Case` (:125) — branch · case · closed · predicate · forward · edge
-- `Step` (:131) — recipe · step · propose · sink · branch · gate · forward-only · edges
-- `Recipe` (:149) — recipe · ingredients · steps
-- `SinkOutcome` (:164) — sink · outcome · verdict · per · sink
-- `GateOutcome` (:173) — gate · outcome · checkpoint · pass · fail · escalate
-- `EvalResult` (:181) — eval · result · verdict · sinks · gates · events · fault
-- `Eval` (:190) — eval · recipe · path · walk · forward-only · compose · kernel · invariant · foreach · single-arg
-- `EvalArgs` (:199) — eval · multi-arg · named · inputs · propose-by-name
+- `CanonicalHash` (:54) — facade · re-exports · one · hashing · discipline · one · enum · register
+- `ParseTrustClass` (:57) — parse · inverses · re-export · fail-closed
+- `Slot` (:62) — bind · graph · slot · value · class · origin
+- `NodeKind` (:69) — recipe · node · kind · propose · sink · branch · gate
+- `String` (:87) — node · kind · string · canonical · register
+- `ParseNodeKind` (:109) — parse · node · kind · fail-closed · inverse · of · string
+- `Case` (:131) — branch · case · closed · predicate · forward · edge
+- `Step` (:137) — recipe · step · propose · sink · branch · gate · forward-only · edges
+- `Recipe` (:159) — recipe · ingredients · steps
+- `AuthorizedCall` (:179) — authorized · call · invoke · tool · args · ordinal · executor · re-cross
+- `SinkOutcome` (:187) — sink · outcome · verdict · per · sink
+- `GateOutcome` (:196) — gate · outcome · checkpoint · pass · fail · escalate
+- `EvalResult` (:204) — eval · result · verdict · sinks · gates · events · fault
+- `Eval` (:217) — eval · recipe · path · walk · forward-only · compose · kernel · invariant · foreach · single-arg
+- `EvalArgs` (:226) — eval · multi-arg · named · inputs · propose-by-name
+- `sortedKeys` (:257) — sorted · keys · deterministic · map · iteration · audit
 
 ### `stoa-kernel/stag/store/approval.go`
 
