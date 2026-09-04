@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
@@ -428,6 +429,42 @@ func executeAuthorized(ctx context.Context, gate proxy.Gate, fleet Fleet, dec pr
 			halted = c.StepID
 			break
 		}
+		// AWAIT: keep polling until the OUTPUT satisfies the condition, or the attempts the
+		// kernel authorized run out. The output is read only to decide continue-or-halt — it
+		// never becomes an argument to a later call.
+		if c.Until != nil {
+			attempts, val, ok := 1, textOf(out), c.Until.Release(textOf(out))
+			for !ok && attempts < c.Attempts {
+				if !sleepCtx(ctx, c.DelayMS) {
+					break
+				}
+				// every attempt is a fresh crossing: reserved, decided, and recorded
+				if !gate.Budget.Reserve() {
+					break
+				}
+				sd := gate.Decide(ctx, sub)
+				if !sd.Forward {
+					gate.Budget.Release()
+					break
+				}
+				attempts++
+				o2, e2 := down.Session.CallTool(ctx, &mcp.CallToolParams{Name: route.Tool, Arguments: sub.Raw})
+				if e2 != nil || (o2 != nil && o2.IsError) {
+					out, cerr = o2, e2
+					break
+				}
+				val, ok = textOf(o2), c.Until.Release(textOf(o2))
+			}
+			if !ok {
+				fmt.Fprintf(&b, "  %-10s %-16s UNMET after %d attempt(s): rule %q was compared against %s\n",
+					c.StepID, c.Tool, attempts, c.UntilID, quotedForCompare(val))
+				halted = c.StepID
+				break
+			}
+			fmt.Fprintf(&b, "  %-10s %-16s met %q after %d attempt(s): %s\n",
+				c.StepID, c.Tool, c.UntilID, attempts, firstLine(val))
+			continue
+		}
 		fmt.Fprintf(&b, "  %-10s %-16s made: %s\n", c.StepID, c.Tool, firstLine(textOf(out)))
 	}
 	// The sequence is over, whatever its outcome. Sweep any grant it minted and did not spend —
@@ -466,6 +503,34 @@ func textOf(res *mcp.CallToolResult) string {
 		}
 	}
 	return b.String()
+}
+
+// quotedForCompare renders exactly what the rule was tested against, escapes and all. A rule is
+// byte-exact, so a value that LOOKS right in a one-line render — a trailing newline, a tab — is
+// the most confusing possible failure. Show the bytes.
+// kw: quoted compare exact bytes trailing whitespace visible
+func quotedForCompare(v string) string {
+	const max = 120
+	if len(v) > max {
+		return fmt.Sprintf("%q… (%d bytes)", v[:max], len(v))
+	}
+	return fmt.Sprintf("%q (%d bytes)", v, len(v))
+}
+
+// sleepCtx waits d milliseconds, returning false if the context is cancelled first.
+// kw: sleep context cancellable poll interval
+func sleepCtx(ctx context.Context, ms int) bool {
+	if ms <= 0 {
+		return ctx.Err() == nil
+	}
+	t := time.NewTimer(time.Duration(ms) * time.Millisecond)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // rawArgs renders authorized args as a JSON object for the downstream call.

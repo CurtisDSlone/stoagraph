@@ -46,6 +46,11 @@ const (
 	// bound (the count is fixed by the recipe source) but a reviewability bound: a
 	// sequence a human cannot read in one sitting is not a reviewed sequence.
 	invokeCap = 16
+	// mirrored from the kernel (stag.awaitAttemptCap et al) so the LINTER can refuse an
+	// unrunnable recipe at author time instead of leaving it to a runtime fault.
+	awaitAttemptCap = 32
+	awaitDelayCapMS = 30000
+	awaitTotalCapMS = 5 * 60 * 1000
 )
 
 // destructiveLooking names tools whose effect is usually irreversible. Authorizing one from
@@ -162,6 +167,9 @@ type rawStep struct {
 	args      map[string]string // invoke: argname -> slot name
 	argRules  map[string]string // invoke: argname -> rule id (each argument its own rule)
 	argOrder  []string          // invoke: authored arg order, for a stable semantic hash
+	untilRef  string            // await: the rule the polled output must satisfy
+	attempts  int64             // await: how many polls
+	delayMS   int64             // await: milliseconds between polls
 }
 
 // kw: resolver composition sub-recipe source by name
@@ -606,6 +614,19 @@ func finish(fr front, warns []string, src []byte) (Parsed, []string, error) {
 			if st.gto != "" {
 				e["goto"] = st.gto
 			}
+		case stag.NodeAwait:
+			// the condition AND the bounds ride in the hash: how long a policy is willing to
+			// wait, and for what, is part of what the policy IS.
+			e["tool"], e["actor"] = st.tool, st.actor
+			e["until"], e["attempts"], e["every_ms"] = st.untilRef, st.attempts, st.delayMS
+			aargs := map[string]any{}
+			for k, v := range st.args {
+				aargs[k] = map[string]any{"slot": v, "rule": st.argRules[k]}
+			}
+			e["args"] = aargs
+			if st.gto != "" {
+				e["goto"] = st.gto
+			}
 		case stag.NodeInvoke:
 			// tool and args ride in the semantic hash: WHICH action a policy authorizes,
 			// which slot feeds each argument, and WHICH RULE clears it, are the policy's
@@ -647,12 +668,17 @@ func finish(fr front, warns []string, src []byte) (Parsed, []string, error) {
 			r := registry[st.ruleRef] // one registry entry binds label and predicate
 			out.Rule, out.RuleID = &r, st.ruleRef
 		}
-		if st.kind == stag.NodeInvoke {
+		if st.kind == stag.NodeInvoke || st.kind == stag.NodeAwait {
 			out.Tool = st.tool
 			out.ArgRules = make(map[string]stag.ArgRule, len(st.args))
 			for k, slotName := range st.args {
 				r := registry[st.argRules[k]] // one registry entry binds label and predicate
 				out.ArgRules[k] = stag.ArgRule{Slot: slotName, Rule: &r, RuleID: st.argRules[k]}
+			}
+			if st.kind == stag.NodeAwait {
+				u := registry[st.untilRef]
+				out.Until, out.UntilID = &u, st.untilRef
+				out.Attempts, out.DelayMS = int(st.attempts), int(st.delayMS)
 			}
 		}
 		for _, c := range st.cases {
@@ -1038,6 +1064,7 @@ func parseStep(idx int, n *yaml.Node) (rawStep, error) {
 		stag.NodeBranch:  {"id": true, "kind": true, "in": true, "cases": true, "default": true, "default_recipe": true},
 		stag.NodeForeach: {"id": true, "kind": true, "in": true, "as": true, "goto": true},
 		stag.NodeInvoke:  {"id": true, "kind": true, "tool": true, "args": true, "actor": true, "goto": true},
+		stag.NodeAwait:   {"id": true, "kind": true, "tool": true, "args": true, "actor": true, "goto": true, "until": true, "attempts": true, "every_ms": true},
 		stag.NodeExit:    {"id": true, "kind": true},
 	}[kind]
 	for i := 0; i < len(n.Content); i += 2 {
@@ -1181,7 +1208,7 @@ func parseStep(idx int, n *yaml.Node) (rawStep, error) {
 			return rawStep{}, errf(byKey["as"], "invalid name %q for as slot", as)
 		}
 		st.as = as
-	case stag.NodeInvoke:
+	case stag.NodeInvoke, stag.NodeAwait:
 		// an invoke AUTHORIZES a call: it needs the tool, the arguments that
 		// parameterize it, the rule that clears them, and the actor accountable.
 		if st.tool, err = need("tool", "tool"); err != nil {
@@ -1245,7 +1272,42 @@ func parseStep(idx int, n *yaml.Node) (rawStep, error) {
 			st.argOrder = append(st.argOrder, k)
 		}
 		if st.actor, err = need("actor", "actor"); err != nil {
-			return rawStep{}, errf(n, "actor is required on invoke %q: an authorized call names who is accountable", id)
+			return rawStep{}, errf(n, "actor is required on %s %q: an authorized call names who is accountable", kind, id)
+		}
+		if kind == stag.NodeAwait {
+			// An await is "do not proceed until this holds": it needs the condition, and the
+			// bounds on how long it may wait for it.
+			if st.untilRef, err = need("until", "until"); err != nil {
+				return rawStep{}, errf(n, "await %q needs an until-condition: a poll with no condition always succeeds", id)
+			}
+			an, ok := byKey["attempts"]
+			if !ok {
+				return rawStep{}, errf(n, "await %q needs attempts", id)
+			}
+			if st.attempts, err = intVal(an, "attempts"); err != nil {
+				return rawStep{}, err
+			}
+			en, ok := byKey["every_ms"]
+			if !ok {
+				return rawStep{}, errf(n, "await %q needs every_ms", id)
+			}
+			if st.delayMS, err = intVal(en, "every_ms"); err != nil {
+				return rawStep{}, err
+			}
+			// Author-time refusal of the kernel's bounds. The kernel faults on these too, but a
+			// recipe that could never run is a REJECTED FILE, not a runtime surprise.
+			if st.attempts < 1 || st.attempts > awaitAttemptCap {
+				return rawStep{}, errf(an, "await %q: attempts must be 1..%d (got %d)", id, awaitAttemptCap, st.attempts)
+			}
+			if st.delayMS < 0 || st.delayMS > awaitDelayCapMS {
+				return rawStep{}, errf(en, "await %q: every_ms must be 0..%d (got %d)", id, awaitDelayCapMS, st.delayMS)
+			}
+			if st.attempts*st.delayMS > awaitTotalCapMS {
+				return rawStep{}, errf(n, "await %q: attempts x every_ms may not exceed %dms of waiting (got %d)",
+					id, awaitTotalCapMS, st.attempts*st.delayMS)
+			}
+		} else if _, ok := byKey["until"]; ok {
+			return rawStep{}, errf(n, "until is not legal on an invoke %q: an invoke is ONE call, and a condition never consulted is dead policy", id)
 		}
 	}
 	if gn, ok := byKey["goto"]; ok && kind != stag.NodeBranch && kind != stag.NodeGate {
@@ -1309,8 +1371,8 @@ func lint(ingredients map[string]stag.Slot, registry map[string]stag.ReleaseRule
 		if st.kind == stag.NodeExit {
 			continue // a pure terminal: consumes no slot
 		}
-		if st.kind == stag.NodeInvoke {
-			// an invoke consumes its slots through args, not `in`
+		if st.kind == stag.NodeInvoke || st.kind == stag.NodeAwait {
+			// an invoke/await consumes its slots through args, not `in`
 			invokeCount++
 			if invokeCount > invokeCap {
 				return nil, errf(st.node, "at most %d invoke steps per recipe: a sequence longer than a reviewer can read in one sitting is not a reviewed sequence", invokeCap)
@@ -1318,7 +1380,7 @@ func lint(ingredients map[string]stag.Slot, registry map[string]stag.ReleaseRule
 			if foreachCount > 0 {
 				// the ONE construct where an attacker-chosen list length multiplies
 				// author-written calls. Everywhere else the count is fixed by the source.
-				return nil, errf(st.node, "invoke %q is inside a foreach body: an attacker-chosen list length would multiply the calls this policy authorizes (not supported in v1)", st.id)
+				return nil, errf(st.node, "%s %q is inside a foreach body: an attacker-chosen list length would multiply the calls (and, for an await, the WAITING) this policy authorizes (not supported in v1)", st.kind, st.id)
 			}
 			for _, arg := range st.argOrder {
 				slot := st.args[arg]
@@ -1351,7 +1413,7 @@ func lint(ingredients map[string]stag.Slot, registry map[string]stag.ReleaseRule
 	fields := map[string]bool{}
 	tools := map[string]bool{}
 	for _, st := range steps {
-		if st.kind == stag.NodeInvoke {
+		if st.kind == stag.NodeInvoke || st.kind == stag.NodeAwait {
 			// one action, one authorizing step: the same discipline unique-fields gives
 			// authoritative sinks, so no action is claimed by two steps.
 			if tools[st.tool] {
@@ -1361,7 +1423,12 @@ func lint(ingredients map[string]stag.Slot, registry map[string]stag.ReleaseRule
 			// every per-argument rule must be registered, and counts as used
 			for _, arg := range st.argOrder {
 				if err := ref(st, st.argRules[arg]); err != nil {
-					return nil, errf(st.node, "invoke %q arg %q: %v", st.id, arg, err)
+					return nil, errf(st.node, "%s %q arg %q: %v", st.kind, st.id, arg, err)
+				}
+			}
+			if st.untilRef != "" {
+				if err := ref(st, st.untilRef); err != nil {
+					return nil, errf(st.node, "await %q until: %v", st.id, err)
 				}
 			}
 		}

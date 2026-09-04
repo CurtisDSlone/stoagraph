@@ -60,7 +60,7 @@ To DENY everything, use an unsatisfiable set: `{kind: set_membership, set: ["__n
 > fact), not by a range, unless the range itself is the whole policy. This was found by replaying an
 > external red-team suite against the gate; see the project transcripts.
 
-## Steps — the seven node kinds
+## Steps — the eight node kinds
 
 The graph is built from a closed set of node kinds. Edges are **forward-only** (a `goto` always
 points to a later step), so a recipe is a DAG that always terminates.
@@ -82,6 +82,7 @@ points to a later step), so a recipe is a DAG that always terminates.
 - **`exit`** — a terminal node. `{id: done, kind: exit}`
 - **`foreach`** — iterate a body over elements (advanced; see the composed examples).
 - **`invoke`** — authorize a tool call. See [Sequencing several tools](#sequencing-several-tools).
+- **`await`** — do not proceed until a tool's output satisfies a rule. See [Waiting for a condition](#waiting-for-a-condition).
 
 ## Verdicts
 
@@ -221,11 +222,48 @@ They both fan out, and they answer different questions:
 `foreach` asks *"is every value in this payload allowed?"*. `invoke` asks *"may this sequence of
 actions run?"*.
 
+### Waiting for a condition
+
+An **`await`** step polls a tool until its output satisfies a rule, or until its attempts run
+out. It is how a sequence says *do not proceed until this holds*:
+
+```yaml
+  - {id: settle, kind: await, tool: k8s__pods_on_node,
+     args: {node: {slot: node, rule: node.worker}},
+     until: pods.none, attempts: 6, every_ms: 5000, actor: "policy:drain"}
+```
+
+Without it, a verify step is a **witness, not a gate**: it runs, its output is recorded, and the
+next step proceeds regardless. `await` is what turns "we looked" into "we did not continue until
+it was true."
+
+**The kernel does not poll.** An `await` authorizes a bounded poll — the tool, the arguments, the
+condition, and the limits — and the executor performs it. `Eval` stays a pure function of the
+recipe and the arguments.
+
+**The bounds are the kernel's, and a recipe cannot raise them**: at most 32 attempts, at most 30s
+between them, and at most 5 minutes of waiting in one step. `attempts × every_ms` is wall-clock an
+agent can spend by triggering the sequence, so it is capped at both ends and in the product. A
+recipe that asks for more is a **rejected file**, not a clamped value — an author who writes 1000
+attempts believes they will get 1000.
+
+**Every attempt re-crosses the gate** and consumes a crossing from the session budget. A poll is
+not a licence to call a tool repeatedly unjudged, and a revocation mid-poll stops it.
+
+**The output is read only to decide continue-or-halt.** It never becomes an argument to a later
+call and never reaches a sink. A downstream's response is external untrusted content; letting it
+parameterize a subsequent action would be a new injection path *into* the gate — the one component
+that must stay uninfluenceable.
+
+**Exhaustion halts**, like any other refusal: the steps that depend on the condition do not run,
+and the record says the condition was never met (which is distinct from the tool having failed).
+
 ### Not in v1
 
 - **branching on a result.** An invoke's arguments come from `propose` slots, never from an
-  earlier call's response. The whole sequence is therefore knowable *before* anything runs — which
-  is what lets a human review it. You can still `branch` to select *which* sequence is authorized.
+  earlier call's response, and an `await` reads output only to decide continue-or-halt. The whole
+  sequence is therefore knowable *before* anything runs — which is what lets a human review it.
+  You can still `branch` to select *which* sequence is authorized.
 - **compensating steps.** There is no declared undo. A denial mid-sequence halts and stops.
 
 ## The coverage contract (`passthrough`)

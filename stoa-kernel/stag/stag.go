@@ -76,12 +76,26 @@ const (
 	NodeGate
 	NodeForeach
 	NodeInvoke
+	NodeAwait
 	NodeExit
 )
 
 // foreachCap is the fixed max number of elements a foreach may iterate — an
 // author-unraisable kernel bound (inv 13); a longer list fails closed.
 const foreachCap = 64
+
+// The await bounds are author-unraisable (inv 13), like foreachCap. attempts x delay is
+// wall-clock an agent can spend by triggering a sequence, so both ends and their product are
+// capped by the kernel — a step that can wait indefinitely is a step that never fails closed.
+//
+// A recipe that asks for more is a FAULT, not a clamped value: an author who writes 1000
+// attempts believes they will get 1000, and silently substituting 32 is a policy that does not
+// do what it says.
+const (
+	awaitAttemptCap = 32            // at most this many polls per await step
+	awaitDelayCapMS = 30000         // at most 30s between polls
+	awaitTotalCapMS = 5 * 60 * 1000 // and at most 5 minutes of waiting in one step
+)
 
 // kw: node kind string canonical register
 func (k NodeKind) String() string {
@@ -98,6 +112,8 @@ func (k NodeKind) String() string {
 		return "foreach"
 	case NodeInvoke:
 		return "invoke"
+	case NodeAwait:
+		return "await"
 	case NodeExit:
 		return "exit"
 	default:
@@ -120,6 +136,8 @@ func ParseNodeKind(s string) (NodeKind, error) {
 		return NodeForeach, nil
 	case "invoke":
 		return NodeInvoke, nil
+	case "await":
+		return NodeAwait, nil
 	case "exit":
 		return NodeExit, nil
 	default:
@@ -153,6 +171,12 @@ type Step struct {
 	// and cleared by ITS OWN rule.
 	Tool     string
 	ArgRules map[string]ArgRule
+	// await: the condition the polled tool's OUTPUT must satisfy, and the bounds on polling.
+	// Until is nil on an invoke — one call, no condition.
+	Until    *ReleaseRule
+	UntilID  string
+	Attempts int // number of polls permitted; 1..awaitAttemptCap
+	DelayMS  int // milliseconds between polls; 0..awaitDelayCapMS
 }
 
 // ArgRule binds one argument of an invoke: which slot supplies it, and which rule must
@@ -196,6 +220,15 @@ type AuthorizedCall struct {
 	Tool    string            `json:"tool"`
 	Args    map[string]string `json:"args"`
 	Ordinal int64             `json:"ordinal"`
+	// An AWAIT authorizes a bounded POLL rather than one call: the executor repeats it until the
+	// tool's output satisfies Until, or until Attempts is exhausted. The kernel does not poll —
+	// that would be I/O — it authorizes the polling and states its limits.
+	//
+	// Until is nil for an ordinary invoke, which is one call and no condition.
+	Until    *ReleaseRule `json:"-"`
+	UntilID  string       `json:"until,omitempty"`
+	Attempts int          `json:"attempts,omitempty"`
+	DelayMS  int          `json:"delay_ms,omitempty"`
 }
 
 // kw: sink outcome verdict per sink
@@ -439,7 +472,7 @@ walk:
 				}
 			}
 			break walk // foreach is a tail construct: it consumed the rest of the path
-		case NodeInvoke:
+		case NodeInvoke, NodeAwait:
 			// AUTHORIZATION, not transport: the kernel never calls out. Eval resolves the
 			// call's arguments from slots, clears each exactly as an authoritative sink
 			// does (the step that clears the crossing records it, inv 2), and appends an
@@ -450,12 +483,28 @@ walk:
 			// list length multiplies author-written calls. Everywhere else the number of
 			// authorized calls is fixed by the recipe source.
 			if depth > 0 {
-				fault("invoke inside foreach " + step.Id)
+				fault(step.Kind.String() + " inside foreach " + step.Id)
 				break walk
 			}
 			if step.Tool == "" || len(step.ArgRules) == 0 {
 				fault("invoke " + step.Id) // no tool or no arguments: fail closed (inv 8)
 				break walk
+			}
+			if step.Kind == NodeAwait {
+				// An await with no condition is not an await: it would degenerate into an
+				// unconditional poll that always "succeeds". Fail closed.
+				if step.Until == nil {
+					fault("await without a condition " + step.Id)
+					break walk
+				}
+				// The bounds are the KERNEL's. Over the cap is a fault, never a clamp: an author
+				// who asked for more must be told, not quietly given less.
+				if step.Attempts < 1 || step.Attempts > awaitAttemptCap ||
+					step.DelayMS < 0 || step.DelayMS > awaitDelayCapMS ||
+					step.Attempts*step.DelayMS > awaitTotalCapMS {
+					fault("await bounds " + step.Id)
+					break walk
+				}
 			}
 			resolved := make(map[string]string, len(step.ArgRules))
 			var pending []ReleaseEvent
@@ -497,10 +546,15 @@ walk:
 			// A partially-cleared call is exactly the hole the coverage contract closes.
 			if ok {
 				res.Events = append(res.Events, pending...) // the call happens: its crossings are real
-				res.Authorized = append(res.Authorized, AuthorizedCall{
+				ac := AuthorizedCall{
 					StepID: step.Id, Tool: step.Tool, Args: resolved,
 					Ordinal: elem*stepCount + int64(i),
-				})
+				}
+				if step.Kind == NodeAwait {
+					ac.Until, ac.UntilID = step.Until, step.UntilID
+					ac.Attempts, ac.DelayMS = step.Attempts, step.DelayMS
+				}
+				res.Authorized = append(res.Authorized, ac)
 			}
 			n, ok2 := hop(i, step.Goto)
 			if !ok2 {

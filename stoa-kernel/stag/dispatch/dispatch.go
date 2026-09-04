@@ -17,6 +17,7 @@ package dispatch
 
 import (
 	"context"
+	"time"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
@@ -46,6 +47,13 @@ type StepResult struct {
 	Made       bool         `json:"made"`  // the call actually reached the tool AND returned
 	Value      string       `json:"value"` // the downstream's response, when it was made
 	ApprovalID string       `json:"approval_id,omitempty"`
+	// Attempts is how many polls an await actually took (1 for an ordinary call). The audit must
+	// not claim one call where six happened.
+	Attempts int `json:"attempts,omitempty"`
+	// Unmet is set when an await exhausted its attempts without its condition holding. It is
+	// distinct from Error: the tool answered every time, the world just never reached the state
+	// the policy was waiting for.
+	Unmet bool `json:"unmet,omitempty"`
 	// Error is a TRANSPORT failure, never a policy refusal. A denied call has Made=false
 	// and an empty Error; a call the gate allowed but the downstream refused has
 	// Verdict=Allow and an Error. Conflating them would misreport the audit.
@@ -58,6 +66,23 @@ type Result struct {
 	Steps    []StepResult `json:"steps"`
 	Complete bool         `json:"complete"`            // every authorized call was made
 	HaltedAt string       `json:"halted_at,omitempty"` // the step id the sequence stopped on
+}
+
+// sleepCtx waits d milliseconds, returning false if the context is cancelled first — so a
+// cancelled sequence stops promptly instead of sleeping out its remaining attempts.
+// kw: sleep context cancellable poll interval
+func sleepCtx(ctx context.Context, ms int) bool {
+	if ms <= 0 {
+		return ctx.Err() == nil
+	}
+	t := time.NewTimer(time.Duration(ms) * time.Millisecond)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // Execute makes each authorized call in order, re-crossing every one through the gate.
@@ -101,12 +126,59 @@ func Execute(ctx context.Context, g Decider, t Transport, calls []stag.Authorize
 		}
 		val, err := t.Call(ctx, call)
 		if err != nil {
+			step.Attempts = 1
 			step.Error = err.Error() // transport failure, NOT a policy refusal
 			res.Steps = append(res.Steps, step)
 			res.Complete, res.HaltedAt = false, c.StepID
 			return res
 		}
-		step.Made, step.Value = true, val
+		step.Attempts, step.Made, step.Value = 1, true, val
+
+		// AWAIT: "do not proceed until this holds." The first call has already happened; if its
+		// output does not satisfy the condition, wait and try again, up to the attempts the
+		// kernel authorized.
+		//
+		// The output is read ONLY to decide continue-or-halt. It never becomes an argument to a
+		// later call and never reaches a sink: a downstream's response is external untrusted
+		// content, and letting it steer a subsequent action would be a new injection path into
+		// the gate itself.
+		if c.Until != nil {
+			ok := c.Until.Release(val)
+			for !ok && step.Attempts < c.Attempts {
+				if !sleepCtx(ctx, c.DelayMS) {
+					step.Made = false
+					res.Steps = append(res.Steps, step)
+					res.Complete, res.HaltedAt = false, c.StepID
+					return res
+				}
+				// EVERY attempt re-crosses the gate: a poll is not a licence to call a tool
+				// repeatedly unjudged, and a revocation mid-poll must stop it.
+				if d := g.Decide(ctx, call); !d.Forward {
+					step.Made, step.Verdict = false, d.Verdict
+					res.Steps = append(res.Steps, step)
+					res.Complete, res.HaltedAt = false, c.StepID
+					return res
+				}
+				step.Attempts++
+				v, cerr := t.Call(ctx, call)
+				if cerr != nil {
+					step.Made, step.Error = false, cerr.Error()
+					res.Steps = append(res.Steps, step)
+					res.Complete, res.HaltedAt = false, c.StepID
+					return res
+				}
+				val, ok = v, c.Until.Release(v)
+			}
+			step.Value = val
+			if !ok {
+				// Exhausted. The tool answered every time; the world never reached the state the
+				// policy required, so the steps that depend on it must not run.
+				step.Made, step.Unmet = false, true
+				res.Steps = append(res.Steps, step)
+				res.Complete, res.HaltedAt = false, c.StepID
+				return res
+			}
+		}
 		res.Steps = append(res.Steps, step)
 	}
 	return res
