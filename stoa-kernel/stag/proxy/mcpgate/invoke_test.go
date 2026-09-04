@@ -371,6 +371,42 @@ func TestConcurrentSequencesOnOneSessionBothComplete(t *testing.T) {
 	}
 }
 
+// CONCURRENT RUNS, IDENTICAL CALLS. Two sequences invoking the same sequenced tool with the same
+// arguments mint the same FINGERPRINT — for an argumentless tool the fingerprint is just its
+// name. Mint is upsert-not-stack, so before the run became part of the grant key one run's mint
+// replaced the other's and the victim was denied "no live authorization" for a call its own
+// recipe had authorized.
+//
+// Found live: two config-change sequences racing on one session, one halted at `restart`.
+func TestConcurrentRunsCallingTheSameToolBothSucceed(t *testing.T) {
+	ctx, sess, ran := planTestRigSequenced(t)
+	var wg sync.WaitGroup
+	errs := make(chan string, 4)
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			res, err := sess.CallTool(ctx, &mcp.CallToolParams{
+				Name: proxy.AdvertisedName("d", "do_plan"), Arguments: json.RawMessage(`{"which":"alpha"}`)})
+			if err != nil {
+				errs <- "call: " + err.Error()
+				return
+			}
+			if res.IsError {
+				errs <- "a concurrent run was refused its own authorization: " + textOfContent(res)
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
+	}
+	if len(*ran) != 8 { // 4 runs x 2 steps
+		t.Errorf("every run must complete every step: %d of 8 — %v", len(*ran), *ran)
+	}
+}
+
 func textOfContent(res *mcp.CallToolResult) string {
 	var b strings.Builder
 	for _, c := range res.Content {

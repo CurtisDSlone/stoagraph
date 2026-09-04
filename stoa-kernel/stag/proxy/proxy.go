@@ -44,6 +44,10 @@ type ToolCall struct {
 	// this by path (see stag/proxy/argpath), so what the policy judges is the same JSON that is
 	// forwarded downstream — not a stringified impression of it.
 	Raw json.RawMessage
+	// Run names the sequence execution making this call, when one is. It is part of a grant's
+	// identity: two concurrent runs asking for the same call hold two authorizations, not one
+	// they can take from each other. Empty for a call the agent made directly.
+	Run string
 }
 
 // kw: route recipe hash gated-arg for a tool
@@ -159,6 +163,24 @@ type Grant struct {
 	// outstanding grant mid-flight and halt it for no policy reason. A grant belongs to the run
 	// that minted it.
 	Run string
+}
+
+// GrantKey is the identity of one authorization: the call's fingerprint AND the run that
+// authorized it.
+//
+// The run is part of the KEY, not merely a field, because two concurrent sequences calling the
+// same tool with the same arguments produce the same fingerprint — an argumentless tool's
+// fingerprint is just its name. Mint is upsert-not-stack (a grant is permission for one call,
+// not a counter), so one run's mint replaced the other's and the victim was denied "no live
+// authorization" for a call its own recipe had authorized.
+//
+// Two runs asking for the same call hold TWO grants, because they are two authorizations.
+// kw: grant key fingerprint run identity concurrent-runs no-collision
+func GrantKey(fingerprint, run string) string {
+	if run == "" {
+		return fingerprint
+	}
+	return fingerprint + "\x1f" + run
 }
 
 // Authorizations is the ephemeral-grant store.
@@ -314,7 +336,7 @@ func (g Gate) Decide(ctx context.Context, call ToolCall) Decision {
 		// happen, so the authorization is still owed.
 		ok := false
 		if g.Authorizations != nil {
-			if gr, got, err := g.Authorizations.Redeem(ctx, Fingerprint(call.Tool, call.Args), g.Session); err == nil && got {
+			if gr, got, err := g.Authorizations.Redeem(ctx, GrantKey(Fingerprint(call.Tool, call.Args), call.Run), g.Session); err == nil && got {
 				ok, claimed = true, &gr
 			}
 		}

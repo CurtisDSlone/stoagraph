@@ -147,3 +147,52 @@ func TestSweepDoesNotDisturbAConcurrentRun(t *testing.T) {
 		t.Fatal("run B's grant must survive run A's sweep: they share a session, not a run")
 	}
 }
+
+// HOLE 5 — TWO RUNS, ONE FINGERPRINT. A grant is keyed by Fingerprint(tool, args), so two
+// concurrent sequences calling the SAME tool with the SAME arguments mint the same key. Mint is
+// upsert-not-stack (deliberately — a grant is permission for one call, not a counter), so the
+// second mint replaced the first and one run redeemed the other's grant.
+//
+// The victim was denied "no live authorization" for a call its own recipe had authorized, which
+// reads like a policy refusal and is not one.
+//
+// A grant must be redeemable only by the RUN that minted it. The Run field existed for sweeping
+// and was not consulted at redemption.
+func TestTwoRunsWithIdenticalArgumentsDoNotStealEachOthersGrant(t *testing.T) {
+	az := newMemAuthz()
+	ctx := context.Background()
+	// no arguments: the fingerprint is the tool name, so both runs produce the SAME key
+	args := map[string]string{}
+	fp := Fingerprint("k8s__restart_workload", args)
+
+	_ = az.Mint(ctx, Grant{Fingerprint: GrantKey(fp, "run-A"), Tool: "k8s__restart_workload",
+		Source: "policy:seq", Session: "s1", Run: "run-A"})
+	_ = az.Mint(ctx, Grant{Fingerprint: GrantKey(fp, "run-B"), Tool: "k8s__restart_workload",
+		Source: "policy:seq", Session: "s1", Run: "run-B"})
+
+	// each run must be able to redeem ITS OWN grant
+	if _, ok, _ := az.Redeem(ctx, GrantKey(fp, "run-A"), "s1"); !ok {
+		t.Error("run A must redeem its own grant")
+	}
+	if _, ok, _ := az.Redeem(ctx, GrantKey(fp, "run-B"), "s1"); !ok {
+		t.Error("run B must redeem its own grant — a concurrent run must not consume it")
+	}
+	// and neither may redeem twice
+	if _, ok, _ := az.Redeem(ctx, GrantKey(fp, "run-A"), "s1"); ok {
+		t.Error("a spent grant must not be redeemable again")
+	}
+}
+
+// A run may not redeem a grant minted by a DIFFERENT run, even on the same session.
+func TestARunCannotRedeemAnotherRunsGrant(t *testing.T) {
+	az := newMemAuthz()
+	ctx := context.Background()
+	fp := Fingerprint("t", map[string]string{})
+	_ = az.Mint(ctx, Grant{Fingerprint: GrantKey(fp, "mine"), Tool: "t", Source: "p", Session: "s1", Run: "mine"})
+	if _, ok, _ := az.Redeem(ctx, GrantKey(fp, "theirs"), "s1"); ok {
+		t.Fatal("a run must not redeem a grant another run minted")
+	}
+	if _, ok, _ := az.Redeem(ctx, GrantKey(fp, "mine"), "s1"); !ok {
+		t.Error("and the owner's grant must survive the attempt")
+	}
+}

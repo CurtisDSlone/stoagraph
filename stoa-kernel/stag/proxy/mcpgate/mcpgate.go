@@ -551,13 +551,13 @@ func executeAuthorized(ctx context.Context, gate proxy.Gate, fleet Fleet, dec pr
 			halted = c.StepID
 			break
 		}
-		sub := proxy.ToolCall{Tool: c.Tool, Args: c.Args, Raw: rawArgs(c.Args)}
+		sub := proxy.ToolCall{Tool: c.Tool, Args: c.Args, Raw: rawArgs(c.Args), Run: run}
 		// MINT the one-shot grant for exactly this call, immediately before making it. The grant
 		// is what makes a sequenced tool reachable at all, and Decide spends it on forward — so
 		// the authorization exists for this call and no other, and not a moment longer.
 		if gate.Authorizations != nil {
 			_ = gate.Authorizations.Mint(ctx, proxy.Grant{
-				Fingerprint: proxy.Fingerprint(c.Tool, c.Args),
+				Fingerprint: proxy.GrantKey(proxy.Fingerprint(c.Tool, c.Args), run),
 				Tool:        c.Tool,
 				Source:      "policy:" + dec.Tool, // the plan that authorized it — never "human"
 				Session:     gate.Session,         // spendable ONLY by the session running this sequence
@@ -606,7 +606,7 @@ func executeAuthorized(ctx context.Context, gate proxy.Gate, fleet Fleet, dec pr
 				// authorized, not by how many times the executor is willing to ask.
 				if gate.Authorizations != nil {
 					_ = gate.Authorizations.Mint(ctx, proxy.Grant{
-						Fingerprint: proxy.Fingerprint(c.Tool, c.Args),
+						Fingerprint: proxy.GrantKey(proxy.Fingerprint(c.Tool, c.Args), run),
 						Tool:        c.Tool, Source: "policy:" + dec.Tool,
 						Session: gate.Session, Run: run,
 					})
