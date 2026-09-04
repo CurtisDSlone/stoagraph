@@ -845,6 +845,22 @@ func recipeHasApprovalGate(r stag.Recipe) bool {
 				return true
 			}
 		}
+		// invoke and await carry their rules PER ARGUMENT, and read carries one on its query.
+		// This walk originally knew only Step.Rule and Cases, so a $approved rule on any of
+		// them was invisible: the recipe never entered the approval loop, no human was ever
+		// asked, and the placeholder was compared literally — a policy naming an approval
+		// mechanism that could never be satisfied by it.
+		for _, ar := range r.Steps[i].ArgRules {
+			if isApprovedRule(ar.Rule) {
+				return true
+			}
+		}
+		if isApprovedRule(r.Steps[i].QueryRule) {
+			return true
+		}
+		if isApprovedRule(r.Steps[i].Until) {
+			return true
+		}
 	}
 	return false
 }
@@ -878,8 +894,42 @@ func resolveApproved(r stag.Recipe, token string) stag.Recipe {
 			}
 			steps[i].Cases = cs
 		}
+		// the per-argument rules of an invoke or await. The map is copied only when it holds a
+		// placeholder, so the shared parsed recipe is never mutated.
+		if hasApprovedArg(steps[i].ArgRules) {
+			ars := make(map[string]stag.ArgRule, len(steps[i].ArgRules))
+			for k, ar := range steps[i].ArgRules {
+				if isApprovedRule(ar.Rule) {
+					nr := *ar.Rule
+					nr.Signed = token
+					ar.Rule = &nr
+				}
+				ars[k] = ar
+			}
+			steps[i].ArgRules = ars
+		}
+		if isApprovedRule(steps[i].QueryRule) {
+			nr := *steps[i].QueryRule
+			nr.Signed = token
+			steps[i].QueryRule = &nr
+		}
+		if isApprovedRule(steps[i].Until) {
+			nr := *steps[i].Until
+			nr.Signed = token
+			steps[i].Until = &nr
+		}
 	}
 	return stag.Recipe{Ingredients: r.Ingredients, Steps: steps}
+}
+
+// kw: has approved arg placeholder scan
+func hasApprovedArg(ars map[string]stag.ArgRule) bool {
+	for _, ar := range ars {
+		if isApprovedRule(ar.Rule) {
+			return true
+		}
+	}
+	return false
 }
 
 // marshalArgs renders the gated args as compact JSON for the approval row (dashboard display);

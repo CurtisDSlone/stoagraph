@@ -238,13 +238,13 @@ Package mcpgate is the quarantined MCP adapter for the gating proxy (Planning/17
 - `contextToolHandler` (:382) — context · tool · handler · read · untrusted · never-denied
 - `withReads` (:499) — with · reads · recipe-authorized · context · prepend · untrusted · every-decision
 - `executeAuthorized` (:539) — execute · authorized · plan · sequence · re-cross · halt · report · agent
-- `callErr` (:655) — call · error · transport · tool-error · render
-- `textOf` (:664) — text · of · result · content · concat
-- `quotedForCompare` (:681) — quoted · compare · exact · bytes · trailing · whitespace · visible
-- `sleepCtx` (:691) — sleep · context · cancellable · poll · interval
-- `newRunID` (:709) — run · id · sequence · execution · unique · concurrent · sweep · scope
-- `rawArgs` (:723) — raw · args · json · encode · authorized · call
-- `firstLine` (:736) — first · line · truncate · tool · output · for · the · agent-visible · summary
+- `callErr` (:656) — call · error · transport · tool-error · render
+- `textOf` (:665) — text · of · result · content · concat
+- `quotedForCompare` (:682) — quoted · compare · exact · bytes · trailing · whitespace · visible
+- `sleepCtx` (:692) — sleep · context · cancellable · poll · interval
+- `newRunID` (:710) — run · id · sequence · execution · unique · concurrent · sweep · scope
+- `rawArgs` (:724) — raw · args · json · encode · authorized · call
+- `firstLine` (:737) — first · line · truncate · tool · output · for · the · agent-visible · summary
 
 ### `stoa-kernel/stag/proxy/mcpgate/mcpresource.go`
 
@@ -277,6 +277,7 @@ Package proxy is the gating-proxy core (Planning/17, Slice 0): the transport-agn
 - `Decide` (:309) — decide · route · eval · forward-iff-cleared · record · fail-closed · approval-loop
 - `Covered` (:509) — coverage · accounted · gated · passthrough · top-level · heads
 - `CoverageGaps` (:553) — coverage · bind-time · schema · properties · unaccounted
+- `hasApprovedArg` (:926) — has · approved · arg · placeholder · scan
 
 ### `stoa-kernel/stag/proxy/sessiond/sessiond.go`
 Package sessiond is the stag-proxy v2 daemon surface: a standing HTTP server where each MCP session is bound to a dispatcher-chosen recipe (Planning/24 v2, /25). The TRUSTED dispatcher POSTs /sessions to bind a session t

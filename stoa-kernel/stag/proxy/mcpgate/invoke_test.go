@@ -513,3 +513,133 @@ func TestAwaitOnASequencedRoutePollsMoreThanOnce(t *testing.T) {
 		t.Errorf("the condition settles on the third poll, so the sequence must complete: %+v", res.Content)
 	}
 }
+
+// A SEQUENCE THAT MEETS AN ESCALATION MID-FLIGHT. Step 1 runs; step 2's target policy escalates
+// because a human has not approved that exact action. The sequence must HALT — not wait, not
+// retry, not proceed — and the grants it minted must not outlive it.
+//
+// This is the interaction nothing had exercised: escalation and sequences were built separately,
+// and a halt that left a live grant behind would be a standing authorization for a call a person
+// declined to approve yet.
+func TestSequenceHaltsOnAnEscalationAndLeavesNoGrant(t *testing.T) {
+	ctx := context.Background()
+	var ran []string
+	var mu sync.Mutex
+
+	var schema any = json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}}}`)
+	down := mcp.NewServer(&mcp.Implementation{Name: "d", Version: "0"}, nil)
+	for _, n := range []string{"step_one", "step_two"} {
+		name := n
+		down.AddTool(&mcp.Tool{Name: name, Description: name, InputSchema: schema},
+			func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				mu.Lock()
+				ran = append(ran, name)
+				mu.Unlock()
+				return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "ok"}}}, nil
+			})
+	}
+	var planSchema any = json.RawMessage(`{"type":"object","properties":{"which":{"type":"string"}}}`)
+	down.AddTool(&mcp.Tool{Name: "do_plan", Description: "plan", InputSchema: planSchema},
+		func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "plan"}}}, nil
+		})
+	dc, ds := mcp.NewInMemoryTransports()
+	dss, err := down.Connect(ctx, ds, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dss.Close()
+	pc := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "0"}, nil)
+	downstream, err := pc.Connect(ctx, dc, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer downstream.Close()
+
+	ok := stag.ReleaseRule{Kind: stag.RuleSetMembership, Set: []string{"alpha"}}
+	appr := stag.ReleaseRule{Kind: stag.RuleSignedEquality, Signed: "$approved"}
+	plan := stag.Recipe{Steps: []stag.Step{
+		{Id: "p", Kind: stag.NodePropose, Out: "which"},
+		{Id: "one", Kind: stag.NodeInvoke, Tool: proxy.AdvertisedName("d", "step_one"), Actor: "a",
+			ArgRules: map[string]stag.ArgRule{"name": {Slot: "which", Rule: &ok, RuleID: "ok"}}},
+		{Id: "two", Kind: stag.NodeInvoke, Tool: proxy.AdvertisedName("d", "step_two"), Actor: "a",
+			ArgRules: map[string]stag.ArgRule{"name": {Slot: "which", Rule: &ok, RuleID: "ok"}}},
+	}}
+	// step_one is ordinary; step_two's own policy demands a human release
+	loose := stag.Recipe{Steps: []stag.Step{
+		{Id: "p", Kind: stag.NodePropose, Out: "name"},
+		{Id: "s", Kind: stag.NodeSink, In: "name", Field: "f", Sensitivity: stag.SinkAuthoritative,
+			Rule: &ok, RuleID: "ok", Actor: "a"}}}
+	guarded := stag.Recipe{Steps: []stag.Step{
+		{Id: "p", Kind: stag.NodePropose, Out: "name"},
+		{Id: "ask", Kind: stag.NodeGate, In: "name", Rule: &appr, RuleID: "needs.approval", Escalate: true},
+		{Id: "s", Kind: stag.NodeSink, In: "name", Field: "f", Sensitivity: stag.SinkAuthoritative,
+			Rule: &ok, RuleID: "ok", Actor: "a"}}}
+
+	az := &memAuthz{}
+	gate := proxy.Gate{
+		Routes: proxy.Router{
+			proxy.AdvertisedName("d", "do_plan"): {Recipe: plan, RecipeHash: "h", RecipeName: "plan",
+				GateArg: "which", Server: "d", Tool: "do_plan"},
+			proxy.AdvertisedName("d", "step_one"): {Recipe: loose, RecipeHash: "h", RecipeName: "one",
+				GateArg: "name", Server: "d", Tool: "step_one", Sequenced: true},
+			proxy.AdvertisedName("d", "step_two"): {Recipe: guarded, RecipeHash: "h", RecipeName: "two",
+				GateArg: "name", Server: "d", Tool: "step_two", Sequenced: true},
+		},
+		Authorizations: az,
+		Approvals:      &noApprovals{},
+	}
+	tools := []*mcp.Tool{
+		{Name: "do_plan", Description: "p", InputSchema: planSchema},
+		{Name: "step_one", Description: "1", InputSchema: schema},
+		{Name: "step_two", Description: "2", InputSchema: schema},
+	}
+	srv := mcpgate.NewGatingServer(gate,
+		mcpgate.NewFleet([]mcpgate.Downstream{{Name: "d", Session: downstream, Tools: tools}}),
+		mcpgate.ReadChannel{})
+	ac, as := mcp.NewInMemoryTransports()
+	gs, err := srv.Connect(ctx, as, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gs.Close()
+	agent := mcp.NewClient(&mcp.Implementation{Name: "agent", Version: "0"}, nil)
+	sess, err := agent.Connect(ctx, ac, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	res, err := sess.CallTool(ctx, &mcp.CallToolParams{
+		Name: proxy.AdvertisedName("d", "do_plan"), Arguments: json.RawMessage(`{"which":"alpha"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.IsError {
+		t.Fatal("a sequence blocked on a human must not report success")
+	}
+	mu.Lock()
+	got := append([]string{}, ran...)
+	mu.Unlock()
+	if len(got) != 1 || got[0] != "step_one" {
+		t.Errorf("step one ran and step two must NOT have: %v", got)
+	}
+	// and the halt must leave nothing behind
+	az.mu.Lock()
+	live := len(az.live)
+	az.mu.Unlock()
+	if live != 0 {
+		t.Errorf("a halted sequence must leave no live grant: %d outstanding", live)
+	}
+}
+
+// noApprovals is an approval store with nothing on file: every action escalates.
+type noApprovals struct{}
+
+func (noApprovals) LookupApproved(context.Context, string) (string, string, bool, error) {
+	return "", "", false, nil
+}
+func (noApprovals) RecordPending(context.Context, string, string, string, string, string, string) (bool, error) {
+	return true, nil
+}
+func (noApprovals) Consume(context.Context, string) error { return nil }

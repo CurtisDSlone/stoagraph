@@ -561,6 +561,7 @@ func executeAuthorized(ctx context.Context, gate proxy.Gate, fleet Fleet, dec pr
 				Tool:        c.Tool,
 				Source:      "policy:" + dec.Tool, // the plan that authorized it — never "human"
 				Session:     gate.Session,         // spendable ONLY by the session running this sequence
+				Run:         run,                  // and swept with THIS sequence, however it ends
 			})
 		}
 		sd := gate.Decide(ctx, sub) // THE re-crossing: the target's own route and recipe

@@ -2535,7 +2535,7 @@
             "tool-error",
             "render"
           ],
-          "line": 655,
+          "line": 656,
           "name": "callErr"
         },
         {
@@ -2546,7 +2546,7 @@
             "content",
             "concat"
           ],
-          "line": 664,
+          "line": 665,
           "name": "textOf"
         },
         {
@@ -2559,7 +2559,7 @@
             "whitespace",
             "visible"
           ],
-          "line": 681,
+          "line": 682,
           "name": "quotedForCompare"
         },
         {
@@ -2570,7 +2570,7 @@
             "poll",
             "interval"
           ],
-          "line": 691,
+          "line": 692,
           "name": "sleepCtx"
         },
         {
@@ -2584,7 +2584,7 @@
             "sweep",
             "scope"
           ],
-          "line": 709,
+          "line": 710,
           "name": "newRunID"
         },
         {
@@ -2596,7 +2596,7 @@
             "authorized",
             "call"
           ],
-          "line": 723,
+          "line": 724,
           "name": "rawArgs"
         },
         {
@@ -2611,7 +2611,7 @@
             "agent-visible",
             "summary"
           ],
-          "line": 736,
+          "line": 737,
           "name": "firstLine"
         }
       ]
@@ -2898,6 +2898,17 @@
           ],
           "line": 553,
           "name": "CoverageGaps"
+        },
+        {
+          "kw": [
+            "has",
+            "approved",
+            "arg",
+            "placeholder",
+            "scan"
+          ],
+          "line": 926,
+          "name": "hasApprovedArg"
         }
       ]
     },
