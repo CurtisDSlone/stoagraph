@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -224,15 +225,87 @@ func (s Static) Name() string { return s.ProviderName }
 // files, not an index; scoring belongs to a retrieval provider.
 // kw: static provide select query substring case-insensitive empty-not-fallback
 func (s Static) Provide(_ context.Context, query string) ([]ContextItem, error) {
-	q := strings.ToLower(strings.TrimSpace(query))
-	out := make([]ContextItem, 0, len(s.files))
-	for _, f := range s.files {
-		if q != "" && !strings.Contains(strings.ToLower(f.rel), q) && !strings.Contains(strings.ToLower(f.text), q) {
-			continue
+	terms := queryTerms(query)
+	if len(terms) == 0 {
+		out := make([]ContextItem, 0, len(s.files))
+		for _, f := range s.files {
+			out = append(out, ContextItem{Source: f.rel, Text: f.text})
 		}
-		out = append(out, ContextItem{Source: f.rel, Text: f.text})
+		return out, nil
+	}
+
+	type scored struct {
+		f staticFile
+		n float64
+	}
+	var hits []scored
+	for _, f := range s.files {
+		if n := score(f, terms); n > 0 {
+			hits = append(hits, scored{f, n})
+		}
+	}
+	// Highest score first; ties by path so the order is stable and the audit replayable.
+	sort.SliceStable(hits, func(i, j int) bool {
+		if hits[i].n != hits[j].n {
+			return hits[i].n > hits[j].n
+		}
+		return hits[i].f.rel < hits[j].f.rel
+	})
+
+	out := make([]ContextItem, 0, len(hits))
+	for _, h := range hits {
+		out = append(out, ContextItem{Source: h.f.rel, Text: h.f.text, Score: h.n})
 	}
 	return out, nil
+}
+
+// queryTerms splits a query into lowercased words. A multi-word query scores on its TERMS rather
+// than requiring the exact phrase: an author writing "drain node" means both words, not that
+// string.
+// kw: query terms split lowercase
+func queryTerms(q string) []string {
+	return strings.FieldsFunc(strings.ToLower(strings.TrimSpace(q)), func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9')
+	})
+}
+
+// score ranks one file against the query terms.
+//
+// Ranking is what makes a LOW k safe: returning 2 of 13 matches is only useful if they are the
+// right 2, and an unranked bound returns whichever two sorted first. Measured on the k8s runbook
+// corpus, "drain" matched 13 of 15 files and the first two alphabetically were about the control
+// plane and about cordoning — the document actually about draining ranked third by luck.
+//
+// The weighting is deliberately simple and DETERMINISTIC. A path or heading match is worth far
+// more than a body mention, because a document named for the query is usually the document about
+// it; body mentions then break the remaining ties. No model, no embeddings: an audit that records
+// what was served must be replayable, which a scoring function can promise and an embedding
+// cannot.
+// kw: score rank path heading body weights deterministic replayable
+func score(f staticFile, terms []string) float64 {
+	relLower := strings.ToLower(f.rel)
+	textLower := strings.ToLower(f.text)
+	// the first line is the document's heading, if it has one
+	heading := textLower
+	if i := strings.IndexByte(heading, '\n'); i >= 0 {
+		heading = heading[:i]
+	}
+
+	var total float64
+	for _, t := range terms {
+		var n float64
+		if strings.Contains(relLower, t) {
+			n += 10 // named for the term
+		}
+		if strings.Contains(heading, t) {
+			n += 5 // titled for the term
+		}
+		if c := strings.Count(textLower, t); c > 0 {
+			n += 1 + math.Log(float64(c)) // mentioned, with diminishing returns
+		}
+		total += n
+	}
+	return total
 }
 
 // BundleHash is the sha256 (hex) over the canonical manifest (sorted rel-path + per-file content

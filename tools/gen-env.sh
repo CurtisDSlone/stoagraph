@@ -48,6 +48,12 @@ COMPOSE_PROFILES=tools
 # "timeoutSeconds" per model in config/models.json; this raises it for EVERY model at once, which
 # is a blunt instrument. Default 90, ceiling 900.
 # STOA_MODEL_TIMEOUT_SECONDS=
+
+# READ BOUNDS (optional): how much untrusted context ONE read may put into the model. k caps the
+# number of documents, max_chars the total text. Defaults 2 and 4000; ceilings 10 and 32000. The
+# GATE owns these — a provider registration cannot widen them.
+# STOA_READ_K=
+# STOA_READ_MAX_CHARS=
 ENV
 chmod 600 .env
 

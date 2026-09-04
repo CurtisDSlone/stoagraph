@@ -286,6 +286,21 @@ both to the author — and the gain is that **the query is gated**: the policy b
 The content arrives as untrusted, framed as data, whatever the provider claims about itself. See
 [the context channel](context-binding.md).
 
+**How much comes back is bounded by the gate, not the recipe.** A gated query narrows the
+question; without a bound on the answer it is still unbounded. Measured on a 15-file runbook
+library, the query `drain` matched 13 files and 10,697 characters. So a read returns at most
+`k` documents and `max_chars` of text — `STOA_READ_K` and `STOA_READ_MAX_CHARS`, defaulting to
+**2** and **4000**, with a ceiling an operator cannot exceed.
+
+The defaults are low deliberately. A read has already narrowed twice — the author named the
+provider and enumerated the queries — so a large `k` is not more relevant material, it is the
+rest of the corpus arriving because nobody chose. Truncation is by whole documents: half a
+document is worse than one fewer, because the model cannot tell it was cut.
+
+**What a read will fetch is knowable before it runs.** The provider is named and the query rule
+is a closed set, so the whole space of retrievals is finite and can be enumerated — including the
+failure nothing else surfaces: a query the author *permitted* that retrieves nothing.
+
 **Refused by the linter:** a missing `provider`, a `query` without both `slot` and `rule` (an
 unbounded question is an outbound channel), an undeclared query slot, two reads of one provider,
 and a `read` inside a `foreach` — an attacker-chosen list length would multiply the outbound

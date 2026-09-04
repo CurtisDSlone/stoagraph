@@ -165,23 +165,41 @@ Package oauth implements the downstream OAuth 2.1 authorization-code flow (PKCE 
 - `Refresh` (:432) — oauth · refresh · token · grant
 - `pickTokenAuth` (:638) — token · endpoint · auth · method · basic · post · negotiate
 
+### `stoa-kernel/stag/provider/bounds.go`
+
+**kw:** read · bounds · k · max-chars · gate-owned · env · override · fail-safe · untrusted-context-volume
+
+- `ReadBounds` (:35) — read · bounds · resolved · k · max · chars
+- `Bounds` (:44) — bounds · env · override · fail-safe · never-unbounded
+- `envInt` (:52) — env · int · bounded · fallback
+- `Apply` (:72) — apply · bounds · trim · whole-items · never-half-a-document · keep-first
+
+### `stoa-kernel/stag/provider/preview.go`
+
+**kw:** preview · enumerate · read · queries · finite · set · what-context-will-arrive · reviewable
+
+- `PreviewRow` (:12) — preview · row · query · sources · chars · empty
+- `Preview` (:31) — preview · enumerate · finite · closed-set · reviewable · empty-retrieval
+
 ### `stoa-kernel/stag/provider/provider.go`
 Package provider is the READ channel of the dual proxy (Planning/17/18): context providers behind one interface, with the load-bearing guarantee that ALL context is stamped untrusted at origin, unbypassably. A provider y
 
 **kw:** context · provider · read · channel · untrusted · gather · label-at-origin · fail-open · http · adapter
 
-- `ReadEvent` (:38) — read · event · audit · provider · query · items · sources · read-channel · crossing
-- `Hash` (:59) — read · event · hash · evidence · content-addressed · chainable
-- `ContextItem` (:99) — context · item · source · text · trust · score
-- `ContextProvider` (:107) — context · provider · name · provide · query · items
-- `ProviderError` (:113) — provider · error · name · reason
-- `Gather` (:119) — gather · run · providers · stamp · untrusted · fail-open · per-provider
-- `HTTP` (:143) — http · provider · name · url · client · fetch · body · untrusted
-- `Name` (:150) — http · name
-- `Provide` (:153) — http · provide · get · url · query · param · body · one · item · data
-- `Name` (:210) — static · name
-- `Provide` (:226) — static · provide · select · query · substring · case-insensitive · empty-not-fallback
-- `Name` (:328) — skill · name
+- `ReadEvent` (:39) — read · event · audit · provider · query · items · sources · read-channel · crossing
+- `Hash` (:60) — read · event · hash · evidence · content-addressed · chainable
+- `ContextItem` (:100) — context · item · source · text · trust · score
+- `ContextProvider` (:108) — context · provider · name · provide · query · items
+- `ProviderError` (:114) — provider · error · name · reason
+- `Gather` (:120) — gather · run · providers · stamp · untrusted · fail-open · per-provider
+- `HTTP` (:144) — http · provider · name · url · client · fetch · body · untrusted
+- `Name` (:151) — http · name
+- `Provide` (:154) — http · provide · get · url · query · param · body · one · item · data
+- `Name` (:211) — static · name
+- `Provide` (:227) — static · provide · select · query · substring · case-insensitive · empty-not-fallback
+- `queryTerms` (:266) — query · terms · split · lowercase
+- `score` (:285) — score · rank · path · heading · body · weights · deterministic · replayable
+- `Name` (:401) — skill · name
 
 ### `stoa-kernel/stag/proxy/argpath/argpath.go`
 Package argpath extracts the values a policy judges out of a tool call's RAW arguments.  A gateArg used to name a top-level argument, and the proxy read it with fmt.Sprint. That worked for strings and numbers and was mea
@@ -215,18 +233,18 @@ Package mcpgate is the quarantined MCP adapter for the gating proxy (Planning/17
 
 - `SchemaArgs` (:142) — schema · args · properties · json-schema · top-level · bind-time · coverage
 - `doRead` (:322) — read · crossing · shared · bounded · query · gather · stamp · untrusted · frame · hash · record
-- `ContextToolName` (:349) — context · tool · name · namespace · no-collision
-- `contextTool` (:357) — context · tool · declaration · schema · query
-- `contextToolHandler` (:370) — context · tool · handler · read · untrusted · never-denied
-- `withReads` (:487) — with · reads · recipe-authorized · context · prepend · untrusted · every-decision
-- `executeAuthorized` (:527) — execute · authorized · plan · sequence · re-cross · halt · report · agent
-- `callErr` (:628) — call · error · transport · tool-error · render
-- `textOf` (:637) — text · of · result · content · concat
-- `quotedForCompare` (:654) — quoted · compare · exact · bytes · trailing · whitespace · visible
-- `sleepCtx` (:664) — sleep · context · cancellable · poll · interval
-- `newRunID` (:682) — run · id · sequence · execution · unique · concurrent · sweep · scope
-- `rawArgs` (:696) — raw · args · json · encode · authorized · call
-- `firstLine` (:709) — first · line · truncate · tool · output · for · the · agent-visible · summary
+- `ContextToolName` (:361) — context · tool · name · namespace · no-collision
+- `contextTool` (:369) — context · tool · declaration · schema · query
+- `contextToolHandler` (:382) — context · tool · handler · read · untrusted · never-denied
+- `withReads` (:499) — with · reads · recipe-authorized · context · prepend · untrusted · every-decision
+- `executeAuthorized` (:539) — execute · authorized · plan · sequence · re-cross · halt · report · agent
+- `callErr` (:640) — call · error · transport · tool-error · render
+- `textOf` (:649) — text · of · result · content · concat
+- `quotedForCompare` (:666) — quoted · compare · exact · bytes · trailing · whitespace · visible
+- `sleepCtx` (:676) — sleep · context · cancellable · poll · interval
+- `newRunID` (:694) — run · id · sequence · execution · unique · concurrent · sweep · scope
+- `rawArgs` (:708) — raw · args · json · encode · authorized · call
+- `firstLine` (:721) — first · line · truncate · tool · output · for · the · agent-visible · summary
 
 ### `stoa-kernel/stag/proxy/mcpgate/mcpresource.go`
 

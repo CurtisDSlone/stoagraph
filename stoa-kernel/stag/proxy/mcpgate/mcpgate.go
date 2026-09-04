@@ -325,7 +325,19 @@ func doRead(ctx context.Context, p provider.ContextProvider, rawQuery string,
 	q, truncated := provider.BoundQuery(rawQuery)
 	items, errs := provider.Gather(ctx, q, []provider.ContextProvider{p})
 
+	// Bound what comes BACK, not only what goes out. A gated query narrows the question; without
+	// this, the answer is still unbounded — measured on a 15-file runbook library, "drain"
+	// matched 13 files and 10,697 characters. The gate owns this limit: a provider registration
+	// cannot widen it.
+	before := len(items)
+	items = provider.Bounds().Apply(items)
+
 	ev = provider.ReadEvent{Provider: p.Name(), Query: q, Items: len(items), QueryTruncated: truncated}
+	if before > len(items) {
+		// say so: an agent that cannot tell it received a subset may conclude the rest does not
+		// exist, and the audit must record that the read was narrowed.
+		ev.Errors = append(ev.Errors, fmt.Sprintf("%s: %d of %d item(s) returned (read bounds)", p.Name(), len(items), before))
+	}
 	for _, it := range items {
 		ev.Sources = append(ev.Sources, it.Source)
 	}
