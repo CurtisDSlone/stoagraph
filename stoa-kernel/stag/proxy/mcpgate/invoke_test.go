@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/mcpgate"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipe"
@@ -40,7 +41,40 @@ steps:
   - {id: s, kind: sink, in: name, field: step.name, sensitivity: authoritative, rule: tight, actor: "policy:step"}
 `
 
+// memAuthz is a minimal in-memory grant store for the sequenced-route tests.
+type memAuthz struct{ live map[string]proxy.Grant }
+
+func (m *memAuthz) Mint(_ context.Context, g proxy.Grant) error {
+	if m.live == nil {
+		m.live = map[string]proxy.Grant{}
+	}
+	m.live[g.Fingerprint] = g
+	return nil
+}
+func (m *memAuthz) Lookup(_ context.Context, fp string) (proxy.Grant, bool, error) {
+	g, ok := m.live[fp]
+	return g, ok, nil
+}
+func (m *memAuthz) Burn(_ context.Context, fp string) error { delete(m.live, fp); return nil }
+
+func planTestRigSequenced(t *testing.T) (context.Context, *mcp.ClientSession, *[]string) {
+	return buildPlanRig(t, true)
+}
+
 func planTestRig(t *testing.T) (context.Context, *mcp.ClientSession, *[]string) {
+	return buildPlanRig(t, false)
+}
+
+func buildPlanRig(t *testing.T, sequenced bool) (context.Context, *mcp.ClientSession, *[]string) {
+	return buildPlanRigSink(t, sequenced, nil)
+}
+
+// recFn is a Sink that hands each decision record to a callback.
+type recFn func(stag.DecisionRecord)
+
+func (f recFn) Record(_ context.Context, r stag.DecisionRecord) error { f(r); return nil }
+
+func buildPlanRigSink(t *testing.T, sequenced bool, onRec func(stag.DecisionRecord)) (context.Context, *mcp.ClientSession, *[]string) {
 	t.Helper()
 	ctx := context.Background()
 	var ran []string
@@ -94,9 +128,12 @@ func planTestRig(t *testing.T) (context.Context, *mcp.ClientSession, *[]string) 
 	}
 	for _, n := range []string{"step_one", "step_two"} {
 		routes[proxy.AdvertisedName("d", n)] = proxy.Route{Recipe: step.Recipe, RecipeHash: step.SemanticHash,
-			RecipeName: "step_policy", GateArg: "name", Server: "d", Tool: n}
+			RecipeName: "step_policy", GateArg: "name", Server: "d", Tool: n, Sequenced: sequenced}
 	}
-	gate := proxy.Gate{Routes: routes}
+	gate := proxy.Gate{Routes: routes, Authorizations: &memAuthz{}}
+	if onRec != nil {
+		gate.Sink = recFn(onRec)
+	}
 
 	tools := []*mcp.Tool{
 		{Name: "do_plan", Description: "plan", InputSchema: planSchema},
@@ -195,5 +232,72 @@ func TestSequenceResultIsReportedToTheAgent(t *testing.T) {
 	}
 	if !strings.Contains(text, "step_one") || !strings.Contains(text, "step_two") {
 		t.Errorf("the agent must see which steps ran: %q", text)
+	}
+}
+
+// A SEQUENCED tool is not offered to the agent and is unreachable without a live grant. The
+// sequence still executes it, because the executor mints a one-shot grant for exactly that
+// call — so the model cannot name what it cannot see, AND cannot reach it by guessing.
+func TestSequencedToolIsHiddenAndUnreachable(t *testing.T) {
+	ctx, sess, ran := planTestRigSequenced(t)
+
+	// 1. it is NOT advertised
+	lst, err := sess.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tl := range lst.Tools {
+		if tl.Name == proxy.AdvertisedName("d", "step_one") {
+			t.Fatal("a sequenced tool must not be offered to the agent")
+		}
+	}
+
+	// 2. calling it directly by name is DENIED, not merely unlisted
+	res, err := sess.CallTool(ctx, &mcp.CallToolParams{
+		Name: proxy.AdvertisedName("d", "step_one"), Arguments: json.RawMessage(`{"name":"alpha"}`)})
+	if err == nil && res != nil && !res.IsError {
+		t.Fatal("guessing the name of a sequenced tool must be refused")
+	}
+	if len(*ran) != 0 {
+		t.Fatalf("nothing may run from a direct call: %v", *ran)
+	}
+
+	// 3. the SEQUENCE still executes it
+	res, err = sess.CallTool(ctx, &mcp.CallToolParams{
+		Name: proxy.AdvertisedName("d", "do_plan"), Arguments: json.RawMessage(`{"which":"alpha"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError {
+		t.Fatalf("the authorized sequence must run: %+v", res.Content)
+	}
+	if len(*ran) != 2 {
+		t.Fatalf("the sequence must reach the sequenced tools: %v", *ran)
+	}
+}
+
+// A direct call to a SEQUENCED tool must be RECORDED, not silently 404'd. "The agent reached
+// for a tool it was never offered" is precisely the evidence an auditor wants, and it is more
+// suspicious than an unrouted call, not less — the name had to come from somewhere.
+func TestGuessingASequencedToolIsRecorded(t *testing.T) {
+	var recorded []stag.DecisionRecord
+	ctx, sess, ran := buildPlanRigSink(t, true, func(r stag.DecisionRecord) { recorded = append(recorded, r) })
+
+	res, err := sess.CallTool(ctx, &mcp.CallToolParams{
+		Name: proxy.AdvertisedName("d", "step_one"), Arguments: json.RawMessage(`{"name":"alpha"}`)})
+	if err == nil && res != nil && !res.IsError {
+		t.Fatal("a guessed sequenced tool must be refused")
+	}
+	if len(*ran) != 0 {
+		t.Fatalf("nothing may run: %v", *ran)
+	}
+	found := false
+	for _, r := range recorded {
+		if r.Tool == proxy.AdvertisedName("d", "step_one") && r.Verdict == "deny" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the attempt must be recorded as a denial, got %d record(s)", len(recorded))
 	}
 }

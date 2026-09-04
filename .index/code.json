@@ -2242,7 +2242,7 @@
             "bind-time",
             "coverage"
           ],
-          "line": 117,
+          "line": 124,
           "name": "SchemaArgs"
         },
         {
@@ -2256,7 +2256,7 @@
             "report",
             "agent"
           ],
-          "line": 369,
+          "line": 387,
           "name": "executeAuthorized"
         },
         {
@@ -2267,7 +2267,7 @@
             "tool-error",
             "render"
           ],
-          "line": 414,
+          "line": 442,
           "name": "callErr"
         },
         {
@@ -2278,7 +2278,7 @@
             "content",
             "concat"
           ],
-          "line": 423,
+          "line": 451,
           "name": "textOf"
         },
         {
@@ -2290,7 +2290,7 @@
             "authorized",
             "call"
           ],
-          "line": 438,
+          "line": 466,
           "name": "rawArgs"
         },
         {
@@ -2305,7 +2305,7 @@
             "agent-visible",
             "summary"
           ],
-          "line": 451,
+          "line": 479,
           "name": "firstLine"
         }
       ]
@@ -2443,7 +2443,7 @@
             "route",
             "unique-per-fleet"
           ],
-          "line": 98,
+          "line": 108,
           "name": "Router"
         },
         {
@@ -2459,7 +2459,7 @@
             "satisfy",
             "this)"
           ],
-          "line": 101,
+          "line": 111,
           "name": "Sink"
         },
         {
@@ -2473,8 +2473,35 @@
             "fault",
             "approval-id"
           ],
-          "line": 106,
+          "line": 116,
           "name": "Decision"
+        },
+        {
+          "kw": [
+            "grant",
+            "one-shot",
+            "ephemeral",
+            "authorization",
+            "fingerprint",
+            "minted",
+            "burned",
+            "provenance"
+          ],
+          "line": 141,
+          "name": "Grant"
+        },
+        {
+          "kw": [
+            "authorizations",
+            "store",
+            "mint",
+            "lookup",
+            "burn",
+            "ephemeral",
+            "one-shot"
+          ],
+          "line": 150,
+          "name": "Authorizations"
         },
         {
           "kw": [
@@ -2487,7 +2514,7 @@
             "notify",
             "crossing-budget"
           ],
-          "line": 122,
+          "line": 160,
           "name": "Gate"
         },
         {
@@ -2500,7 +2527,7 @@
             "evict",
             "already-connected"
           ],
-          "line": 156,
+          "line": 197,
           "name": "Revoked"
         },
         {
@@ -2513,7 +2540,7 @@
             "bearer-credential",
             "attribution"
           ],
-          "line": 163,
+          "line": 204,
           "name": "SessionID"
         },
         {
@@ -2526,7 +2553,7 @@
             "fail-closed",
             "approval-loop"
           ],
-          "line": 212,
+          "line": 253,
           "name": "Decide"
         },
         {
@@ -2538,7 +2565,7 @@
             "top-level",
             "heads"
           ],
-          "line": 366,
+          "line": 439,
           "name": "Covered"
         },
         {
@@ -2549,7 +2576,7 @@
             "properties",
             "unaccounted"
           ],
-          "line": 410,
+          "line": 483,
           "name": "CoverageGaps"
         }
       ]
@@ -3054,7 +3081,7 @@
             "reason",
             "unresolved"
           ],
-          "line": 30,
+          "line": 33,
           "name": "RouteError"
         },
         {
@@ -3064,7 +3091,7 @@
             "errors",
             "warnings"
           ],
-          "line": 38,
+          "line": 41,
           "name": "Resolved"
         },
         {
@@ -3077,7 +3104,7 @@
             "fail-closed",
             "non-strict"
           ],
-          "line": 53,
+          "line": 56,
           "name": "Build"
         },
         {
@@ -3090,7 +3117,7 @@
             "advertise-time",
             "gate"
           ],
-          "line": 63,
+          "line": 66,
           "name": "BuildStrict"
         }
       ]
@@ -3304,7 +3331,7 @@
             "names",
             "zero-arg"
           ],
-          "line": 142,
+          "line": 146,
           "name": "toolArgNames"
         }
       ]
@@ -3797,6 +3824,58 @@
       ]
     },
     {
+      "doc": "",
+      "keywords": [
+        "authorization",
+        "grant",
+        "ephemeral",
+        "one-shot",
+        "mint",
+        "lookup",
+        "burn",
+        "sequenced",
+        "route",
+        "provenance"
+      ],
+      "layer": "gate",
+      "package": "store",
+      "path": "stoa-kernel/stag/store/authz.go",
+      "symbols": [
+        {
+          "kw": [
+            "mint",
+            "grant",
+            "one-shot",
+            "replace",
+            "not-stack"
+          ],
+          "line": 18,
+          "name": "Mint"
+        },
+        {
+          "kw": [
+            "lookup",
+            "grant",
+            "live",
+            "outstanding"
+          ],
+          "line": 28,
+          "name": "Lookup"
+        },
+        {
+          "kw": [
+            "burn",
+            "grant",
+            "spend",
+            "one-time",
+            "replay-denied"
+          ],
+          "line": 44,
+          "name": "Burn"
+        }
+      ]
+    },
+    {
       "doc": "Package store is the SQLite config store for the admin console's Adapters (Planning/18): the persisted, RELATIONAL config that the file-based recipes bind to \u2014 MCP servers (+ their tools), context providers, and routes (",
       "keywords": [
         "sqlite",
@@ -3870,7 +3949,7 @@
             "db",
             "handle"
           ],
-          "line": 76,
+          "line": 80,
           "name": "Store"
         },
         {
@@ -3883,15 +3962,39 @@
             "no-migrations",
             "single-conn"
           ],
-          "line": 81,
+          "line": 85,
           "name": "Open"
+        },
+        {
+          "kw": [
+            "schema",
+            "guard",
+            "no-migrations",
+            "stale",
+            "database",
+            "refuse",
+            "up-front",
+            "actionable"
+          ],
+          "line": 112,
+          "name": "checkSchema"
+        },
+        {
+          "kw": [
+            "table",
+            "columns",
+            "pragma",
+            "introspect"
+          ],
+          "line": 137,
+          "name": "tableColumns"
         },
         {
           "kw": [
             "close",
             "db"
           ],
-          "line": 96,
+          "line": 155,
           "name": "Close"
         },
         {
@@ -3905,7 +4008,7 @@
             "transaction",
             "atomic"
           ],
-          "line": 106,
+          "line": 165,
           "name": "PutMCPServer"
         },
         {
@@ -3918,7 +4021,7 @@
             "not-found",
             "fail-closed"
           ],
-          "line": 138,
+          "line": 197,
           "name": "GetMCPServer"
         },
         {
@@ -3928,7 +4031,7 @@
             "server",
             "ordered"
           ],
-          "line": 157,
+          "line": 216,
           "name": "toolsFor"
         },
         {
@@ -3940,7 +4043,7 @@
             "with",
             "tools"
           ],
-          "line": 176,
+          "line": 235,
           "name": "ListMCPServers"
         },
         {
@@ -3952,7 +4055,7 @@
             "tools",
             "transaction"
           ],
-          "line": 208,
+          "line": 267,
           "name": "DeleteMCPServer"
         },
         {
@@ -3961,7 +4064,7 @@
             "provider",
             "upsert"
           ],
-          "line": 224,
+          "line": 283,
           "name": "PutProvider"
         },
         {
@@ -3970,7 +4073,7 @@
             "providers",
             "ordered"
           ],
-          "line": 236,
+          "line": 295,
           "name": "ListProviders"
         },
         {
@@ -3978,7 +4081,7 @@
             "delete",
             "provider"
           ],
-          "line": 256,
+          "line": 315,
           "name": "DeleteProvider"
         },
         {
@@ -3989,7 +4092,7 @@
             "by",
             "tool+server"
           ],
-          "line": 267,
+          "line": 326,
           "name": "PutRoute"
         },
         {
@@ -3998,7 +4101,7 @@
             "routes",
             "ordered"
           ],
-          "line": 279,
+          "line": 338,
           "name": "ListRoutes"
         },
         {
@@ -4008,7 +4111,7 @@
             "by",
             "tool+server"
           ],
-          "line": 300,
+          "line": 359,
           "name": "DeleteRoute"
         }
       ]

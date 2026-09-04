@@ -70,6 +70,10 @@ type Route struct {
 	Server  string // WHICH MCP server serves this tool. The route delegates; the gate never infers.
 	Recipe  string
 	GateArg string
+	// Sequenced: bound ONLY so a recipe's `invoke` may authorize calls to it — not advertised,
+	// and unreachable without a one-shot grant. Zero value = an ordinary advertised route, so
+	// every existing row keeps its meaning.
+	Sequenced bool
 }
 
 // kw: store sqlite db handle
@@ -89,7 +93,62 @@ func Open(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("store: schema: %w", err)
 	}
+	// NO MIGRATIONS means CREATE TABLE IF NOT EXISTS leaves an OLDER table exactly as it was, so a
+	// database written before a column existed opens cleanly and then fails on the first query that
+	// names it. A store that starts fine and breaks on first use is the worst failure mode: the
+	// operator learns about it from a broken request rather than from startup.
+	//
+	// So check the columns the current DDL needs and refuse up front, with what to do about it.
+	if err := checkSchema(db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	return &Store{db: db}, nil
+}
+
+// checkSchema verifies that pre-existing tables carry the columns this build queries. It names
+// the missing column and the remedy, because "no such column" from a live request does neither.
+// kw: schema guard no-migrations stale database refuse up-front actionable
+func checkSchema(db *sql.DB) error {
+	required := map[string][]string{
+		"route": {"sequenced"},
+	}
+	for table, cols := range required {
+		have, err := tableColumns(db, table)
+		if err != nil {
+			return fmt.Errorf("store: inspect %s: %w", table, err)
+		}
+		if len(have) == 0 {
+			continue // the table did not pre-exist; the DDL just created it correctly
+		}
+		for _, c := range cols {
+			if !have[c] {
+				return fmt.Errorf("store: this database predates the %q column on %q. "+
+					"The store has no migrations by design: back up the file and re-initialize it, "+
+					"or add the column with: ALTER TABLE %s ADD COLUMN %s INTEGER NOT NULL DEFAULT 0",
+					c, table, table, c)
+			}
+		}
+	}
+	return nil
+}
+
+// kw: table columns pragma introspect
+func tableColumns(db *sql.DB, table string) (map[string]bool, error) {
+	rows, err := db.Query("SELECT name FROM pragma_table_info(?)", table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		out[n] = true
+	}
+	return out, rows.Err()
 }
 
 // kw: close db
@@ -266,9 +325,9 @@ func (s *Store) DeleteProvider(ctx context.Context, name string) error {
 // kw: put route upsert by tool+server
 func (s *Store) PutRoute(ctx context.Context, r Route) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO route(tool_name,server_name,recipe_name,gate_arg) VALUES(?,?,?,?)
-		 ON CONFLICT(tool_name,server_name) DO UPDATE SET recipe_name=excluded.recipe_name,gate_arg=excluded.gate_arg`,
-		r.Tool, r.Server, r.Recipe, r.GateArg)
+		`INSERT INTO route(tool_name,server_name,recipe_name,gate_arg,sequenced) VALUES(?,?,?,?,?)
+		 ON CONFLICT(tool_name,server_name) DO UPDATE SET recipe_name=excluded.recipe_name,gate_arg=excluded.gate_arg,sequenced=excluded.sequenced`,
+		r.Tool, r.Server, r.Recipe, r.GateArg, r.Sequenced)
 	if err != nil {
 		return fmt.Errorf("store: put route: %w", err)
 	}
@@ -277,7 +336,7 @@ func (s *Store) PutRoute(ctx context.Context, r Route) error {
 
 // kw: list routes ordered
 func (s *Store) ListRoutes(ctx context.Context) ([]Route, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT tool_name,server_name,recipe_name,gate_arg FROM route ORDER BY server_name,tool_name`)
+	rows, err := s.db.QueryContext(ctx, `SELECT tool_name,server_name,recipe_name,gate_arg,sequenced FROM route ORDER BY server_name,tool_name`)
 	if err != nil {
 		return nil, fmt.Errorf("store: list routes: %w", err)
 	}
@@ -285,7 +344,7 @@ func (s *Store) ListRoutes(ctx context.Context) ([]Route, error) {
 	var out []Route
 	for rows.Next() {
 		var r Route
-		if err := rows.Scan(&r.Tool, &r.Server, &r.Recipe, &r.GateArg); err != nil {
+		if err := rows.Scan(&r.Tool, &r.Server, &r.Recipe, &r.GateArg, &r.Sequenced); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

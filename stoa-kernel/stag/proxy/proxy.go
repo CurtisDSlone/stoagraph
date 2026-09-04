@@ -51,6 +51,16 @@ type Route struct {
 	Recipe     stag.Recipe
 	RecipeHash string
 	GateArg    string
+	// Sequenced marks a route that exists ONLY so a recipe's `invoke` can authorize calls to it.
+	// Such a tool is not advertised to the agent AND is unreachable without a live Grant: an
+	// agent that guesses the name is denied, not merely unlisted. Hiding is a convenience; the
+	// grant is the enforcement.
+	//
+	// The zero value is FALSE — an ordinary advertised route — deliberately. Routes are built by
+	// struct literal throughout the codebase and by the router package; a flag that had to be set
+	// to true for normal behaviour would silently unreach every existing route the moment it was
+	// added. The safe, common case must be what you get by writing nothing.
+	Sequenced  bool
 	RecipeName string // for audit/approval display; not load-bearing
 	// Server is the MCP server this tool is dispatched to. It is part of the ROUTE, not something the
 	// gate works out from what happens to be connected: a route must mean the same thing tomorrow, when
@@ -118,12 +128,43 @@ type Decision struct {
 	Authorized []stag.AuthorizedCall
 }
 
+// Grant is a ONE-SHOT authorization for exactly one call: the tool, the arguments, and what
+// minted it. It makes an unadvertised tool REACHABLE for a single execution and is spent on use.
+//
+// It is the same primitive as a human approval — bound to a Fingerprint, consumed on use, replay
+// refused — with a deterministic minter instead of a person. Source records WHICH, because a
+// machine grant must never be readable as though someone approved it.
+//
+// A grant says WHEN a call may happen. The tool's own recipe still says WHETHER it may: both are
+// required, so a sequence cannot launder an action by authorizing it.
+// kw: grant one-shot ephemeral authorization fingerprint minted burned provenance
+type Grant struct {
+	Fingerprint string // Fingerprint(tool, args): binds the EXACT call
+	Tool        string
+	Source      string // what minted it, e.g. "policy:lab_repair_badport" — never "human"
+}
+
+// Authorizations is the ephemeral-grant store. It is deliberately the same shape as Approvals:
+// mint, look up, burn.
+// kw: authorizations store mint lookup burn ephemeral one-shot
+type Authorizations interface {
+	// Mint records a grant for exactly one call.
+	Mint(ctx context.Context, g Grant) error
+	// Lookup returns the live grant for a fingerprint, if one is outstanding.
+	Lookup(ctx context.Context, fingerprint string) (Grant, bool, error)
+	// Burn spends a grant. A replay then finds nothing and is denied.
+	Burn(ctx context.Context, fingerprint string) error
+}
+
 // kw: gate routes sink deterministic tool-boundary approvals notify crossing-budget
 type Gate struct {
-	Routes     Router
-	Sink       Sink
-	Approvals  Approvals                                  // optional: enables the escalate->approval loop (Stage 5)
-	OnEscalate func(ctx context.Context, n PendingNotice) // optional: push notify (webhook) on a fresh escalation
+	Routes    Router
+	Sink      Sink
+	Approvals Approvals // optional: enables the escalate->approval loop (Stage 5)
+	// Authorizations backs the one-shot grants that make an unadvertised route reachable. A nil
+	// store means unadvertised routes are UNREACHABLE — absent machinery fails closed.
+	Authorizations Authorizations
+	OnEscalate     func(ctx context.Context, n PendingNotice) // optional: push notify (webhook) on a fresh escalation
 	// Budget is the per-DISPATCHED-SESSION forwarded-crossing cap N (Planning/34 §6.2). The leakage bound
 	// is a per-session ceiling (N crossings), so it is only a guarantee if N is enforced at the gate — the
 	// reference harness's maxTurns is client-side and an injected agent need not honour it. nil means
@@ -220,6 +261,32 @@ func (g Gate) Decide(ctx context.Context, call ToolCall) Decision {
 		return d
 	}
 
+	// REACHABILITY, before anything else about this call is judged.
+	//
+	// An unadvertised route is not offered to the agent, but hiding is only a convenience: the
+	// tool must also be UNREACHABLE. It becomes reachable for exactly one call when a recipe's
+	// `invoke` mints a Grant for that call's fingerprint, and is spent on use. So an agent that
+	// guesses the name is denied, a call outside its sequence is denied, and a replay is denied.
+	//
+	// A nil store means no grant can exist, so every unadvertised route is unreachable — absent
+	// machinery fails closed (inv 8).
+	grantFP := ""
+	if route.Sequenced {
+		fp := Fingerprint(call.Tool, call.Args)
+		ok := false
+		if g.Authorizations != nil {
+			if _, live, err := g.Authorizations.Lookup(ctx, fp); err == nil && live {
+				ok, grantFP = true, fp
+			}
+		}
+		if !ok {
+			d := Decision{Tool: call.Tool, Verdict: stag.Deny, Forward: false,
+				Fault: "no live authorization for " + call.Tool + " (unadvertised: reachable only from the sequence that authorizes it)"}
+			g.record(ctx, d, route.RecipeName, route.RecipeHash)
+			return d
+		}
+	}
+
 	// GateArg is one PATH (single-arg), or a comma-separated list of them (multi-arg): each listed path
 	// binds a `propose out: <slot>` slot, so one recipe can decide from several arguments
 	// (e.g. "namespace,replicas"). A path may reach INTO the payload — `files[].path` — and may select
@@ -309,6 +376,12 @@ func (g Gate) Decide(ctx context.Context, call ToolCall) Decision {
 	// boundary states it again so no caller can read a sequence off a call that was denied.
 	if forward {
 		d.Authorized = res.Authorized
+		// Spend the grant: it authorized ONE call and that call is now happening. A refused call
+		// does NOT burn — it never happened, so the authorization is still owed and expires with
+		// its sequence rather than with a refusal.
+		if grantFP != "" && g.Authorizations != nil {
+			_ = g.Authorizations.Burn(ctx, grantFP)
+		}
 	}
 	g.record(ctx, d, route.RecipeName, route.RecipeHash)
 	return d

@@ -211,12 +211,12 @@ Package mcpgate is the quarantined MCP adapter for the gating proxy (Planning/17
 
 **kw:** mcp · adapter · gating · proxy · server · client · forward-iff-cleared · quarantined · tool · boundary · capabilities · listchanged-false · honest-advertisement · revocation-per-request · middleware
 
-- `SchemaArgs` (:117) — schema · args · properties · json-schema · top-level · bind-time · coverage
-- `executeAuthorized` (:369) — execute · authorized · plan · sequence · re-cross · halt · report · agent
-- `callErr` (:414) — call · error · transport · tool-error · render
-- `textOf` (:423) — text · of · result · content · concat
-- `rawArgs` (:438) — raw · args · json · encode · authorized · call
-- `firstLine` (:451) — first · line · truncate · tool · output · for · the · agent-visible · summary
+- `SchemaArgs` (:124) — schema · args · properties · json-schema · top-level · bind-time · coverage
+- `executeAuthorized` (:387) — execute · authorized · plan · sequence · re-cross · halt · report · agent
+- `callErr` (:442) — call · error · transport · tool-error · render
+- `textOf` (:451) — text · of · result · content · concat
+- `rawArgs` (:466) — raw · args · json · encode · authorized · call
+- `firstLine` (:479) — first · line · truncate · tool · output · for · the · agent-visible · summary
 
 ### `stoa-kernel/stag/proxy/mcpgate/mcpresource.go`
 
@@ -237,15 +237,17 @@ Package proxy is the gating-proxy core (Planning/17, Slice 0): the transport-agn
 
 - `ToolCall` (:38) — tool · call · name · args · raw · from · the · untrusted · agent
 - `Route` (:50) — route · recipe · hash · gated-arg · for · a · tool
-- `Router` (:98) — router · advertised · name · to · route · unique-per-fleet
-- `Sink` (:101) — sink · egress · record · release · event · (egress.JSONLSink · / · broker.MemSink · satisfy · this)
-- `Decision` (:106) — decision · tool · verdict · forward · value · events · fault · approval-id
-- `Gate` (:122) — gate · routes · sink · deterministic · tool-boundary · approvals · notify · crossing-budget
-- `Revoked` (:156) — revoked · session · withdrawn · per-request · live · evict · already-connected
-- `SessionID` (:163) — session · id · audit · digest · never-the-token · bearer-credential · attribution
-- `Decide` (:212) — decide · route · eval · forward-iff-cleared · record · fail-closed · approval-loop
-- `Covered` (:366) — coverage · accounted · gated · passthrough · top-level · heads
-- `CoverageGaps` (:410) — coverage · bind-time · schema · properties · unaccounted
+- `Router` (:108) — router · advertised · name · to · route · unique-per-fleet
+- `Sink` (:111) — sink · egress · record · release · event · (egress.JSONLSink · / · broker.MemSink · satisfy · this)
+- `Decision` (:116) — decision · tool · verdict · forward · value · events · fault · approval-id
+- `Grant` (:141) — grant · one-shot · ephemeral · authorization · fingerprint · minted · burned · provenance
+- `Authorizations` (:150) — authorizations · store · mint · lookup · burn · ephemeral · one-shot
+- `Gate` (:160) — gate · routes · sink · deterministic · tool-boundary · approvals · notify · crossing-budget
+- `Revoked` (:197) — revoked · session · withdrawn · per-request · live · evict · already-connected
+- `SessionID` (:204) — session · id · audit · digest · never-the-token · bearer-credential · attribution
+- `Decide` (:253) — decide · route · eval · forward-iff-cleared · record · fail-closed · approval-loop
+- `Covered` (:439) — coverage · accounted · gated · passthrough · top-level · heads
+- `CoverageGaps` (:483) — coverage · bind-time · schema · properties · unaccounted
 
 ### `stoa-kernel/stag/proxy/sessiond/sessiond.go`
 Package sessiond is the stag-proxy v2 daemon surface: a standing HTTP server where each MCP session is bound to a dispatcher-chosen recipe (Planning/24 v2, /25). The TRUSTED dispatcher POSTs /sessions to bind a session t
@@ -306,10 +308,10 @@ Package router resolves the persisted route table (Planning/18) into a live prox
 **kw:** route · resolve · build · proxy · router · recipe-by-name · fail-closed · multi-tool · gate · binding
 
 - `Spec` (:19) — spec · tool · recipe-name · gate-arg · (a · stored · binding)
-- `RouteError` (:30) — route · error · tool · server · recipe · reason · unresolved
-- `Resolved` (:38) — resolved · router · errors · warnings
-- `Build` (:53) — build · resolve · specs · load · parse · fail-closed · non-strict
-- `BuildStrict` (:63) — build · strict · require-bounded · leakage · refuse · advertise-time · gate
+- `RouteError` (:33) — route · error · tool · server · recipe · reason · unresolved
+- `Resolved` (:41) — resolved · router · errors · warnings
+- `Build` (:56) — build · resolve · specs · load · parse · fail-closed · non-strict
+- `BuildStrict` (:66) — build · strict · require-bounded · leakage · refuse · advertise-time · gate
 
 ### `stoa-kernel/stag/serve/approvals.go`
 
@@ -345,7 +347,7 @@ Package router resolves the persisted route table (Planning/18) into a live prox
 **kw:** route · endpoints · tool · recipe · binding · list · put · delete · resolution · status · multi-tool
 
 - `RouteView` (:18) — route · view · tool · recipe · gatearg · valid · error · resolution
-- `toolArgNames` (:142) — tool · schema · properties · argument · names · zero-arg
+- `toolArgNames` (:146) — tool · schema · properties · argument · names · zero-arg
 
 ### `stoa-kernel/stag/serve/serve.go`
 Package serve is the HTTP operator surface over the gating proxy (Planning/16): the backend the Next.js console talks to. It wraps a proxy.Gate in a thin, fail-closed JSON HTTP layer — POST /api/decide gates a submitted 
@@ -397,6 +399,14 @@ Package stag is the public entry point to the StAG kernel: Eval, the recipe eval
 
 - `Approval` (:13) — approval · record · escalated · action · awaiting/holding · a · signed · release
 
+### `stoa-kernel/stag/store/authz.go`
+
+**kw:** authorization · grant · ephemeral · one-shot · mint · lookup · burn · sequenced · route · provenance
+
+- `Mint` (:18) — mint · grant · one-shot · replace · not-stack
+- `Lookup` (:28) — lookup · grant · live · outstanding
+- `Burn` (:44) — burn · grant · spend · one-time · replay-denied
+
 ### `stoa-kernel/stag/store/store.go`
 Package store is the SQLite config store for the admin console's Adapters (Planning/18): the persisted, RELATIONAL config that the file-based recipes bind to — MCP servers (+ their tools), context providers, and routes (
 
@@ -406,20 +416,22 @@ Package store is the SQLite config store for the admin console's Adapters (Plann
 - `MCPTool` (:53) — mcp · tool · server · name · input · schema
 - `ContextProvider` (:60) — context · provider · name · kind · config · enabled
 - `Route` (:68) — route · tool · recipe · gate-arg · binding
-- `Store` (:76) — store · sqlite · db · handle
-- `Open` (:81) — open · create · run · ddl · fail-closed · no-migrations · single-conn
-- `Close` (:96) — close · db
-- `PutMCPServer` (:106) — put · mcp · server · upsert · replace · tools · transaction · atomic
-- `GetMCPServer` (:138) — get · mcp · server · with · tools · not-found · fail-closed
-- `toolsFor` (:157) — tools · for · server · ordered
-- `ListMCPServers` (:176) — list · mcp · servers · ordered · with · tools
-- `DeleteMCPServer` (:208) — delete · mcp · server · and · tools · transaction
-- `PutProvider` (:224) — put · provider · upsert
-- `ListProviders` (:236) — list · providers · ordered
-- `DeleteProvider` (:256) — delete · provider
-- `PutRoute` (:267) — put · route · upsert · by · tool+server
-- `ListRoutes` (:279) — list · routes · ordered
-- `DeleteRoute` (:300) — delete · route · by · tool+server
+- `Store` (:80) — store · sqlite · db · handle
+- `Open` (:85) — open · create · run · ddl · fail-closed · no-migrations · single-conn
+- `checkSchema` (:112) — schema · guard · no-migrations · stale · database · refuse · up-front · actionable
+- `tableColumns` (:137) — table · columns · pragma · introspect
+- `Close` (:155) — close · db
+- `PutMCPServer` (:165) — put · mcp · server · upsert · replace · tools · transaction · atomic
+- `GetMCPServer` (:197) — get · mcp · server · with · tools · not-found · fail-closed
+- `toolsFor` (:216) — tools · for · server · ordered
+- `ListMCPServers` (:235) — list · mcp · servers · ordered · with · tools
+- `DeleteMCPServer` (:267) — delete · mcp · server · and · tools · transaction
+- `PutProvider` (:283) — put · provider · upsert
+- `ListProviders` (:295) — list · providers · ordered
+- `DeleteProvider` (:315) — delete · provider
+- `PutRoute` (:326) — put · route · upsert · by · tool+server
+- `ListRoutes` (:338) — list · routes · ordered
+- `DeleteRoute` (:359) — delete · route · by · tool+server
 
 ## orchestrator
 

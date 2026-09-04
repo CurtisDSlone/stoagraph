@@ -20,8 +20,11 @@ type RouteView struct {
 	Server  string `json:"server"` // the MCP server this tool is dispatched to
 	Recipe  string `json:"recipe"`
 	GateArg string `json:"gateArg"`
-	Valid   bool   `json:"valid"`           // does the bound recipe resolve (load + parse)?
-	Error   string `json:"error,omitempty"` // why not, if invalid
+	// Sequenced: bound only for a recipe's `invoke` to authorize — not advertised to the agent,
+	// and unreachable without a one-shot grant.
+	Sequenced bool   `json:"sequenced,omitempty"`
+	Valid     bool   `json:"valid"`           // does the bound recipe resolve (load + parse)?
+	Error     string `json:"error,omitempty"` // why not, if invalid
 }
 
 // GET /api/routes — the tool→recipe bindings with their resolution status (a route
@@ -38,7 +41,7 @@ func (s *Server) handleRouteList(w http.ResponseWriter, r *http.Request) {
 	}
 	specs := make([]router.Spec, 0, len(routes))
 	for _, rt := range routes {
-		specs = append(specs, router.Spec{Tool: rt.Tool, Server: rt.Server, Recipe: rt.Recipe, GateArg: rt.GateArg})
+		specs = append(specs, router.Spec{Tool: rt.Tool, Server: rt.Server, Recipe: rt.Recipe, GateArg: rt.GateArg, Sequenced: rt.Sequenced})
 	}
 	resolved := router.Build(specs, s.Recipes.Get)
 	// Keyed by the ADVERTISED name, because a bare tool name no longer identifies one route: the same
@@ -51,7 +54,7 @@ func (s *Server) handleRouteList(w http.ResponseWriter, r *http.Request) {
 	for _, rt := range routes {
 		adv := proxy.AdvertisedName(rt.Server, rt.Tool)
 		_, ok := resolved.Router[adv]
-		out = append(out, RouteView{Tool: rt.Tool, Server: rt.Server, Recipe: rt.Recipe, GateArg: rt.GateArg, Valid: ok, Error: errBy[adv]})
+		out = append(out, RouteView{Tool: rt.Tool, Server: rt.Server, Recipe: rt.Recipe, GateArg: rt.GateArg, Sequenced: rt.Sequenced, Valid: ok, Error: errBy[adv]})
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -68,10 +71,11 @@ func (s *Server) handleRoutePut(w http.ResponseWriter, r *http.Request) {
 	}
 	body, _ := io.ReadAll(r.Body)
 	var req struct {
-		Tool    string `json:"tool"`
-		Server  string `json:"server"`
-		Recipe  string `json:"recipe"`
-		GateArg string `json:"gateArg"`
+		Tool      string `json:"tool"`
+		Server    string `json:"server"`
+		Recipe    string `json:"recipe"`
+		GateArg   string `json:"gateArg"`
+		Sequenced bool   `json:"sequenced"`
 	}
 	if json.Unmarshal(body, &req) != nil || req.Tool == "" || req.Recipe == "" {
 		writeJSON(w, http.StatusBadRequest, errObj("route needs a tool, server, and recipe"))
@@ -119,11 +123,11 @@ func (s *Server) handleRoutePut(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := s.Store.PutRoute(r.Context(), store.Route{Tool: req.Tool, Server: req.Server, Recipe: req.Recipe, GateArg: req.GateArg}); err != nil {
+	if err := s.Store.PutRoute(r.Context(), store.Route{Tool: req.Tool, Server: req.Server, Recipe: req.Recipe, GateArg: req.GateArg, Sequenced: req.Sequenced}); err != nil {
 		writeJSON(w, http.StatusInternalServerError, errObj(err.Error()))
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"tool": req.Tool, "server": req.Server, "recipe": req.Recipe, "gateArg": req.GateArg})
+	writeJSON(w, http.StatusOK, map[string]any{"tool": req.Tool, "server": req.Server, "recipe": req.Recipe, "gateArg": req.GateArg, "sequenced": req.Sequenced})
 }
 
 // findTool locates a server's declaration of one tool.

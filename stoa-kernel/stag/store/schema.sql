@@ -52,6 +52,10 @@ CREATE TABLE IF NOT EXISTS route (
   server_name  TEXT NOT NULL,   -- the MCP server this tool is dispatched to
   recipe_name  TEXT NOT NULL,
   gate_arg     TEXT NOT NULL,
+  -- 0 = an ordinary advertised route (the default, and what every existing row means).
+  -- 1 = SEQUENCED: not offered to the agent, and unreachable without a one-shot grant minted
+  --     by the recipe `invoke` step that authorizes the call.
+  sequenced    INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (tool_name, server_name)
 );
 
@@ -73,4 +77,16 @@ CREATE TABLE IF NOT EXISTS approval (
   reason       TEXT NOT NULL DEFAULT '',       -- approver note (optional)
   created_at   TEXT NOT NULL DEFAULT '',
   decided_at   TEXT NOT NULL DEFAULT ''
+);
+
+-- An EPHEMERAL, one-shot authorization minted by a recipe's `invoke` step: it makes a sequenced
+-- tool reachable for exactly one call and is deleted on use. Deliberately a SEPARATE table from
+-- `approval`: both are grants bound to a fingerprint and spent on use, but one is minted by a
+-- person and one by a policy, and nothing should ever be able to read a machine grant as though
+-- a human approved it.
+CREATE TABLE IF NOT EXISTS authorization_grant (
+  fingerprint  TEXT PRIMARY KEY,               -- canonical tool+args: binds the EXACT call
+  tool         TEXT NOT NULL,
+  source       TEXT NOT NULL,                  -- the policy that minted it; never a person
+  created_at   TEXT NOT NULL DEFAULT ''
 );

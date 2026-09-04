@@ -149,7 +149,7 @@ func main() {
 				defer d.Session.Close()
 			}
 			h := sessiond.Handler(reg, sessiond.Deps{
-				Sink: sink, Approvals: st, OnEscalate: onEscalate,
+				Sink: sink, Approvals: st, Authorizations: st, OnEscalate: onEscalate,
 				Fleet: fleet, LoadRecipe: recipes.Get,
 				RecordRead:     readRecorder(readChain),
 				Auth:           an,
@@ -210,7 +210,7 @@ func main() {
 		log.Printf("route %q -> %q binds with UNBOUNDED leakage: %s (start with -require-bounded to refuse)", w.Tool, w.Recipe, w.Err)
 	}
 	// stdio is one process = one agent session, so one budget for the lifetime of the connection.
-	gate := proxy.Gate{Routes: resolved.Router, Sink: sink, Approvals: st, OnEscalate: onEscalate, Budget: proxy.NewCrossingBudget(*crossingBudget)}
+	gate := proxy.Gate{Routes: resolved.Router, Sink: sink, Approvals: st, Authorizations: st, OnEscalate: onEscalate, Budget: proxy.NewCrossingBudget(*crossingBudget)}
 	log.Printf("stag-proxy: downstream %q (%s: %s) — %d tool(s), %d route(s); serving gated MCP over stdio",
 		srv.Name, srv.Transport, srv.Target, len(tools), len(routes))
 	// stdio v1 is tools-only (no session-bound READ channel); the daemon serves context resources.

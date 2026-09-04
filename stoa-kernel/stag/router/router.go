@@ -21,6 +21,9 @@ type Spec struct {
 	Server  string // the MCP server this tool is dispatched to. Declared, never inferred.
 	Recipe  string
 	GateArg string
+	// Sequenced: this binding exists only so a recipe's `invoke` may authorize calls to it.
+	// Not advertised, and unreachable without a live grant. Zero value = an ordinary route.
+	Sequenced bool
 }
 
 // RouteError names the binding that failed to resolve. It carries the SERVER as well as the tool:
@@ -104,6 +107,7 @@ func BuildStrict(specs []Spec, loadRecipe func(name string) ([]byte, error), req
 			Recipe:     p.Recipe,
 			RecipeHash: p.SemanticHash,
 			GateArg:    sp.GateArg,
+			Sequenced:  sp.Sequenced,
 			RecipeName: sp.Recipe,
 			Server:     sp.Server,
 			Tool:       sp.Tool,

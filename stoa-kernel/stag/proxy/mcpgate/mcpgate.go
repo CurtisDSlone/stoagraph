@@ -61,6 +61,13 @@ func NewGatingServer(gate proxy.Gate, fleet Fleet, read ReadChannel) *mcp.Server
 	// to its own recipe and each dispatched to the server the operator named. The agent picks one by
 	// name; the gate never has to guess which downstream was meant.
 	for adv, rt := range gate.Routes {
+		// A SEQUENCED route is not offered to the agent: it exists so a recipe's `invoke` can
+		// authorize calls to it, and it is unreachable without a live grant (Decide enforces
+		// that). Not advertising it means an injected document cannot name a capability the
+		// model has no way to know exists — the same reason an unrouted tool is not offered.
+		if rt.Sequenced {
+			continue
+		}
 		d, decl, err := fleet.Lookup(rt.Server, rt.Tool)
 		if err != nil {
 			// The route names a server that is not connected, or that does not expose this tool. Not
@@ -220,8 +227,19 @@ func recordUnrouted(gate proxy.Gate) mcp.Middleware {
 			if method != "tools/call" || !ok {
 				return next(ctx, method, req)
 			}
-			if _, routed := gate.Routes[ctr.Params.Name]; routed {
+			if rt, routed := gate.Routes[ctr.Params.Name]; routed && !rt.Sequenced {
 				return next(ctx, method, req) // governed: the tool's own gating handler decides
+			} else if routed {
+				// SEQUENCED: routed but never advertised, so the SDK has no handler for it and
+				// would 404 this call without a trace. Decide it here instead — an agent reaching
+				// for a tool it was never offered is MORE suspicious than one calling an unrouted
+				// tool (the name had to come from somewhere), and that is exactly the evidence an
+				// auditor wants. Decide denies it unless a live grant covers this exact call.
+				dec := gate.Decide(ctx, proxy.ToolCall{Tool: ctr.Params.Name, Args: decodeArgs(ctr.Params.Arguments), Raw: ctr.Params.Arguments})
+				if !dec.Forward {
+					return refusal(dec), nil
+				}
+				return next(ctx, method, req)
 			}
 			dec := gate.Decide(ctx, proxy.ToolCall{Tool: ctr.Params.Name, Args: decodeArgs(ctr.Params.Arguments), Raw: ctr.Params.Arguments})
 			return refusal(dec), nil
@@ -379,6 +397,16 @@ func executeAuthorized(ctx context.Context, gate proxy.Gate, fleet Fleet, dec pr
 			break
 		}
 		sub := proxy.ToolCall{Tool: c.Tool, Args: c.Args, Raw: rawArgs(c.Args)}
+		// MINT the one-shot grant for exactly this call, immediately before making it. The grant
+		// is what makes a sequenced tool reachable at all, and Decide spends it on forward — so
+		// the authorization exists for this call and no other, and not a moment longer.
+		if gate.Authorizations != nil {
+			_ = gate.Authorizations.Mint(ctx, proxy.Grant{
+				Fingerprint: proxy.Fingerprint(c.Tool, c.Args),
+				Tool:        c.Tool,
+				Source:      "policy:" + dec.Tool, // the plan that authorized it — never "human"
+			})
+		}
 		sd := gate.Decide(ctx, sub) // THE re-crossing: the target's own route and recipe
 		if !sd.Forward {
 			gate.Budget.Release()

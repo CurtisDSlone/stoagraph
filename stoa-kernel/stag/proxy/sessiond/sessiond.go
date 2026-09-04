@@ -153,9 +153,12 @@ func mintToken() (string, error) {
 // per-session Routes: the egress sink (the one owned audit log), the approval store + escalation
 // hook (Stage 5), and the shared downstream to forward cleared calls to.
 type Deps struct {
-	Sink       proxy.Sink
-	Approvals  proxy.Approvals
-	OnEscalate func(ctx context.Context, n proxy.PendingNotice)
+	Sink      proxy.Sink
+	Approvals proxy.Approvals
+	// Authorizations backs the one-shot grants that make a SEQUENCED route reachable for exactly
+	// the call a recipe's `invoke` authorized. nil means sequenced routes stay unreachable.
+	Authorizations proxy.Authorizations
+	OnEscalate     func(ctx context.Context, n proxy.PendingNotice)
 	// Fleet is EVERY connected downstream, indexed by the tool each one owns. The gate fronts several
 	// tool servers at once and the route decides which one a cleared call reaches.
 	Fleet      mcpgate.Fleet
@@ -212,10 +215,11 @@ func Handler(reg *Registry, deps Deps) http.Handler {
 	mux.HandleFunc("POST /sessions", deps.Auth.Guard(auth.RoleDispatch)(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Routes []struct {
-				Tool    string `json:"tool"`
-				Server  string `json:"server"` // WHICH MCP server serves it. The route delegates; the gate never infers.
-				Recipe  string `json:"recipe"`
-				GateArg string `json:"gateArg"`
+				Tool      string `json:"tool"`
+				Server    string `json:"server"` // WHICH MCP server serves it. The route delegates; the gate never infers.
+				Recipe    string `json:"recipe"`
+				GateArg   string `json:"gateArg"`
+				Sequenced bool   `json:"sequenced"`
 			} `json:"routes"`
 			// Context is the READ-channel binding (Planning/30): the provider specs (already resolved
 			// upstream from the config DB) this session may read. Optional — absent => no READ channel.
@@ -232,7 +236,7 @@ func Handler(reg *Registry, deps Deps) http.Handler {
 		}
 		specs := make([]router.Spec, 0, len(req.Routes))
 		for _, rt := range req.Routes {
-			specs = append(specs, router.Spec{Tool: rt.Tool, Server: rt.Server, Recipe: rt.Recipe, GateArg: rt.GateArg})
+			specs = append(specs, router.Spec{Tool: rt.Tool, Server: rt.Server, Recipe: rt.Recipe, GateArg: rt.GateArg, Sequenced: rt.Sequenced})
 		}
 		// Build the READ-channel providers. A provider that won't build (unsupported kind, bad config)
 		// is DROPPED from the session and logged — fail closed, never fabricate a source.
@@ -285,7 +289,7 @@ func Handler(reg *Registry, deps Deps) http.Handler {
 		// records can be grouped back to the agent that made it.
 		// Live is re-evaluated on every request, so a revoke reaches THIS transport too — getServer runs
 		// only once per MCP session, and a check made only here would never run again.
-		gate := proxy.Gate{Routes: bs.router, Sink: deps.Sink, Approvals: deps.Approvals, OnEscalate: deps.OnEscalate, Budget: bs.budget,
+		gate := proxy.Gate{Routes: bs.router, Sink: deps.Sink, Approvals: deps.Approvals, Authorizations: deps.Authorizations, OnEscalate: deps.OnEscalate, Budget: bs.budget,
 			Session: proxy.SessionID(tok), Live: func() bool { _, ok := reg.lookup(tok); return ok }}
 		read := mcpgate.ReadChannel{Providers: bs.providers, Record: deps.RecordRead}
 		return mcpgate.NewGatingServer(gate, deps.Fleet, read)
