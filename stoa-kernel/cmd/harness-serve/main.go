@@ -306,9 +306,9 @@ func buildModel(m store.Model, system, input string, tools []agent.Tool) (agent.
 	}
 	switch m.Kind {
 	case "claude":
-		return agent.NewClaude(key, m.Model, m.BaseURL, system, input, tools), nil
+		return agent.NewClaude(key, m.Model, m.BaseURL, system, input, tools, m.RequestTimeout()), nil
 	case "openai":
-		return agent.NewOpenAI(key, m.Model, m.BaseURL, system, input, tools), nil
+		return agent.NewOpenAI(key, m.Model, m.BaseURL, system, input, tools, m.RequestTimeout()), nil
 	default:
 		return nil, fmt.Errorf("unknown model kind %q", m.Kind)
 	}

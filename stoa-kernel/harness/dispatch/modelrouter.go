@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/model"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/model/openai"
@@ -40,7 +39,9 @@ func NewRouter(m store.Model) (Router, error) {
 				APIKey:    m.Key(),
 				Model:     m.Model,
 				MaxTokens: 256, // one constrained JSON object; keep it small
-				HTTP:      &http.Client{Timeout: 30 * time.Second},
+				// the same per-model budget: routing an event is a model call like any other,
+				// and a gated endpoint is no faster for being asked a short question.
+				HTTP: &http.Client{Timeout: m.RequestTimeout()},
 			},
 			name: m.Name,
 		}, nil

@@ -53,7 +53,7 @@ type oaiFuncDef struct {
 
 // NewOpenAI builds an OpenAI-compatible tool-use model. baseURL is the endpoint
 // (e.g. https://openrouter.ai/api/v1); key is the bearer token.
-func NewOpenAI(key, modelID, baseURL, system, input string, tools []Tool) ToolModel {
+func NewOpenAI(key, modelID, baseURL, system, input string, tools []Tool, timeout time.Duration) ToolModel {
 	ot := make([]oaiTool, 0, len(tools))
 	for _, t := range tools {
 		params := t.Schema
@@ -71,7 +71,7 @@ func NewOpenAI(key, modelID, baseURL, system, input string, tools []Tool) ToolMo
 	msgs = append(msgs, oaiMsg{Role: "user", Content: input})
 	return &openaiModel{
 		baseURL: strings.TrimRight(baseURL, "/"), key: key, model: modelID,
-		httpc: &http.Client{Timeout: 90 * time.Second}, tools: ot, messages: msgs,
+		httpc: &http.Client{Timeout: timeout}, tools: ot, messages: msgs,
 	}
 }
 

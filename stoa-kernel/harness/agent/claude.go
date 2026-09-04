@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -21,8 +23,10 @@ type claudeModel struct {
 
 // NewClaude builds a Claude tool-use model over the Anthropic Messages API. baseURL is an
 // optional endpoint override; key is the API key.
-func NewClaude(key, modelID, baseURL, system, input string, tools []Tool) ToolModel {
-	opts := []option.RequestOption{option.WithAPIKey(key)}
+func NewClaude(key, modelID, baseURL, system, input string, tools []Tool, timeout time.Duration) ToolModel {
+	// The SDK's default client has its own timeout; override it so a model behind a slow
+	// gateway is configurable rather than unusable.
+	opts := []option.RequestOption{option.WithAPIKey(key), option.WithHTTPClient(&http.Client{Timeout: timeout})}
 	if baseURL != "" {
 		opts = append(opts, option.WithBaseURL(baseURL))
 	}

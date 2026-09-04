@@ -97,6 +97,34 @@ that makes the whole thing safe: the orchestrator is never given an approve-capa
 |---|---|
 | `data/` | **All runtime state** — `config.db`, **`recipes/`** (the gate reads *and writes* it), `control.tokens`, `approval.key`, audit logs. **Gitignored**; the binaries create it. `rm -rf data` for a clean slate. |
 | `config/` | `event_map.json`, and `models.json` (your keys — gitignored; copy `models.example.json`). |
+
+### Model request timeouts
+
+A model behind a gateway — a queue, a proxy, an inference server under load — can legitimately
+take minutes to answer, and the client's timeout is what decides whether "slow" means "failed".
+It is set per model, because one deployment may reach a fast endpoint and a slow one at once:
+
+```json
+{ "name": "gateway", "kind": "openai", "baseUrl": "https://…", "model": "…",
+  "apiKeyEnv": "OPENROUTER_API_KEY", "timeoutSeconds": 300 }
+```
+
+Resolution order, first match wins:
+
+| source | scope |
+| --- | --- |
+| `STOA_MODEL_TIMEOUT_SECONDS_<NAME>` | one model (the name uppercased, non-alphanumerics → `_`) |
+| `STOA_MODEL_TIMEOUT_SECONDS` | every model |
+| `timeoutSeconds` in `models.json` | that model |
+| default | 90s |
+
+The env layer exists so you can raise a limit for one run without editing config. The ceiling is
+**15 minutes**; there is no "unlimited", because a hung request would pin a dispatch with no
+other way to end. An out-of-range or unparseable value falls back to the default rather than to
+no limit — a typo must not silently remove a bound.
+
+The same budget covers the **dispatch router** (the model call that routes an event to a recipe):
+a gated endpoint is no faster for being asked a short question.
 | `examples/` | `custom-tool` (bring your own MCP tool), `local-tools` (declared local commands, no shell), `oauth-profiles` (downstream auth profiles). **Each example carries its own recipe(s) and a README** showing how to register and route it. |
 
 A fresh instance boots **empty** — 0 recipes, 0 routes, 0 policies. The recipe store is runtime state,

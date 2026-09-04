@@ -680,7 +680,57 @@
       "layer": "orchestrator",
       "package": "store",
       "path": "stoa-kernel/harness/store/store.go",
-      "symbols": []
+      "symbols": [
+        {
+          "kw": [
+            "model",
+            "request",
+            "timeout",
+            "config",
+            "env",
+            "override",
+            "bounded",
+            "fail-safe",
+            "gateway",
+            "latency"
+          ],
+          "line": 58,
+          "name": "RequestTimeout"
+        },
+        {
+          "kw": [
+            "timeout",
+            "env",
+            "parse",
+            "bounded"
+          ],
+          "line": 72,
+          "name": "timeoutFromEnv"
+        },
+        {
+          "kw": [
+            "timeout",
+            "range",
+            "check",
+            "inclusive",
+            "ceiling"
+          ],
+          "line": 85,
+          "name": "validTimeout"
+        },
+        {
+          "kw": [
+            "env",
+            "token",
+            "normalize",
+            "model",
+            "name",
+            "uppercase"
+          ],
+          "line": 99,
+          "name": "envToken"
+        }
+      ]
     },
     {
       "doc": "Package localtools is the LOCAL TOOL SURFACE: a declared set of commands, served to an agent as MCP tools, so the model gets real local capability without ever getting a shell.  THE GUARDRAIL, and why this is a server ra",

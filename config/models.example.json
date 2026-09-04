@@ -13,10 +13,11 @@
     "apiKeyEnv": "OPENAI_API_KEY"
   },
   {
-    "name": "Open-AI",
+    "name": "gateway",
     "kind": "openai",
-    "baseUrl": "https://openrouter.ai/api/v1/",
-    "model": "nvidia/nemotron-3-super-120b-a12b",
-    "apiKey": "OPENAI_API_KEY"
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "model": "anthropic/claude-sonnet-4",
+    "apiKeyEnv": "OPENROUTER_API_KEY",
+    "timeoutSeconds": 300
   }
 ]

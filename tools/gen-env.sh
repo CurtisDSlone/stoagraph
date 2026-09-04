@@ -43,6 +43,11 @@ COMPOSE_PROFILES=tools
 # instead of embedding a key in the file. The gate never sees either way.
 # ANTHROPIC_API_KEY=
 # OPENAI_API_KEY=
+
+# MODEL TIMEOUT (optional): how long to wait for a model to answer, in seconds. Prefer setting
+# "timeoutSeconds" per model in config/models.json; this raises it for EVERY model at once, which
+# is a blunt instrument. Default 90, ceiling 900.
+# STOA_MODEL_TIMEOUT_SECONDS=
 ENV
 chmod 600 .env
 

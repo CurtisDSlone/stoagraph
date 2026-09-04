@@ -527,6 +527,11 @@ Package store is the event_harness's own model-provider config: which models the
 
 **kw:** orchestrator · store · models · api-keys · json · file · key-env · never-echoed · keys-live-here
 
+- `RequestTimeout` (:58) — model · request · timeout · config · env · override · bounded · fail-safe · gateway · latency
+- `timeoutFromEnv` (:72) — timeout · env · parse · bounded
+- `validTimeout` (:85) — timeout · range · check · inclusive · ceiling
+- `envToken` (:99) — env · token · normalize · model · name · uppercase
+
 ## binary
 
 > cmd/ — the shipped binaries; each is its own container.

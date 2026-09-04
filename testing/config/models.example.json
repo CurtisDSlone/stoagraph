@@ -1,3 +1,23 @@
 [
-  { "name": "local-qwen", "kind": "openai", "baseUrl": "http://172.18.160.1:11434/v1", "model": "qwen3-coder:latest", "apiKey": "ollama" }
+  {
+    "name": "claude",
+    "kind": "claude",
+    "model": "claude-opus-4-8",
+    "apiKeyEnv": "ANTHROPIC_API_KEY"
+  },
+  {
+    "name": "local",
+    "kind": "openai",
+    "model": "qwen2.5-coder",
+    "baseUrl": "http://localhost:11434/v1",
+    "apiKeyEnv": "OPENAI_API_KEY"
+  },
+  {
+    "name": "gateway",
+    "kind": "openai",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "model": "anthropic/claude-sonnet-4",
+    "apiKeyEnv": "OPENROUTER_API_KEY",
+    "timeoutSeconds": 300
+  }
 ]
