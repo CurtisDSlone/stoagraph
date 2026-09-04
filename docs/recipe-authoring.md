@@ -1,42 +1,68 @@
 # Writing recipes
 
 A **recipe** is a stag policy: a small, closed graph that a proposed tool call walks through to a
-verdict. It is authored in YAML, validated by a linter, and executed by a deterministic kernel — no
-model, no I/O. Same recipe + same call → same verdict, always.
+verdict. It is authored in YAML, validated by a linter, and executed by a deterministic kernel —
+**no model, no I/O**. Same recipe + same call → same verdict, always, which is what makes a
+decision replayable by an auditor who was not there when it happened.
+
+This page is the language reference. If you want the *why* first, read
+[the doctrine](doctrine.md); for binding a tool to a policy, [routes.md](routes.md).
 
 ## The mental model
 
 A tool call arrives as a set of named **arguments** (e.g. `namespace`, `replicas`). A recipe:
 
-1. **proposes** those arguments as **untrusted** values (they came from the agent — you never trust them),
+1. **proposes** those arguments as **untrusted** values — they came from the agent, and you never
+   trust them,
 2. optionally **branches** on them and **gates** them against rules, and
-3. **sinks** them: an *authoritative* sink is the moment a value would actually reach the real tool.
+3. **sinks** them: an *authoritative* sink is the moment a value would actually reach the real
+   tool.
 
-The load-bearing invariant: **no untrusted value reaches an authoritative sink without a rule release
-and a recorded crossing.** Everything below serves that guarantee.
+The load-bearing invariant: **no untrusted value reaches an authoritative sink without a rule
+release and a recorded crossing.** Everything else serves that guarantee.
 
 The verdict of the whole recipe is the AND of its steps: **allow** only if every crossing was
 released; otherwise **deny**, **escalate**, or **fault**.
+
+### A recipe judges a call; it can also authorize a sequence
+
+Most recipes decide one call. A recipe with [`invoke`](#invoke) steps does more: it **authorizes
+an ordered sequence** of calls — fix, then rebuild, then verify — so a model may trigger the work
+without choosing what runs, in what order, or with what arguments.
+
+The kernel still performs no I/O. It authorizes; a separate executor carries the calls, putting
+**every one of them back through the gate** against that tool's own route and recipe. Authorizing
+a call is never authority to make it.
 
 ## Anatomy
 
 ```yaml
 recipe: my_policy       # name (also the id you route tools to)
 version: 1
-rules:                  # named, reusable predicates
-  ns.safe: {kind: set_membership, set: ["dev", "staging"]}
+                        # (an optional `passthrough:` list declares arguments knowingly
+                        #  forwarded UNGATED — omit the key to gate every argument)
+rules:                  # named predicates, referenced by id — the only reuse mechanism
+  ns.safe:  {kind: set_membership, set: ["dev", "staging"]}
   count.ok: {kind: numeric_range, min: 0, max: 5}
-steps:                  # the graph, top to bottom
-  - {id: propose_ns,   kind: propose, out: namespace}
-  - {id: propose_n,    kind: propose, out: replicas}
+steps:                  # the graph, top to bottom; edges only ever point forward
+  - {id: propose_ns, kind: propose, out: namespace}
+  - {id: propose_n,  kind: propose, out: replicas}
+  - {id: g_ns,  kind: gate, in: namespace, rule: ns.safe, on_fail: deny}
   - {id: apply, kind: sink, in: replicas, field: k8s.scale.apply,
      sensitivity: authoritative, rule: count.ok, actor: "policy:platform"}
 ```
 
+Two hashes are derived from every recipe. The **artifact hash** is the bytes of the file; the
+**semantic hash** is the policy's *identity* — what it accepts, which tool it authorizes, which
+rule clears which argument, how long it will wait. Reformatting a recipe or editing a comment
+leaves the semantic hash unchanged; widening a set, renaming an argument's rule, or raising an
+`await`'s attempts changes it, and the signed audit record says so.
+
 ## Rules — the three closed predicates
 
-A rule decides whether a value is **released**. There are exactly three kinds (a closed set keeps the
-policy language auditable):
+A rule decides whether a value is **released**. There are exactly three kinds, and the set is
+closed on purpose: a policy language with an open predicate set is one whose accepted values
+nobody can enumerate, and "what exactly does this allow?" stops having an answer.
 
 | Kind | Passes when | Example |
 | --- | --- | --- |
@@ -44,45 +70,231 @@ policy language auditable):
 | `numeric_range` | the value is an **integer** in `[min, max]` (canonical form only) | `{kind: numeric_range, min: 0, max: 5}` |
 | `signed_equality` | the value byte-equals a pinned/approved value | `{kind: signed_equality, signed: "$approved"}` |
 
+Rules live in a named registry and are referenced by id, which is the only reuse mechanism —
+YAML anchors and aliases are rejected. A rule that is declared and never referenced is a
+**rejected recipe**: dead policy reads like a control and isn't one.
+
 To DENY everything, use an unsatisfiable set: `{kind: set_membership, set: ["__never__"]}`.
 
-> **`numeric_range` is integer-only, on purpose.** It requires canonical integer form (the accepted
-> set stays finite and enumerable, invariant 6), so a decimal like `45.50` does not pass and is
-> denied. It cannot express a money range (`0.00–10000.00`). For a monetary or otherwise-decimal
-> value, gate by equality to the authoritative amount (below), or express the range in integer minor
-> units (cents) if a range is truly what you need.
+### `set_membership` is byte-exact
 
-> **A range is not integrity for a value the attacker can set.** If an attacker who has poisoned the
-> context can choose *any* value inside your range, the range does not protect the action — it just
-> bounds how bad the chosen value is. A refund `amount` gated `numeric_range {0, 10000}` still lets a
-> hijacked call send €9,999. Gate a value the attacker controls by **equality to the authoritative
-> source** (`set_membership` over the one verified value, or `signed_equality` against a signed
-> fact), not by a range, unless the range itself is the whole policy. This was found by replaying an
-> external red-team suite against the gate; see the project transcripts.
+There is no trimming, no case folding, no pattern matching. `"none"` and `"none\n"` are different
+values, and a rule that quietly normalized them would have a real accepted set larger than the
+one written down.
+
+This has a practical consequence: **a tool whose output shape is undeclared cannot be gated by
+equality.** If you intend to match a tool's output — with [`await`](#await), say — the tool must
+emit a stable, declared value. Fix the shape in the tool, not by loosening the rule.
+
+Set members may not contain control characters (a newline included), because those values ride
+verbatim into signed audit fields.
+
+### `numeric_range` is integer-only, on purpose
+
+It requires canonical integer form, so the accepted set stays finite and enumerable. A decimal
+like `45.50` does not pass and is denied. It cannot express a money range (`0.00–10000.00`). For
+a monetary or otherwise-decimal value, gate by equality to the authoritative amount, or express
+the range in integer minor units (cents) if a range is truly what you need.
+
+### A range is not integrity for a value the attacker can set
+
+If an attacker who has poisoned the context can choose *any* value inside your range, the range
+does not protect the action — it just bounds how bad the chosen value is. A refund `amount` gated
+`numeric_range {0, 10000}` still lets a hijacked call send €9,999.
+
+Gate a value the attacker controls by **equality to the authoritative source** (`set_membership`
+over the one verified value, or `signed_equality` against a signed fact), not by a range, unless
+the range itself is the whole policy. This was found by replaying an external red-team suite
+against the gate; see the project transcripts.
 
 ## Steps — the eight node kinds
 
-The graph is built from a closed set of node kinds. Edges are **forward-only** (a `goto` always
-points to a later step), so a recipe is a DAG that always terminates.
+The graph is built from a **closed set** of node kinds. There is no ninth, and no escape hatch:
+a policy language you can extend at will is a policy language whose accepted set nobody can
+enumerate. Edges are **forward-only** — a `goto` always points to a later step — so a recipe is
+a DAG that always terminates.
 
-- **`propose`** — bind a tool argument as an untrusted value.
-  `{id: p, kind: propose, out: <slot>}`  (`out` is the argument name)
-- **`branch`** — route on a value; first matching case wins, else `default`.
-  ```yaml
-  {id: route, kind: branch, in: namespace,
-   cases: [{rule: ns.safe, goto: apply}, {rule: ns.prod, goto: escalate_gate}],
-   default: deny_sink}
-  ```
-- **`gate`** — guard the steps that follow. If the value fails `rule`, the recipe stops with
-  `on_fail`.
-  `{id: g, kind: gate, in: namespace, rule: never, on_fail: escalate}`  (`on_fail`: `escalate` | `deny`)
-- **`sink`** — the crossing. `sensitivity: authoritative` is a real release to the tool (releases only
-  if `rule` passes; records a crossing); `benign` is a non-authoritative read.
-  `{id: apply, kind: sink, in: replicas, field: k8s.scale.apply, sensitivity: authoritative, rule: count.ok, actor: "policy:platform", goto: done}`
-- **`exit`** — a terminal node. `{id: done, kind: exit}`
-- **`foreach`** — iterate a body over elements (advanced; see the composed examples).
-- **`invoke`** — authorize a tool call. See [Sequencing several tools](#sequencing-several-tools).
-- **`await`** — do not proceed until a tool's output satisfies a rule. See [Waiting for a condition](#waiting-for-a-condition).
+| kind | what it does | keys |
+| --- | --- | --- |
+| [`propose`](#propose) | bind a tool argument as an untrusted value | `out`, `goto` |
+| [`gate`](#gate) | halt the recipe unless a value clears a rule | `in`, `rule`, `on_fail` |
+| [`branch`](#branch) | route to one of several steps by rule | `in`, `cases`, `default` |
+| [`sink`](#sink) | the crossing: release a value to the tool, and record it | `in`, `field`, `sensitivity`, `rule`, `actor`, `goto` |
+| [`invoke`](#invoke) | authorize one tool call in a sequence | `tool`, `args`, `actor`, `goto` |
+| [`await`](#await) | do not proceed until a tool's output satisfies a rule | `tool`, `args`, `until`, `attempts`, `every_ms`, `actor`, `goto` |
+| [`foreach`](#foreach) | gate every element of a runtime list | `in`, `as`, `goto` |
+| [`exit`](#exit) | a terminal: halt this path | — |
+
+Every step needs an `id`, unique within the recipe. Any key not in a kind's row is **rejected**,
+not ignored: a typo that silently did nothing would be a policy that does not do what it says.
+
+---
+
+### `propose`
+
+Binds one tool argument into a named slot, **untrusted**.
+
+```yaml
+- {id: p_ns, kind: propose, out: namespace}
+```
+
+`out` is the *argument name*: `propose out: namespace` binds whatever the agent sent as
+`namespace`. Every value enters this way, and every value enters untrusted — there is no syntax
+for proposing something trusted, because the whole model is that trust is re-derived at the sink
+from the rule that fires, never carried in from the proposer.
+
+An absent argument binds the empty string, which fails every rule. Fail closed.
+
+---
+
+### `gate`
+
+A checkpoint. If the value fails `rule`, the recipe **stops here**.
+
+```yaml
+- {id: g_ns, kind: gate, in: namespace, rule: ns.safe, on_fail: deny}
+```
+
+`on_fail` is `deny` (the default) or `escalate`. It is the difference between "no" and "ask a
+person" — see [human approval](#multiple-arguments-and-human-approval).
+
+A gate protects everything downstream of it, and the linter enforces that: the authoritative
+sinks a gate guards must be reachable **only** through it. A gate you could walk around is
+decoration.
+
+Use a gate when a value must be right for the rest of the recipe to make sense at all. Use a
+[`branch`](#branch) when different values should do different things.
+
+---
+
+### `branch`
+
+Routing, never enforcement. The first case whose rule releases wins; if none does, `default`.
+
+```yaml
+- id: route
+  kind: branch
+  in: namespace
+  cases:
+    - {rule: ns.safe, goto: apply}      # dev/staging → act
+    - {rule: ns.prod, goto: escgate}    # prod        → escalate
+  default: block                        # anything else → deny
+```
+
+Every edge is explicit — including `default`, which is required. A branch on a value that was
+never bound is a **fault**, not a fall-through: routing on uncertainty is refused.
+
+A branch **selects which path is authorized**, so it composes with sequences: "if prod, authorize
+the careful sequence; otherwise the quick one" is a branch whose cases `goto` different `invoke`
+chains.
+
+`branch` reads a value the *caller proposed*. It cannot read what a previous call returned — see
+[Not in v1](#not-in-v1).
+
+---
+
+### `sink`
+
+The crossing. This is the step where an untrusted value would actually reach the tool.
+
+```yaml
+- {id: apply, kind: sink, in: replicas, field: k8s.scale.apply,
+   sensitivity: authoritative, rule: count.ok, actor: "policy:platform"}
+```
+
+- **`sensitivity: authoritative`** — a real release. It releases *only* if `rule` passes, and the
+  same step that clears the crossing records it. That coupling is structural: there is no path
+  that releases without recording, so the audit cannot disagree with what happened.
+- **`sensitivity: benign`** — a non-authoritative read. Not release-gated, so a `rule` here is
+  **rejected**: a rule that is never consulted is dead policy pretending to be a control.
+- **`field`** names the crossing in the audit. Two authoritative sinks may not share one — aliased
+  fields collapse the event-to-crossing correspondence.
+- **`actor`** is who is accountable, and is required whenever a rule is present.
+
+---
+
+### `invoke`
+
+Authorizes **one tool call** as part of a sequence. Several `invoke` steps express a whole
+remediation arc in a fixed order, with no model choosing that order.
+
+```yaml
+- {id: drain, kind: invoke, tool: k8s__drain_node,
+   args: {node: {slot: node, rule: node.worker}},
+   actor: "policy:maintenance"}
+```
+
+**`tool` is the advertised name** (`<server>__<tool>`) — the same name the agent would call and
+the name the audit records.
+
+**Every argument carries its own rule.** `args` maps an argument name to the slot that supplies
+it *and* the rule that must clear it. This is required, not optional: an invoke's arguments are
+usually different *kinds* of value — a target, an operation, a payload — and one rule shared
+across them could only be the union of what each may be, which is a flat set of permitted strings
+with no idea which argument it is looking at.
+
+Full detail in [Sequencing several tools](#sequencing-several-tools).
+
+---
+
+### `await`
+
+Do not proceed until a tool's output satisfies a rule.
+
+```yaml
+- {id: settle, kind: await, tool: k8s__pods_on_node,
+   args: {node: {slot: node, rule: node.worker}},
+   until: pods.none, attempts: 6, every_ms: 5000,
+   actor: "policy:maintenance"}
+```
+
+Without it a verify step is a **witness, not a gate**: it runs, its output is recorded, and the
+next step proceeds regardless. `await` is what turns "we looked" into "we did not continue until
+it was true."
+
+`until` names a rule the *output* must satisfy. `attempts` and `every_ms` are bounded by the
+kernel and a recipe cannot raise them. Full detail in
+[Waiting for a condition](#waiting-for-a-condition).
+
+---
+
+### `foreach`
+
+Gates **every element** of a runtime list against the same rule.
+
+```yaml
+- {id: p,  kind: propose, out: plan}          # e.g. ["restart","scale"]
+- {id: fe, kind: foreach, in: plan, as: item}
+- {id: apply, kind: sink, in: item, field: exec.action,
+   sensitivity: authoritative, rule: action.allowed, actor: "policy:x"}
+```
+
+`in` is a slot holding a **JSON array of strings**; anything else is a fault. `as` names the slot
+each element is bound to, freshly and untrusted, on every iteration.
+
+- **One deny denies the batch.** The verdict is the AND of every element's.
+- **At most 64 elements** — an author-unraisable kernel bound. A longer list faults.
+- **At most one foreach per recipe**, and no nesting.
+- **It is a tail construct**: it consumes the rest of the path.
+- **No `invoke` or `await` inside it.** This is the one construct where an *attacker-chosen* list
+  length would multiply author-written calls (64 elements × 3 invokes = 192 actions from one
+  proposal). Everywhere else the count is fixed by the recipe source. Refused, not tuned.
+
+`foreach` and `invoke` both fan out, and they answer different questions — see
+[`invoke` vs `foreach`](#invoke-vs-foreach).
+
+---
+
+### `exit`
+
+A terminal. Halts this path, adds no verdict, records no crossing.
+
+```yaml
+- {id: done, kind: exit}
+```
+
+Needed because steps fall through by default: without an `exit`, a branch target would run on
+into whatever step happens to be written next.
 
 ## Verdicts
 
@@ -95,14 +307,82 @@ points to a later step), so a recipe is a DAG that always terminates.
 
 ## The linter (why a recipe is safe by construction)
 
-Before a recipe runs, it must pass structural checks — a policy that could leak is a **rejected
-recipe**, not a runtime surprise:
+Before a recipe runs it must pass structural checks. **A policy that could leak is a rejected
+file, not a runtime surprise** — and a rejected recipe is never hashed or compiled, so it cannot
+be signed, routed, or referenced.
 
-- **declare-before-use** — a slot must be `propose`d before it is read.
+### Structure
+
+- **declare-before-use** — a slot must be `propose`d before it is read, including inside an
+  `invoke`'s `args`.
 - **definite-assignment** — every value a sink reads is guaranteed to be bound on every path.
 - **forward-only edges** — `goto` points forward; no cycles; the graph terminates.
-- **unique fields** — no two authoritative sinks claim the same field.
-- **gate-protection** — the authoritative sinks a gate guards are only reachable *through* that gate.
+- **unique ids** — no two steps share one.
+- **unique fields** — no two authoritative sinks claim the same `field`; aliased fields collapse
+  the event-to-crossing correspondence.
+- **gate-protection** — the authoritative sinks a gate guards are reachable only *through* that
+  gate.
+
+### Dead policy
+
+A rule that reads like a control but can never fire is rejected, because it is worse than no rule
+at all — it tells a reviewer the value is bounded when it is not.
+
+- an **unreferenced rule** in the registry
+- a **rule on a `benign` sink** (release is never consulted there)
+- an **`until` on an `invoke`** (an invoke is one call; there is nothing to poll)
+- an **`actor` with no rule** on a sink
+
+### Bounds an author cannot raise
+
+These are the kernel's, mirrored into the linter so you are told at author time rather than at
+runtime:
+
+| bound | limit | why |
+| --- | --- | --- |
+| `foreach` elements | 64 | the list is attacker-chosen |
+| `foreach` per recipe | 1, no nesting | nesting multiplies the fan-out |
+| `invoke` + `await` steps | 16 | a sequence longer than a reviewer reads in one sitting is not reviewed |
+| `await` attempts | 1–32 | wall-clock an agent can spend by triggering a sequence |
+| `await` interval | 0–30 000 ms | as above |
+| `await` total | attempts × interval ≤ 5 min | as above |
+| `passthrough` args | 64 | |
+| sub-recipe references | 64 | |
+
+**Over the cap is a rejection, never a clamp.** An author who writes `attempts: 1000` believes
+they will get 1000; silently substituting 32 would be a policy that does not do what it says.
+
+### Refusals specific to sequences
+
+- an **`invoke` or `await` inside a `foreach` body** — the one construct where an attacker-chosen
+  list length would multiply author-written calls (and, for an await, the *waiting*).
+- **two steps authorizing the same tool** — one action, one authorizing step.
+- an **argument with no rule** — an argument nobody wrote a rule for is not thereby permitted.
+- a **step-level `rule:` on an invoke** — rules belong to arguments, not to the step.
+
+### YAML hygiene
+
+The parser is deliberately strict about the *file*, not just the policy:
+
+- **no anchors or aliases** — the rules registry is the only reuse mechanism
+- **no custom tags**, no duplicate keys
+- **no ambiguous YAML 1.1 scalars.** `yes`, `no`, `on`, `off`, `y`, `n` and friends must be
+  quoted if you mean the strings. A slot named `n` is rejected, because another YAML reader would
+  parse it as the boolean `false` and see a different policy than you wrote.
+- **caps on size, depth and node count**
+
+A recipe is a security document. Two files that look the same must mean the same thing, and a
+clever YAML feature that makes them differ is a liability, not a convenience.
+
+### Cautions (warn, do not block)
+
+Some things are legal but worth a reviewer's attention, so the console and CLI surface them
+without refusing the save:
+
+- a `passthrough` argument that **looks authoritative** (`amount`, `to`, `path`, `cmd`, …)
+- an `invoke` on a tool whose name **looks destructive** (`delete`, `purge`, `transfer`, …)
+
+You may have a reason. The point is that it is written down and seen.
 
 ## Worked examples
 
@@ -196,15 +476,10 @@ stopped on. StoaGraph does not claim a transaction it cannot provide over third-
 
 ### What the linter refuses
 
-- **an undeclared argument slot** — declare-before-use reaches inside `args:`.
-- **an argument with no rule** — an argument nobody wrote a rule for is not thereby permitted.
-- **a step-level `rule:`** — rules belong to arguments, not to the step.
-- **two invokes naming the same tool** — one action, one authorizing step.
-- **more than 16 invokes** — a sequence longer than a reviewer reads in one sitting is not a
-  reviewed sequence.
-- **an invoke inside a `foreach` body** — this is the one construct where an *attacker-chosen*
-  list length would multiply author-written calls (64 elements × 3 invokes = 192 actions from one
-  proposal). Everywhere else the count is fixed by the recipe source. Refused, not tuned.
+Every refusal in [the linter](#the-linter-why-a-recipe-is-safe-by-construction) applies, and
+these are the ones specific to sequences: an undeclared argument slot, an argument with no rule,
+a step-level `rule:`, two steps authorizing the same tool, more than 16 sequence steps, and an
+`invoke` or `await` inside a `foreach` body.
 
 Authorizing a destructive-looking tool (`delete`, `purge`, `transfer`, …) raises a **caution**,
 not a rejection — same discipline as `passthrough`: the reviewer sees it, which is the point.
@@ -265,6 +540,46 @@ and the record says the condition was never met (which is distinct from the tool
   sequence is therefore knowable *before* anything runs — which is what lets a human review it.
   You can still `branch` to select *which* sequence is authorized.
 - **compensating steps.** There is no declared undo. A denial mid-sequence halts and stops.
+
+**A maintenance sequence** — the order *is* the policy. Cordon, drain, wait for the node to
+actually empty, then uncordon. Out of order this is not a mistake, it is an outage: drain before
+cordon and the scheduler puts the evicted pods straight back onto the node you are about to work
+on.
+
+```yaml
+recipe: k8s_drain_sequence
+version: 1
+rules:
+  node.worker: {kind: set_membership, set: ["kind-worker", "kind-worker2"]}
+  pods.none:   {kind: set_membership, set: ["none"]}
+steps:
+  - {id: p_node, kind: propose, out: node}
+
+  # 1. stop new work landing on it
+  - {id: cordon, kind: invoke, tool: k8s__cordon_node,
+     args: {node: {slot: node, rule: node.worker}}, actor: "policy:maint"}
+
+  # 2. evict what is there
+  - {id: drain, kind: invoke, tool: k8s__drain_node,
+     args: {node: {slot: node, rule: node.worker}}, actor: "policy:maint"}
+
+  # 3. do NOT proceed until it is actually empty. As an `invoke` this step would be a
+  #    witness — it would look, record what it saw, and uncordon regardless.
+  - {id: verify, kind: await, tool: k8s__pods_on_node,
+     args: {node: {slot: node, rule: node.worker}},
+     until: pods.none, attempts: 6, every_ms: 5000, actor: "policy:maint"}
+
+  # 4. end the maintenance window
+  - {id: uncordon, kind: invoke, tool: k8s__uncordon_node,
+     args: {node: {slot: node, rule: node.worker}}, actor: "policy:maint"}
+```
+
+A model may trigger this and choose *which node*. It cannot choose the steps, cannot reorder
+them, and cannot reach `k8s__drain_node` on its own — those tools are bound as **sequenced**
+routes, so they are never advertised and are unreachable without the one-shot grant this sequence
+mints. If the node never empties, the sequence halts with it still cordoned: a half-finished
+maintenance window someone must notice, which is the honest outcome. It is not safe to hand a
+node back to the scheduler on the assumption that a drain worked.
 
 ## The coverage contract (`passthrough`)
 
@@ -328,6 +643,46 @@ model puts in it. Bounding *where* an action lands is not the same as bounding *
   not silently pick one. Gate the value with `on_fail: escalate` so the mismatch goes to a human with
   the full recorded action, rather than denying abruptly or trusting the wrong source. Escalate *is*
   the review path; there is no separate "conflict" verdict, and none is needed.
+
+## Quick reference
+
+Every form, with `<...>` placeholders. Not a runnable recipe — the ids repeat.
+
+```text
+recipe: <name>          # required; the id a tool is routed to
+version: 1              # required
+passthrough: [a, b]     # optional; arguments knowingly forwarded UNGATED
+rules:                  # named predicates, referenced by id
+  <id>: {kind: set_membership,  set: ["a", "b"]}
+  <id>: {kind: numeric_range,   min: 0, max: 5}
+  <id>: {kind: signed_equality, signed: "$approved"}
+steps:
+  - {id: <id>, kind: propose, out: <arg>}
+  - {id: <id>, kind: gate,    in: <slot>, rule: <id>, on_fail: deny|escalate}
+  - {id: <id>, kind: branch,  in: <slot>, cases: [{rule: <id>, goto: <id>}], default: <id>}
+  - {id: <id>, kind: sink,    in: <slot>, field: <name>,
+     sensitivity: authoritative|benign, rule: <id>, actor: "policy:<who>"}
+  - {id: <id>, kind: invoke,  tool: <server>__<tool>,
+     args: {<arg>: {slot: <slot>, rule: <id>}}, actor: "policy:<who>"}
+  - {id: <id>, kind: await,   tool: <server>__<tool>,
+     args: {<arg>: {slot: <slot>, rule: <id>}},
+     until: <id>, attempts: 1..32, every_ms: 0..30000, actor: "policy:<who>"}
+  - {id: <id>, kind: foreach, in: <slot>, as: <slot>}
+  - {id: <id>, kind: exit}
+```
+
+**Choosing a step**
+
+| you want to | use |
+| --- | --- |
+| accept an argument | `propose` |
+| refuse the whole call unless a value is right | `gate` |
+| do different things for different values | `branch` |
+| let one value reach the tool, and record it | `sink` |
+| run several tools in a fixed order | `invoke` × N |
+| not proceed until something is true | `await` |
+| check every element of a list the agent sent | `foreach` |
+| stop this path | `exit` |
 
 ## Tips
 
