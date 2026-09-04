@@ -101,3 +101,28 @@ stoa-approve session --route <tool>:<server>:<recipe>:<arg> [--route ...]
 The asymmetry is the part to remember: **loosening a policy takes effect on the next bind;
 tightening one never reaches an existing session.** After narrowing a policy in response to something
 live, revoke the sessions holding the old one — do not assume the edit reached them.
+
+## Grants: a session's authority, narrowed to one call
+
+A session is a standing grant over a tool surface. Inside it, a recipe that authorizes a *sequence*
+mints something narrower — a **grant** for one call:
+
+| | session | grant |
+| --- | --- | --- |
+| granted by | the dispatcher, at bind | a recipe's `invoke`, at execution |
+| covers | a tool surface | one call, with those exact arguments |
+| lasts | until revoked or the binding ends | until spent, or the sequence ends |
+| replay | the token keeps working | denied — it was consumed |
+
+A grant carries the **session** and the **run** that minted it, and both are part of its identity.
+One agent cannot spend another's, and two concurrent sequences asking for the same call hold two
+authorizations rather than competing for one — an argumentless tool's fingerprint is just its name,
+so without the run they would collide.
+
+When a sequence ends — completed, halted, or abandoned — its grants are swept. A one-shot grant that
+outlived its sequence would be a standing authorization, which is the thing it exists not to be.
+
+**A grant is not an approval.** They are the same primitive with different minters: an approval is
+minted by a person and an ed25519 signature; a grant is minted deterministically by a policy. They
+live in separate stores for that reason, and a machine grant can never be read as though someone
+approved it.

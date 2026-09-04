@@ -57,6 +57,13 @@ That separation is *enforced*, not intended: [`architecture_test.go`](stoa-kerne
 fails the build if any gate package — or either gate binary — imports orchestrator code. The gate can be
 trusted with your infrastructure precisely because it is *provably incapable* of reaching your keys.
 
+A policy can do more than judge one call. It can authorize an ordered **sequence** — cordon, drain,
+wait until the node is actually empty, uncordon — so a model may trigger the work without choosing
+what runs, in what order, or with what arguments. Out of order that particular sequence is an outage,
+not a mistake, which is why the order belongs to the policy. And a tool a sequence needs is not a tool
+the agent holds: it can be routed without being offered, reachable only through the sequence that
+authorizes it.
+
 The agent's only wire to the world is the gate. Every proposed tool call crosses it and is allowed,
 denied, or escalated — forward-iff-cleared, so a denied call never reaches the tool. Context the agent
 reads is stamped untrusted at origin and audited. When policy says an action needs a person, the gate
@@ -71,7 +78,7 @@ guarantees — see [SECURITY.md](SECURITY.md).
 - [docs/doctrine.md](docs/doctrine.md) — what StoaGraph does and the tenets it is built on. Start here.
 - [docs/context-binding.md](docs/context-binding.md) — how an agent reads untrusted context without letting it seize control.
 - [SECURITY.md](SECURITY.md) — the threat model and guarantees.
-- [docs/recipe-authoring.md](docs/recipe-authoring.md) — the policy language.
+- [docs/recipe-authoring.md](docs/recipe-authoring.md) — the policy language: nine step kinds, sequences, waiting, and reading context.
 - [docs/routes.md](docs/routes.md) — binding a tool to a policy: why an unrouted tool is denied, and which arguments a route must gate.
 - [docs/mcp-gating-proxy.md](docs/mcp-gating-proxy.md) — how the gate speaks MCP.
 - [docs/sessions.md](docs/sessions.md) — what a session is: a grant, not a connection. The crossing budget, revoking, and why a policy edit does not reach an agent that is already bound.

@@ -127,3 +127,41 @@ Most agent gateways gate the **action** but implicitly **trust the context** (or
 StoaGraph does neither: it positions context as data going in, carries no illusion of a label coming out,
 and re-derives trust from the rule at the action boundary. That is why a fully prompt-injected agent
 still cannot exceed the policy — the guarantee never depended on the model resisting the injection.
+
+## Two doors onto the read channel, one crossing
+
+Context reaches an agent two ways, and both perform the *same* read — one `doRead`, deliberately,
+because a second implementation is a second place to forget the untrusted stamp.
+
+**As a tool.** Every bound provider is advertised as `context__<name>`. The agent decides which
+source to consult and writes the query. That is acceptable — a read is label+record, never denied —
+but the outbound question is then free text the model chose.
+
+**As a recipe step.** A `read` step names the provider and gates the query against a rule, so the
+policy bounds what may be *asked*, not only what may be read back. The model chooses neither. See
+[recipe authoring](recipe-authoring.md#read).
+
+Either way the content arrives framed as untrusted and positioned as data. `Gather` stamps every
+item at origin, **overriding whatever the provider claims about itself** — a provider asserting
+`trust: authoritative` cannot make that stick.
+
+## Controlling a source is not trusting its content
+
+You choose which providers are bound; that is real authority, and an unbound source simply is not
+there. It is not the same as trusting what a bound source *says*.
+
+A wiki you own still indexes tickets, pull requests and logs written by other people. The doctrine
+names a "runbook" as an example of a document that can carry an instruction, and a poisoned one was
+tested against this gate: it ranked first for its topic, arrived as the first document returned, and
+every action it demanded was refused by policy.
+
+So there is no way to declare a provider's content authoritative. Retrieved material can be read,
+reasoned over and acted on — it can never occupy the instruction slot. Text you want treated as an
+instruction belongs in the system prompt, which you author directly.
+
+## How much may arrive
+
+A gated query narrows the question; without a bound the answer is still unbounded. A read returns at
+most `k` documents and `max_chars` of text (`STOA_READ_K`, `STOA_READ_MAX_CHARS`, defaulting to 2 and
+4000). The gate owns those numbers — a provider registration cannot widen them — and truncation is by
+whole documents, because the model cannot tell a half-document was cut.

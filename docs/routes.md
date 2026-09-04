@@ -205,6 +205,32 @@ fails while `repo=stoagraph` passes), and recording that as a release would put 
 tamper-evident log **that never happened** — the audit would assert the agent read a repo the gate
 actually blocked. The record states what *happened*, never what merely *evaluated*.
 
+## Sequenced routes: bound, but not offered
+
+A route normally does two things at once — it makes a tool *reachable*, and it makes it *visible* in
+`tools/list`. For a tool a sequence needs but the agent should not hold, those come apart:
+
+```json
+{"tool":"set_config","server":"k8s","recipe":"config_policy",
+ "gateArg":"key,value","sequenced":true}
+```
+
+A **sequenced** route is fully governed and never advertised. The agent does not see the tool, and an
+agent that guesses the name is **denied and recorded** — the attempt is more suspicious than an
+unrouted call, because the name had to come from somewhere.
+
+Reachability comes from a one-shot **grant** the executor mints immediately before the call a recipe's
+`invoke` authorized, and which the gate spends on forward. So the tool is reachable for exactly that
+call, by exactly the session and sequence run that authorized it, and not a moment longer. A replay
+finds nothing.
+
+This is what lets a policy own an ordering. The maintenance verbs of a drain sequence are sequenced,
+so an agent cannot drain a node without cordoning it first — not because it is told not to, but
+because `drain_node` is not reachable outside the sequence that orders them correctly.
+
+**The recipe names the ADVERTISED name.** An `invoke` step writes `k8s__drain_node`, the same name the
+agent would call and the name the audit records — not the downstream's own `drain_node`.
+
 ## Global routes vs session routes
 
 There are two ways routes reach the gate, and they are not the same thing:

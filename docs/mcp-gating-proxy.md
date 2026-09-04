@@ -138,3 +138,32 @@ end-to-end by the **official MCP Inspector** (a TypeScript-SDK client, an indepe
 over stdio: `tools/list`, a cleared `tools/call` (forwarded to the real server), and a denied
 `tools/call` (blocked before the downstream, the refusal surfaced to the client) — cross-implementation
 compatibility, not just self-tests.
+
+## What the agent is offered, and what it can reach
+
+Advertisement and reachability are separate, and the gap between them is deliberate.
+
+**Advertised**: every route the gate can resolve — the server is connected, it exposes the tool, and
+the recipe covers the tool's whole schema. A coverage gap means the tool is *not offered at all*,
+because offering one whose dangerous half nothing watches is worse than offering none.
+
+**Not advertised, still routed**: a `sequenced` route. The tool exists for a recipe's `invoke` to
+authorize and is unreachable without a one-shot grant minted for that exact call. An agent that
+guesses the name is denied — and recorded, because reaching for a tool it was never offered is more
+suspicious than calling an unrouted one.
+
+**Also advertised**: each bound context provider, as `context__<name>`. These are the READ channel
+wearing a tool's clothes: they carry no route, are exempt from the unrouted check by *membership of
+the providers this session bound* — never by the shape of the name — and are never denied.
+
+## A sequence over the wire
+
+An agent calls one tool. If its recipe authorized a sequence, the gate does not forward that call at
+all: the tool was the trigger. Each authorized call is instead put back through the gate against its
+own route and recipe, executed in order, and the agent receives a transcript of what was made and
+where it stopped.
+
+Every step reserves its own crossing, so a sequence of N costs N against the session budget — an
+`await` polling six times costs six. A refusal halts the sequence; earlier steps stay done, and the
+result says which step it stopped on. Nothing is rolled back, because nothing can promise that over
+someone else's tools.

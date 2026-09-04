@@ -43,6 +43,10 @@ gate enforces it on every call, forever, regardless of what the model was talked
 1. **Propose / dispose.** The model proposes; the gate disposes. The two are separate processes with a
    one-way dependency. The thing that decides is not the thing that can be fooled.
 
+   Where a policy authorizes a *sequence*, the model does not propose even that: a recipe names the
+   calls and their order, and the model may only trigger it. It picks *which* maintenance to run, not
+   what maintenance means. See tenet 13.
+
 2. **No model in the enforcement path.** A verdict is a pure function of the recipe (your policy) and the
    proposed arguments. Same inputs, same verdict, every time — auditable and reproducible.
 
@@ -85,6 +89,31 @@ gate enforces it on every call, forever, regardless of what the model was talked
 
 12. **Open by construction.** Apache-2.0, the whole product, no held-back edition. A control that asks you
     to "don't trust — verify" has to be verifiable, all the way down.
+
+13. **Order can be policy.** Some sequences are only safe in one order: cordon before drain, write before
+    restart, verify before you report. That is not a preference an operator holds, it is a property of
+    the action — and out of order it is an outage, not a mistake. A recipe can therefore authorize an
+    ordered sequence of calls, and the model chooses none of it.
+
+    Authorizing a call is never authority to make it. Every call in an authorized sequence is put back
+    through the gate against **that tool's own route and recipe**, so a permissive policy cannot launder
+    an action by naming it. Two grants, both required.
+
+    The kernel performs no I/O to do this. It *authorizes*; a separate executor carries the calls. An
+    authorization stays a pure function of the recipe and the arguments, which is what keeps a decision
+    replayable by an auditor who was not there.
+
+14. **Do not report success for a thing that has not happened.** A drain that returned is not a node
+    with no pods on it; a ConfigMap write is not a running pod holding the new value. A step that looks
+    and records is a *witness*; a step that will not let the sequence continue until the world agrees is
+    a *gate*. Policies can wait — bounded, every attempt judged — and a sequence that cannot reach the
+    state it required **halts** rather than claiming it arrived.
+
+15. **Reachable only when it should be.** A tool a sequence needs is not a tool the agent should hold.
+    A route may exist without being advertised, and such a tool is unreachable without a one-shot grant
+    minted for exactly that call and spent on use. Hiding is a convenience — an injected document cannot
+    name a capability it has no way to know exists — but the grant is the enforcement, and a call that
+    guesses the name is denied *and recorded*.
 
 ## What StoaGraph does *not* do
 
