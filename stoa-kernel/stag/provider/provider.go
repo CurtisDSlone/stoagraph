@@ -209,11 +209,27 @@ type Static struct {
 // kw: static name
 func (s Static) Name() string { return s.ProviderName }
 
-// Provide returns every file in the bundle as an untrusted ContextItem. The query is IGNORED (a
-// static bundle has no `?q`): the whole bundle is the context.
-func (s Static) Provide(_ context.Context, _ string) ([]ContextItem, error) {
+// Provide returns the bundle's files as untrusted ContextItems, SELECTED by the query.
+//
+// An empty query returns the whole bundle — an unqueried bundle is the whole bundle. A non-empty
+// query narrows it to the files that mention it, case-insensitively, in their path or their text.
+//
+// Selection is not an optimization. A `read` step GATES the outbound query, so a provider that
+// discarded it would make the policy appear to bound something with no effect — and it would put
+// an entire corpus into the model's context on every read. A query matching nothing is an honest
+// EMPTY read, never a whole-bundle fallback: falling back would return everything at exactly the
+// moment the policy narrowed the question most.
+//
+// The match is substring, not ranked retrieval. A static bundle is a content-addressed set of
+// files, not an index; scoring belongs to a retrieval provider.
+// kw: static provide select query substring case-insensitive empty-not-fallback
+func (s Static) Provide(_ context.Context, query string) ([]ContextItem, error) {
+	q := strings.ToLower(strings.TrimSpace(query))
 	out := make([]ContextItem, 0, len(s.files))
 	for _, f := range s.files {
+		if q != "" && !strings.Contains(strings.ToLower(f.rel), q) && !strings.Contains(strings.ToLower(f.text), q) {
+			continue
+		}
 		out = append(out, ContextItem{Source: f.rel, Text: f.text})
 	}
 	return out, nil

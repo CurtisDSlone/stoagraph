@@ -2098,10 +2098,23 @@
         },
         {
           "kw": [
+            "static",
+            "provide",
+            "select",
+            "query",
+            "substring",
+            "case-insensitive",
+            "empty-not-fallback"
+          ],
+          "line": 226,
+          "name": "Provide"
+        },
+        {
+          "kw": [
             "skill",
             "name"
           ],
-          "line": 312,
+          "line": 328,
           "name": "Name"
         }
       ]
@@ -2359,6 +2372,19 @@
         },
         {
           "kw": [
+            "with",
+            "reads",
+            "recipe-authorized",
+            "context",
+            "prepend",
+            "untrusted",
+            "every-decision"
+          ],
+          "line": 487,
+          "name": "withReads"
+        },
+        {
+          "kw": [
             "execute",
             "authorized",
             "plan",
@@ -2368,7 +2394,7 @@
             "report",
             "agent"
           ],
-          "line": 479,
+          "line": 527,
           "name": "executeAuthorized"
         },
         {
@@ -2379,7 +2405,7 @@
             "tool-error",
             "render"
           ],
-          "line": 580,
+          "line": 628,
           "name": "callErr"
         },
         {
@@ -2390,7 +2416,7 @@
             "content",
             "concat"
           ],
-          "line": 589,
+          "line": 637,
           "name": "textOf"
         },
         {
@@ -2403,7 +2429,7 @@
             "whitespace",
             "visible"
           ],
-          "line": 606,
+          "line": 654,
           "name": "quotedForCompare"
         },
         {
@@ -2414,7 +2440,7 @@
             "poll",
             "interval"
           ],
-          "line": 616,
+          "line": 664,
           "name": "sleepCtx"
         },
         {
@@ -2428,7 +2454,7 @@
             "sweep",
             "scope"
           ],
-          "line": 634,
+          "line": 682,
           "name": "newRunID"
         },
         {
@@ -2440,7 +2466,7 @@
             "authorized",
             "call"
           ],
-          "line": 648,
+          "line": 696,
           "name": "rawArgs"
         },
         {
@@ -2455,7 +2481,7 @@
             "agent-visible",
             "summary"
           ],
-          "line": 661,
+          "line": 709,
           "name": "firstLine"
         }
       ]
@@ -2637,7 +2663,7 @@
             "burned",
             "provenance"
           ],
-          "line": 141,
+          "line": 145,
           "name": "Grant"
         },
         {
@@ -2651,7 +2677,7 @@
             "one-shot",
             "atomic"
           ],
-          "line": 162,
+          "line": 166,
           "name": "Authorizations"
         },
         {
@@ -2665,7 +2691,7 @@
             "notify",
             "crossing-budget"
           ],
-          "line": 190,
+          "line": 194,
           "name": "Gate"
         },
         {
@@ -2678,7 +2704,7 @@
             "evict",
             "already-connected"
           ],
-          "line": 227,
+          "line": 231,
           "name": "Revoked"
         },
         {
@@ -2691,7 +2717,7 @@
             "bearer-credential",
             "attribution"
           ],
-          "line": 234,
+          "line": 238,
           "name": "SessionID"
         },
         {
@@ -2704,7 +2730,7 @@
             "fail-closed",
             "approval-loop"
           ],
-          "line": 283,
+          "line": 287,
           "name": "Decide"
         },
         {
@@ -2716,7 +2742,7 @@
             "top-level",
             "heads"
           ],
-          "line": 481,
+          "line": 487,
           "name": "Covered"
         },
         {
@@ -2727,7 +2753,7 @@
             "properties",
             "unaccounted"
           ],
-          "line": 525,
+          "line": 531,
           "name": "CoverageGaps"
         }
       ]
@@ -2903,7 +2929,7 @@
             "by",
             "name"
           ],
-          "line": 176,
+          "line": 179,
           "name": "Resolver"
         },
         {
@@ -2921,7 +2947,7 @@
             "does",
             "that)"
           ],
-          "line": 359,
+          "line": 362,
           "name": "frontParse"
         },
         {
@@ -2931,7 +2957,7 @@
             "contradiction",
             "dead-declaration"
           ],
-          "line": 725,
+          "line": 740,
           "name": "lintPassThrough"
         },
         {
@@ -2942,7 +2968,7 @@
             "non-blocking",
             "authoritative-looking"
           ],
-          "line": 753,
+          "line": 768,
           "name": "Cautions"
         },
         {
@@ -2958,7 +2984,7 @@
             "keys",
             "teaching"
           ],
-          "line": 777,
+          "line": 792,
           "name": "hygiene"
         },
         {
@@ -2971,7 +2997,7 @@
             "allowlist",
             "templating"
           ],
-          "line": 852,
+          "line": 867,
           "name": "strVal"
         },
         {
@@ -2981,7 +3007,7 @@
             "required",
             "byte-exact"
           ],
-          "line": 871,
+          "line": 886,
           "name": "quotedStr"
         },
         {
@@ -2992,7 +3018,7 @@
             "kernel",
             "predicate"
           ],
-          "line": 883,
+          "line": 898,
           "name": "intVal"
         },
         {
@@ -3005,7 +3031,7 @@
             "value",
             "unauthorable"
           ],
-          "line": 895,
+          "line": 910,
           "name": "parseIngredient"
         },
         {
@@ -3018,7 +3044,7 @@
             "sorted",
             "set"
           ],
-          "line": 932,
+          "line": 947,
           "name": "parseRule"
         },
         {
@@ -3032,7 +3058,7 @@
             "exit",
             "distinct"
           ],
-          "line": 1025,
+          "line": 1040,
           "name": "parseStep"
         },
         {
@@ -3047,7 +3073,7 @@
             "dead",
             "declarations"
           ],
-          "line": 1322,
+          "line": 1376,
           "name": "lint"
         }
       ]
@@ -3773,7 +3799,7 @@
             "canonical",
             "register"
           ],
-          "line": 101,
+          "line": 102,
           "name": "String"
         },
         {
@@ -3786,7 +3812,7 @@
             "of",
             "string"
           ],
-          "line": 125,
+          "line": 128,
           "name": "ParseNodeKind"
         },
         {
@@ -3798,7 +3824,7 @@
             "forward",
             "edge"
           ],
-          "line": 149,
+          "line": 154,
           "name": "Case"
         },
         {
@@ -3812,8 +3838,21 @@
             "forward-only",
             "edges"
           ],
-          "line": 155,
+          "line": 160,
           "name": "Step"
+        },
+        {
+          "kw": [
+            "authorized",
+            "read",
+            "provider",
+            "query",
+            "context",
+            "fetch",
+            "not-an-action"
+          ],
+          "line": 205,
+          "name": "AuthorizedRead"
         },
         {
           "kw": [
@@ -3825,7 +3864,7 @@
             "invoke",
             "precise"
           ],
-          "line": 191,
+          "line": 222,
           "name": "ArgRule"
         },
         {
@@ -3834,7 +3873,7 @@
             "ingredients",
             "steps"
           ],
-          "line": 198,
+          "line": 229,
           "name": "Recipe"
         },
         {
@@ -3848,7 +3887,7 @@
             "executor",
             "re-cross"
           ],
-          "line": 218,
+          "line": 249,
           "name": "AuthorizedCall"
         },
         {
@@ -3859,7 +3898,7 @@
             "per",
             "sink"
           ],
-          "line": 235,
+          "line": 266,
           "name": "SinkOutcome"
         },
         {
@@ -3871,7 +3910,7 @@
             "fail",
             "escalate"
           ],
-          "line": 244,
+          "line": 275,
           "name": "GateOutcome"
         },
         {
@@ -3884,7 +3923,7 @@
             "events",
             "fault"
           ],
-          "line": 252,
+          "line": 283,
           "name": "EvalResult"
         },
         {
@@ -3900,7 +3939,7 @@
             "foreach",
             "single-arg"
           ],
-          "line": 265,
+          "line": 300,
           "name": "Eval"
         },
         {
@@ -3911,7 +3950,7 @@
             "inputs",
             "propose-by-name"
           ],
-          "line": 274,
+          "line": 309,
           "name": "EvalArgs"
         },
         {
@@ -3923,7 +3962,7 @@
             "audit",
             "invoke"
           ],
-          "line": 305,
+          "line": 340,
           "name": "sortedArgs"
         },
         {
@@ -3935,7 +3974,7 @@
             "iteration",
             "audit"
           ],
-          "line": 317,
+          "line": 352,
           "name": "sortedKeys"
         }
       ]

@@ -35,8 +35,10 @@ func TestStaticServesBundleNoQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new static: %v", err)
 	}
-	// the query is ignored — the whole bundle is the context.
-	items, errs := provider.Gather(context.Background(), "anything at all", []provider.ContextProvider{s})
+	// An EMPTY query is the whole bundle. (A non-empty one now SELECTS — see
+	// static_query_test.go: a `read` step gates the outbound query, so a provider that
+	// discarded it would make the policy appear to bound something with no effect.)
+	items, errs := provider.Gather(context.Background(), "", []provider.ContextProvider{s})
 	if len(errs) != 0 {
 		t.Fatalf("unexpected errors: %v", errs)
 	}

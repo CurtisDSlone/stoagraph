@@ -100,7 +100,7 @@ func NewGatingServer(gate proxy.Gate, fleet Fleet, read ReadChannel) *mcp.Server
 		// the fleet's *mcp.Tool is shared, and mutating it would rename the tool for every other reader.
 		ad := *decl
 		ad.Name = adv
-		s.AddTool(&ad, gatingHandler(gate, fleet, d.Session, rt.Tool))
+		s.AddTool(&ad, gatingHandler(gate, fleet, read, d.Session, rt.Tool))
 	}
 	for _, p := range read.Providers {
 		s.AddResourceTemplate(contextTemplate(p.Name()), contextHandler(p, read.Record))
@@ -435,7 +435,7 @@ func contextFrame(it provider.ContextItem) string {
 // downstreamTool is the tool's name ON THE SERVER, which is NOT the name the agent called: the agent
 // calls the advertised `<server>__<tool>`, and the downstream has never heard of that. The gate
 // decides on what the agent asked for and forwards what the server understands.
-func gatingHandler(gate proxy.Gate, fleet Fleet, downstream *mcp.ClientSession, downstreamTool string) mcp.ToolHandler {
+func gatingHandler(gate proxy.Gate, fleet Fleet, read ReadChannel, downstream *mcp.ClientSession, downstreamTool string) mcp.ToolHandler {
 	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		// req.Params.Name is the ADVERTISED name — the Router key, and what the audit records.
 		call := proxy.ToolCall{Tool: req.Params.Name, Args: decodeArgs(req.Params.Arguments), Raw: req.Params.Arguments}
@@ -451,7 +451,10 @@ func gatingHandler(gate proxy.Gate, fleet Fleet, downstream *mcp.ClientSession, 
 		if !dec.Forward {
 			gate.Budget.Release() // deny/escalate is not a crossing — give the reservation back
 			// a tool-level error the agent sees; the downstream server is never called.
-			return refusal(dec), nil
+			//
+			// The recipe's authorized READS are still served: a read cannot cause a refusal, and
+			// the context explaining one is most needed exactly when the action was refused.
+			return withReads(ctx, refusal(dec), dec, read), nil
 		}
 		// A PLAN: the recipe's `invoke` steps authorized a sequence. The tool the agent called
 		// is the trigger, not a call — it is NOT forwarded. Each authorized call is instead put
@@ -459,13 +462,58 @@ func gatingHandler(gate proxy.Gate, fleet Fleet, downstream *mcp.ClientSession, 
 		// never the target's clearance and a policy cannot launder an action by naming it.
 		if len(dec.Authorized) > 0 {
 			gate.Budget.Release() // the plan itself does not cross; each executed step reserves its own
-			return executeAuthorized(ctx, gate, fleet, dec), nil
+			return withReads(ctx, executeAuthorized(ctx, gate, fleet, dec), dec, read), nil
 		}
 		// cleared: forward under the DOWNSTREAM's own tool name, with the ORIGINAL raw arguments to
 		// preserve fidelity, minus the gate-only approval_token meta arg (Stage 5) — it authorizes the
 		// release, it is not a real tool argument, and it must not leak into the downstream call or its logs.
-		return downstream.CallTool(ctx, &mcp.CallToolParams{Name: downstreamTool, Arguments: stripMeta(req.Params.Arguments)})
+		out, err := downstream.CallTool(ctx, &mcp.CallToolParams{Name: downstreamTool, Arguments: stripMeta(req.Params.Arguments)})
+		if err != nil {
+			return nil, err
+		}
+		return withReads(ctx, out, dec, read), nil
 	}
+}
+
+// withReads performs the context fetches a RECIPE authorized and prepends them to the result.
+//
+// The recipe named the source and gated the question, so neither is the model's to choose here —
+// which is the whole difference from a `context__*` tool. The fetch itself is the same crossing:
+// same Gather, same untrusted stamp, same ReadEvent.
+//
+// It runs on EVERY decision, forwarded or not. A read cannot cause a refusal, and context is how
+// an agent finds out why it was refused.
+// kw: with reads recipe-authorized context prepend untrusted every-decision
+func withReads(ctx context.Context, res *mcp.CallToolResult, dec proxy.Decision, read ReadChannel) *mcp.CallToolResult {
+	if len(dec.Reads) == 0 || res == nil {
+		return res
+	}
+	byName := make(map[string]provider.ContextProvider, len(read.Providers))
+	for _, p := range read.Providers {
+		byName[p.Name()] = p
+	}
+	var prefix []mcp.Content
+	for _, r := range dec.Reads {
+		p, ok := byName[r.Provider]
+		if !ok {
+			// The recipe named a source this session did not bind. Say so rather than fetching
+			// nothing silently: the policy expected context that is not here.
+			prefix = append(prefix, &mcp.TextContent{Text: fmt.Sprintf(
+				"[stag READ channel · %s · provider not bound to this session; no context]", r.Provider)})
+			continue
+		}
+		framed, _, _ := doRead(ctx, p, r.Query, read.Record)
+		if len(framed) == 0 {
+			prefix = append(prefix, &mcp.TextContent{Text: fmt.Sprintf(
+				"[stag READ channel · %s · untrusted · no context for %q]", r.Provider, r.Query)})
+			continue
+		}
+		for _, f := range framed {
+			prefix = append(prefix, &mcp.TextContent{Text: f})
+		}
+	}
+	res.Content = append(prefix, res.Content...)
+	return res
 }
 
 // executeAuthorized carries a plan's authorized calls, re-crossing each through the gate, and

@@ -121,6 +121,10 @@ type Decision struct {
 	Events     []stag.ReleaseEvent
 	Fault      string
 	ApprovalID string // set when an escalate is (or awaits) a human approval; "" otherwise
+	// Reads is the context this recipe's `read` steps authorized fetching. Unlike Authorized it
+	// survives a refusal: a read cannot cause a denial, and a refused action is exactly when an
+	// agent most needs the context that explains it.
+	Reads []stag.AuthorizedRead
 	// Authorized is the sequence of calls this recipe's `invoke` steps cleared, for the
 	// executor to carry (stag/dispatch). It is EMPTY unless the decision forwarded: a
 	// refused decision authorizes nothing. Authorizing a call is not authority to make
@@ -418,6 +422,8 @@ func (g Gate) Decide(ctx context.Context, call ToolCall) Decision {
 	d := Decision{Tool: call.Tool, Verdict: res.Verdict, Forward: forward, Value: auditVal, Events: res.Events, Fault: res.Fault, ApprovalID: approvalIDForView(res.Verdict, approvedID, fingerprint, needsApproval)}
 	// a refused decision hands out no plan: the kernel already retracted them, and the
 	// boundary states it again so no caller can read a sequence off a call that was denied.
+	// Reads ride on EVERY decision, forwarded or not.
+	d.Reads = res.Reads
 	if forward {
 		d.Authorized = res.Authorized
 		// The grant was already claimed (removed) at the start; forwarding KEEPS it spent.

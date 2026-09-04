@@ -167,6 +167,9 @@ type rawStep struct {
 	args      map[string]string // invoke: argname -> slot name
 	argRules  map[string]string // invoke: argname -> rule id (each argument its own rule)
 	argOrder  []string          // invoke: authored arg order, for a stable semantic hash
+	provider  string            // read: which context source
+	querySlot string            // read: the slot supplying the query
+	queryRule string            // read: the rule the query must clear
 	untilRef  string            // await: the rule the polled output must satisfy
 	attempts  int64             // await: how many polls
 	delayMS   int64             // await: milliseconds between polls
@@ -614,6 +617,13 @@ func finish(fr front, warns []string, src []byte) (Parsed, []string, error) {
 			if st.gto != "" {
 				e["goto"] = st.gto
 			}
+		case stag.NodeRead:
+			// WHICH source, and WHAT may be asked of it, are the policy's identity.
+			e["provider"] = st.provider
+			e["query"] = map[string]any{"slot": st.querySlot, "rule": st.queryRule}
+			if st.gto != "" {
+				e["goto"] = st.gto
+			}
 		case stag.NodeAwait:
 			// the condition AND the bounds ride in the hash: how long a policy is willing to
 			// wait, and for what, is part of what the policy IS.
@@ -667,6 +677,11 @@ func finish(fr front, warns []string, src []byte) (Parsed, []string, error) {
 		if st.ruleRef != "" {
 			r := registry[st.ruleRef] // one registry entry binds label and predicate
 			out.Rule, out.RuleID = &r, st.ruleRef
+		}
+		if st.kind == stag.NodeRead {
+			r := registry[st.queryRule]
+			out.Provider, out.QuerySlot = st.provider, st.querySlot
+			out.QueryRule, out.QueryRuleID = &r, st.queryRule
 		}
 		if st.kind == stag.NodeInvoke || st.kind == stag.NodeAwait {
 			out.Tool = st.tool
@@ -1065,6 +1080,7 @@ func parseStep(idx int, n *yaml.Node) (rawStep, error) {
 		stag.NodeForeach: {"id": true, "kind": true, "in": true, "as": true, "goto": true},
 		stag.NodeInvoke:  {"id": true, "kind": true, "tool": true, "args": true, "actor": true, "goto": true},
 		stag.NodeAwait:   {"id": true, "kind": true, "tool": true, "args": true, "actor": true, "goto": true, "until": true, "attempts": true, "every_ms": true},
+		stag.NodeRead:    {"id": true, "kind": true, "provider": true, "query": true, "goto": true},
 		stag.NodeExit:    {"id": true, "kind": true},
 	}[kind]
 	for i := 0; i < len(n.Content); i += 2 {
@@ -1195,6 +1211,44 @@ func parseStep(idx int, n *yaml.Node) (rawStep, error) {
 			if st.defltReci, err = strVal(rn, "default_recipe"); err != nil {
 				return rawStep{}, err
 			}
+		}
+	case stag.NodeRead:
+		// A read names WHICH source and gates WHAT may be asked of it. Both are required: a
+		// read with no query rule would let the model write the outbound question freely,
+		// which is the channel this step exists to close.
+		if st.provider, err = need("provider", "provider"); err != nil {
+			return rawStep{}, err
+		}
+		qn, ok := byKey["query"]
+		if !ok || qn.Kind != yaml.MappingNode {
+			return rawStep{}, errf(n, "read %q needs query: {slot: <slot>, rule: <rule>}", id)
+		}
+		for j := 0; j < len(qn.Content); j += 2 {
+			key, err := strVal(qn.Content[j], "query key")
+			if err != nil {
+				return rawStep{}, err
+			}
+			val, err := strVal(qn.Content[j+1], "query value")
+			if err != nil {
+				return rawStep{}, err
+			}
+			switch key {
+			case "slot":
+				st.querySlot = val
+			case "rule":
+				st.queryRule = val
+			default:
+				return rawStep{}, errf(qn.Content[j], "key %q not legal for a read query (want slot, rule)", key)
+			}
+		}
+		if st.querySlot == "" || st.queryRule == "" {
+			return rawStep{}, errf(qn, "read %q query needs both slot and rule: an unbounded question is an outbound channel", id)
+		}
+		if !nameOK(st.querySlot) {
+			return rawStep{}, errf(qn, "invalid slot name %q", st.querySlot)
+		}
+		if !ruleIdOK(st.queryRule) {
+			return rawStep{}, errf(qn, "invalid rule id %q", st.queryRule)
 		}
 	case stag.NodeForeach:
 		if st.in, err = need("in", "in"); err != nil {
@@ -1371,6 +1425,20 @@ func lint(ingredients map[string]stag.Slot, registry map[string]stag.ReleaseRule
 		if st.kind == stag.NodeExit {
 			continue // a pure terminal: consumes no slot
 		}
+		if st.kind == stag.NodeRead {
+			if foreachCount > 0 {
+				// an attacker-chosen list length would multiply the OUTBOUND queries, which is
+				// the exfiltration channel a gated query exists to close
+				return nil, errf(st.node, "read %q is inside a foreach body: an attacker-chosen list length would multiply the outbound queries (not supported in v1)", st.id)
+			}
+			if !declared[st.querySlot] {
+				return nil, errf(st.node, "undeclared slot %q for the query on read %q (declare-before-use)", st.querySlot, st.id)
+			}
+			if _, isIng := ingredients[st.querySlot]; isIng {
+				usedIngredient[st.querySlot] = true
+			}
+			continue
+		}
 		if st.kind == stag.NodeInvoke || st.kind == stag.NodeAwait {
 			// an invoke/await consumes its slots through args, not `in`
 			invokeCount++
@@ -1412,7 +1480,19 @@ func lint(ingredients map[string]stag.Slot, registry map[string]stag.ReleaseRule
 	}
 	fields := map[string]bool{}
 	tools := map[string]bool{}
+	providers := map[string]bool{}
 	for _, st := range steps {
+		if st.kind == stag.NodeRead {
+			// one source, one step: two reads of the same provider would put two entries in the
+			// audit that nothing can tell apart.
+			if providers[st.provider] {
+				return nil, errf(st.node, "provider %q is read by more than one step", st.provider)
+			}
+			providers[st.provider] = true
+			if err := ref(st, st.queryRule); err != nil {
+				return nil, errf(st.node, "read %q query: %v", st.id, err)
+			}
+		}
 		if st.kind == stag.NodeInvoke || st.kind == stag.NodeAwait {
 			// one action, one authorizing step: the same discipline unique-fields gives
 			// authoritative sinks, so no action is claimed by two steps.

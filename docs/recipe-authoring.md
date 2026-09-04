@@ -107,7 +107,7 @@ over the one verified value, or `signed_equality` against a signed fact), not by
 the range itself is the whole policy. This was found by replaying an external red-team suite
 against the gate; see the project transcripts.
 
-## Steps — the eight node kinds
+## Steps — the nine node kinds
 
 The graph is built from a **closed set** of node kinds. There is no ninth, and no escape hatch:
 a policy language you can extend at will is a policy language whose accepted set nobody can
@@ -122,6 +122,7 @@ a DAG that always terminates.
 | [`sink`](#sink) | the crossing: release a value to the tool, and record it | `in`, `field`, `sensitivity`, `rule`, `actor`, `goto` |
 | [`invoke`](#invoke) | authorize one tool call in a sequence | `tool`, `args`, `actor`, `goto` |
 | [`await`](#await) | do not proceed until a tool's output satisfies a rule | `tool`, `args`, `until`, `attempts`, `every_ms`, `actor`, `goto` |
+| [`read`](#read) | fetch context the recipe chose, with a gated question | `provider`, `query`, `goto` |
 | [`foreach`](#foreach) | gate every element of a runtime list | `in`, `as`, `goto` |
 | [`exit`](#exit) | a terminal: halt this path | — |
 
@@ -255,6 +256,40 @@ it was true."
 `until` names a rule the *output* must satisfy. `attempts` and `every_ms` are bounded by the
 kernel and a recipe cannot raise them. Full detail in
 [Waiting for a condition](#waiting-for-a-condition).
+
+---
+
+### `read`
+
+Fetches context from a source **the recipe names**, asking a question **the recipe bounds**.
+
+```yaml
+- {id: brief, kind: read, provider: runbooks,
+   query: {slot: topic, rule: topic.allowed}}
+```
+
+A bound provider is also advertised to the agent as a `context__<name>` tool, and that leaves
+both decisions to the model: which source to consult, and what to ask it. The question is then
+free text flowing *outward*, which is the read-side of the leakage problem. A `read` step moves
+both to the author — and the gain is that **the query is gated**: the policy bounds what may be
+*asked*, not only what may be read back.
+
+**It is not an action, and the differences are deliberate:**
+
+- **it can never deny.** A query that fails its rule authorizes no read, and that is all — the
+  rest of the policy decides on its own terms. Context is how an agent finds out *why* an action
+  was refused, and a read that could cause the refusal would remove it exactly when it is needed.
+- **it records no crossing**, mints no grant and spends no budget. The read channel has its own
+  evidence — a `ReadEvent` carrying the query, the sources, and a hash of the exact bytes served.
+- **its result survives a refusal.** A denied action still returns the context the recipe read.
+
+The content arrives as untrusted, framed as data, whatever the provider claims about itself. See
+[the context channel](context-binding.md).
+
+**Refused by the linter:** a missing `provider`, a `query` without both `slot` and `rule` (an
+unbounded question is an outbound channel), an undeclared query slot, two reads of one provider,
+and a `read` inside a `foreach` — an attacker-chosen list length would multiply the outbound
+queries.
 
 ---
 
@@ -541,6 +576,27 @@ and the record says the condition was never met (which is distinct from the tool
   You can still `branch` to select *which* sequence is authorized.
 - **compensating steps.** There is no declared undo. A denial mid-sequence halts and stops.
 
+**Brief before you act** — the recipe chooses the source and bounds the question, so the model
+gets exactly the context the author decided it needs:
+
+```yaml
+recipe: maint_with_brief
+version: 1
+rules:
+  topic.allowed: {kind: set_membership, set: ["drain", "rollout"]}
+  node.worker:   {kind: set_membership, set: ["kind-worker", "kind-worker2"]}
+steps:
+  - {id: p_topic, kind: propose, out: topic}
+  - {id: p_node,  kind: propose, out: node}
+  # the recipe reads; the model neither picked the source nor wrote the question
+  - {id: brief, kind: read, provider: runbooks, query: {slot: topic, rule: topic.allowed}}
+  - {id: act, kind: sink, in: node, field: k8s.maintenance,
+     sensitivity: authoritative, rule: node.worker, actor: "policy:maint"}
+```
+
+If the node is refused, the runbook still comes back — the agent is told *why* it was refused,
+not merely that it was.
+
 **A maintenance sequence** — the order *is* the policy. Cordon, drain, wait for the node to
 actually empty, then uncordon. Out of order this is not a mistake, it is an outage: drain before
 cordon and the scheduler puts the evicted pods straight back onto the node you are about to work
@@ -667,6 +723,7 @@ steps:
   - {id: <id>, kind: await,   tool: <server>__<tool>,
      args: {<arg>: {slot: <slot>, rule: <id>}},
      until: <id>, attempts: 1..32, every_ms: 0..30000, actor: "policy:<who>"}
+  - {id: <id>, kind: read,    provider: <name>, query: {slot: <slot>, rule: <id>}}
   - {id: <id>, kind: foreach, in: <slot>, as: <slot>}
   - {id: <id>, kind: exit}
 ```
@@ -681,6 +738,7 @@ steps:
 | let one value reach the tool, and record it | `sink` |
 | run several tools in a fixed order | `invoke` × N |
 | not proceed until something is true | `await` |
+| fetch context, choosing the source and bounding the question | `read` |
 | check every element of a list the agent sent | `foreach` |
 | stop this path | `exit` |
 

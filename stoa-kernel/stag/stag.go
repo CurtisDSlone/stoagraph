@@ -77,6 +77,7 @@ const (
 	NodeForeach
 	NodeInvoke
 	NodeAwait
+	NodeRead
 	NodeExit
 )
 
@@ -114,6 +115,8 @@ func (k NodeKind) String() string {
 		return "invoke"
 	case NodeAwait:
 		return "await"
+	case NodeRead:
+		return "read"
 	case NodeExit:
 		return "exit"
 	default:
@@ -138,6 +141,8 @@ func ParseNodeKind(s string) (NodeKind, error) {
 		return NodeInvoke, nil
 	case "await":
 		return NodeAwait, nil
+	case "read":
+		return NodeRead, nil
 	case "exit":
 		return NodeExit, nil
 	default:
@@ -177,6 +182,32 @@ type Step struct {
 	UntilID  string
 	Attempts int // number of polls permitted; 1..awaitAttemptCap
 	DelayMS  int // milliseconds between polls; 0..awaitDelayCapMS
+	// read: WHICH context source, and the gated slot supplying the query.
+	//
+	// The query is gated so the POLICY bounds what may be asked, not merely what may be read
+	// back. A provider advertised as a tool leaves the query as free text the model writes —
+	// the READ-side of the leakage problem — and a `read` step closes that: the author names
+	// the source and constrains the question.
+	Provider    string
+	QuerySlot   string
+	QueryRule   *ReleaseRule
+	QueryRuleID string
+}
+
+// AuthorizedRead is one context fetch a recipe authorized: which source, and the exact query
+// that cleared its rule.
+//
+// It is deliberately NOT an AuthorizedCall. A read is label+record, never allow/deny: it records
+// no crossing, mints no grant, spends no budget, and cannot be the reason an action is refused.
+// It is not an action — it is how the agent finds out what the situation is, including why it
+// was refused.
+// kw: authorized read provider query context fetch not-an-action
+type AuthorizedRead struct {
+	StepID   string `json:"step_id"`
+	Provider string `json:"provider"`
+	Query    string `json:"query"`
+	RuleID   string `json:"rule"`
+	Ordinal  int64  `json:"ordinal"`
 }
 
 // ArgRule binds one argument of an invoke: which slot supplies it, and which rule must
@@ -258,7 +289,11 @@ type EvalResult struct {
 	// It is EMPTY unless the recipe reached Allow: a denied or faulted walk authorizes
 	// nothing. The executor may run these and only these.
 	Authorized []AuthorizedCall
-	Fault      string // "" = none; else fail-closed structural halt (inv 8/10)
+	// Reads is the context this recipe authorized fetching, in source order. Unlike Authorized
+	// it is NOT retracted by a later denial: a refused action is exactly when an agent most
+	// needs to know why, and a read cannot cause the refusal.
+	Reads []AuthorizedRead
+	Fault string // "" = none; else fail-closed structural halt (inv 8/10)
 }
 
 // kw: eval recipe path walk forward-only compose kernel invariant foreach single-arg
@@ -558,6 +593,32 @@ walk:
 			}
 			n, ok2 := hop(i, step.Goto)
 			if !ok2 {
+				fault("edge " + step.Id)
+				break walk
+			}
+			i = n
+		case NodeRead:
+			// A read is LABEL+RECORD, never allow/deny. It contributes NO verdict: a refused
+			// query authorizes no read, and that is all — it cannot deny the recipe, because
+			// context is how an agent finds out why an action was refused, and a read that
+			// could cause the refusal would take that away exactly when it is needed.
+			//
+			// It records no crossing either. The read channel has its own evidence (ReadEvent),
+			// written by the executor when the fetch actually happens.
+			if step.Provider == "" || step.QuerySlot == "" || step.QueryRule == nil {
+				fault("read " + step.Id) // fail closed on structure (inv 8)
+				break walk
+			}
+			if q, present := slots[step.QuerySlot]; present && step.QueryRule.Release(q.Value) {
+				// The QUERY is gated, so the policy bounds what may be ASKED — not merely what
+				// may be read back. An unbounded outbound query is an exfiltration channel.
+				res.Reads = append(res.Reads, AuthorizedRead{
+					StepID: step.Id, Provider: step.Provider, Query: q.Value,
+					RuleID: step.QueryRuleID, Ordinal: elem*stepCount + int64(i),
+				})
+			}
+			n, ok := hop(i, step.Goto)
+			if !ok {
 				fault("edge " + step.Id)
 				break walk
 			}
