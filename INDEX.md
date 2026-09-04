@@ -264,18 +264,19 @@ Package proxy is the gating-proxy core (Planning/17, Slice 0): the transport-agn
 **kw:** gating · proxy · tool · boundary · route · recipe · eval · forward-iff-cleared · fail-closed · no-model · mcp · session-id · audit-attribution · live-predicate · revoked · crossing-budget · per-binding
 
 - `ToolCall` (:38) — tool · call · name · args · raw · from · the · untrusted · agent
-- `Route` (:50) — route · recipe · hash · gated-arg · for · a · tool
-- `Router` (:108) — router · advertised · name · to · route · unique-per-fleet
-- `Sink` (:111) — sink · egress · record · release · event · (egress.JSONLSink · / · broker.MemSink · satisfy · this)
-- `Decision` (:116) — decision · tool · verdict · forward · value · events · fault · approval-id
-- `Grant` (:145) — grant · one-shot · ephemeral · authorization · fingerprint · minted · burned · provenance
-- `Authorizations` (:166) — authorizations · store · mint · redeem · sweep · ephemeral · one-shot · atomic
-- `Gate` (:194) — gate · routes · sink · deterministic · tool-boundary · approvals · notify · crossing-budget
-- `Revoked` (:231) — revoked · session · withdrawn · per-request · live · evict · already-connected
-- `SessionID` (:238) — session · id · audit · digest · never-the-token · bearer-credential · attribution
-- `Decide` (:287) — decide · route · eval · forward-iff-cleared · record · fail-closed · approval-loop
-- `Covered` (:487) — coverage · accounted · gated · passthrough · top-level · heads
-- `CoverageGaps` (:531) — coverage · bind-time · schema · properties · unaccounted
+- `Route` (:54) — route · recipe · hash · gated-arg · for · a · tool
+- `Router` (:112) — router · advertised · name · to · route · unique-per-fleet
+- `Sink` (:115) — sink · egress · record · release · event · (egress.JSONLSink · / · broker.MemSink · satisfy · this)
+- `Decision` (:120) — decision · tool · verdict · forward · value · events · fault · approval-id
+- `Grant` (:149) — grant · one-shot · ephemeral · authorization · fingerprint · minted · burned · provenance
+- `GrantKey` (:179) — grant · key · fingerprint · run · identity · concurrent-runs · no-collision
+- `Authorizations` (:188) — authorizations · store · mint · redeem · sweep · ephemeral · one-shot · atomic
+- `Gate` (:216) — gate · routes · sink · deterministic · tool-boundary · approvals · notify · crossing-budget
+- `Revoked` (:253) — revoked · session · withdrawn · per-request · live · evict · already-connected
+- `SessionID` (:260) — session · id · audit · digest · never-the-token · bearer-credential · attribution
+- `Decide` (:309) — decide · route · eval · forward-iff-cleared · record · fail-closed · approval-loop
+- `Covered` (:509) — coverage · accounted · gated · passthrough · top-level · heads
+- `CoverageGaps` (:553) — coverage · bind-time · schema · properties · unaccounted
 
 ### `stoa-kernel/stag/proxy/sessiond/sessiond.go`
 Package sessiond is the stag-proxy v2 daemon surface: a standing HTTP server where each MCP session is bound to a dispatcher-chosen recipe (Planning/24 v2, /25). The TRUSTED dispatcher POSTs /sessions to bind a session t

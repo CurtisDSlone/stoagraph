@@ -2737,7 +2737,7 @@
             "a",
             "tool"
           ],
-          "line": 50,
+          "line": 54,
           "name": "Route"
         },
         {
@@ -2749,7 +2749,7 @@
             "route",
             "unique-per-fleet"
           ],
-          "line": 108,
+          "line": 112,
           "name": "Router"
         },
         {
@@ -2765,7 +2765,7 @@
             "satisfy",
             "this)"
           ],
-          "line": 111,
+          "line": 115,
           "name": "Sink"
         },
         {
@@ -2779,7 +2779,7 @@
             "fault",
             "approval-id"
           ],
-          "line": 116,
+          "line": 120,
           "name": "Decision"
         },
         {
@@ -2793,8 +2793,21 @@
             "burned",
             "provenance"
           ],
-          "line": 145,
+          "line": 149,
           "name": "Grant"
+        },
+        {
+          "kw": [
+            "grant",
+            "key",
+            "fingerprint",
+            "run",
+            "identity",
+            "concurrent-runs",
+            "no-collision"
+          ],
+          "line": 179,
+          "name": "GrantKey"
         },
         {
           "kw": [
@@ -2807,7 +2820,7 @@
             "one-shot",
             "atomic"
           ],
-          "line": 166,
+          "line": 188,
           "name": "Authorizations"
         },
         {
@@ -2821,7 +2834,7 @@
             "notify",
             "crossing-budget"
           ],
-          "line": 194,
+          "line": 216,
           "name": "Gate"
         },
         {
@@ -2834,7 +2847,7 @@
             "evict",
             "already-connected"
           ],
-          "line": 231,
+          "line": 253,
           "name": "Revoked"
         },
         {
@@ -2847,7 +2860,7 @@
             "bearer-credential",
             "attribution"
           ],
-          "line": 238,
+          "line": 260,
           "name": "SessionID"
         },
         {
@@ -2860,7 +2873,7 @@
             "fail-closed",
             "approval-loop"
           ],
-          "line": 287,
+          "line": 309,
           "name": "Decide"
         },
         {
@@ -2872,7 +2885,7 @@
             "top-level",
             "heads"
           ],
-          "line": 487,
+          "line": 509,
           "name": "Covered"
         },
         {
@@ -2883,7 +2896,7 @@
             "properties",
             "unaccounted"
           ],
-          "line": 531,
+          "line": 553,
           "name": "CoverageGaps"
         }
       ]
