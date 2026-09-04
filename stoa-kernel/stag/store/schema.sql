@@ -88,5 +88,6 @@ CREATE TABLE IF NOT EXISTS authorization_grant (
   fingerprint  TEXT PRIMARY KEY,               -- canonical tool+args: binds the EXACT call
   tool         TEXT NOT NULL,
   source       TEXT NOT NULL,                  -- the policy that minted it; never a person
+  session      TEXT NOT NULL DEFAULT '',       -- the bound session that may spend it; '' is NOT a wildcard
   created_at   TEXT NOT NULL DEFAULT ''
 );

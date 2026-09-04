@@ -15,6 +15,7 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
+	"sort"
 
 	_ "modernc.org/sqlite" // driver "sqlite", quarantined to this package
 )
@@ -110,10 +111,13 @@ func Open(path string) (*Store, error) {
 // the missing column and the remedy, because "no such column" from a live request does neither.
 // kw: schema guard no-migrations stale database refuse up-front actionable
 func checkSchema(db *sql.DB) error {
-	required := map[string][]string{
-		"route": {"sequenced"},
+	// column -> the DDL type it must have, so the suggested remedy is actually correct: a hint
+	// that produces a WRONG column is worse than no hint at all.
+	required := map[string]map[string]string{
+		"route":               {"sequenced": "INTEGER NOT NULL DEFAULT 0"},
+		"authorization_grant": {"session": "TEXT NOT NULL DEFAULT ''"},
 	}
-	for table, cols := range required {
+	for _, table := range sortedTables(required) {
 		have, err := tableColumns(db, table)
 		if err != nil {
 			return fmt.Errorf("store: inspect %s: %w", table, err)
@@ -121,16 +125,39 @@ func checkSchema(db *sql.DB) error {
 		if len(have) == 0 {
 			continue // the table did not pre-exist; the DDL just created it correctly
 		}
-		for _, c := range cols {
+		cols := required[table]
+		for _, c := range sortedCols(cols) {
 			if !have[c] {
 				return fmt.Errorf("store: this database predates the %q column on %q. "+
 					"The store has no migrations by design: back up the file and re-initialize it, "+
-					"or add the column with: ALTER TABLE %s ADD COLUMN %s INTEGER NOT NULL DEFAULT 0",
-					c, table, table, c)
+					"or add the column with: ALTER TABLE %s ADD COLUMN %s %s",
+					c, table, table, c, cols[c])
 			}
 		}
 	}
 	return nil
+}
+
+// sortedTables/sortedCols keep the guard's error DETERMINISTIC: Go map iteration is randomized,
+// and an operator comparing two runs must not see a different column named each time.
+// kw: sorted deterministic guard error
+func sortedTables(m map[string]map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// kw: sorted columns deterministic
+func sortedCols(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // kw: table columns pragma introspect

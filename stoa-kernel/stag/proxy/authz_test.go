@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
@@ -15,8 +16,10 @@ import (
 // replay refused — with a deterministic minter instead of a person. The provenance must stay
 // visible: nobody may later read a machine grant as though a human approved it.
 
-// a minimal in-memory Authorizations for the tests
+// a minimal in-memory Authorizations for the tests. The mutex is not incidental: Redeem must
+// be atomic or a one-shot grant can be double-spent under concurrency.
 type memAuthz struct {
+	mu     sync.Mutex
 	live   map[string]Grant
 	minted []Grant
 	burned []string
@@ -25,17 +28,46 @@ type memAuthz struct {
 func newMemAuthz() *memAuthz { return &memAuthz{live: map[string]Grant{}} }
 
 func (m *memAuthz) Mint(_ context.Context, g Grant) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.live[g.Fingerprint] = g
 	m.minted = append(m.minted, g)
 	return nil
 }
-func (m *memAuthz) Lookup(_ context.Context, fp string) (Grant, bool, error) {
+
+func (m *memAuthz) Redeem(_ context.Context, fp, session string) (Grant, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	g, ok := m.live[fp]
-	return g, ok, nil
-}
-func (m *memAuthz) Burn(_ context.Context, fp string) error {
-	delete(m.live, fp)
+	if !ok || g.Session != session { // another session's grant is neither redeemed nor consumed
+		return Grant{}, false, nil
+	}
+	delete(m.live, fp) // found and removed in ONE critical section
 	m.burned = append(m.burned, fp)
+	return g, true, nil
+}
+
+func (m *memAuthz) Restore(_ context.Context, g Grant) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.live[g.Fingerprint] = g
+	for i, fp := range m.burned {
+		if fp == g.Fingerprint {
+			m.burned = append(m.burned[:i], m.burned[i+1:]...)
+			break
+		}
+	}
+	return nil
+}
+
+func (m *memAuthz) Sweep(_ context.Context, session string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for fp, g := range m.live {
+		if g.Session == session {
+			delete(m.live, fp)
+		}
+	}
 	return nil
 }
 
@@ -74,11 +106,12 @@ func TestGrantMakesTheExactCallReachable(t *testing.T) {
 	az := newMemAuthz()
 	args := map[string]string{"image": "badport"}
 	fp := Fingerprint("lab__fix", args)
-	_ = az.Mint(context.Background(), Grant{Fingerprint: fp, Tool: "lab__fix", Source: "policy:lab_repair_badport"})
+	_ = az.Mint(context.Background(), Grant{Fingerprint: fp, Tool: "lab__fix", Source: "policy:lab_repair_badport", Session: "s"})
 
 	g := Gate{
 		Routes:         Router{"lab__fix": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "image", Sequenced: true}},
 		Authorizations: az,
+		Session:        "s",
 	}
 	d := g.Decide(context.Background(), ToolCall{Tool: "lab__fix", Args: args})
 	if !d.Forward {
@@ -92,11 +125,12 @@ func TestGrantDoesNotBypassTheRecipe(t *testing.T) {
 	r := labRecipe(t) // only "badport" clears
 	az := newMemAuthz()
 	args := map[string]string{"image": "/etc/shadow"}
-	_ = az.Mint(context.Background(), Grant{Fingerprint: Fingerprint("lab__fix", args), Tool: "lab__fix", Source: "policy:x"})
+	_ = az.Mint(context.Background(), Grant{Fingerprint: Fingerprint("lab__fix", args), Tool: "lab__fix", Source: "policy:x", Session: "s"})
 
 	g := Gate{
 		Routes:         Router{"lab__fix": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "image", Sequenced: true}},
 		Authorizations: az,
+		Session:        "s",
 	}
 	d := g.Decide(context.Background(), ToolCall{Tool: "lab__fix", Args: args})
 	if d.Forward {
@@ -110,11 +144,12 @@ func TestGrantIsBoundToItsArguments(t *testing.T) {
 	r := labRecipe(t)
 	az := newMemAuthz()
 	granted := map[string]string{"image": "badport"}
-	_ = az.Mint(context.Background(), Grant{Fingerprint: Fingerprint("lab__fix", granted), Tool: "lab__fix", Source: "policy:x"})
+	_ = az.Mint(context.Background(), Grant{Fingerprint: Fingerprint("lab__fix", granted), Tool: "lab__fix", Source: "policy:x", Session: "s"})
 
 	g := Gate{
 		Routes:         Router{"lab__fix": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "image", Sequenced: true}},
 		Authorizations: az,
+		Session:        "s",
 	}
 	// same tool, same rule-passing value, but a DIFFERENT argument set than was granted
 	other := map[string]string{"image": "badport", "extra": "x"}
@@ -130,11 +165,12 @@ func TestGrantIsSpentOnUse(t *testing.T) {
 	az := newMemAuthz()
 	args := map[string]string{"image": "badport"}
 	fp := Fingerprint("lab__fix", args)
-	_ = az.Mint(context.Background(), Grant{Fingerprint: fp, Tool: "lab__fix", Source: "policy:x"})
+	_ = az.Mint(context.Background(), Grant{Fingerprint: fp, Tool: "lab__fix", Source: "policy:x", Session: "s"})
 
 	g := Gate{
 		Routes:         Router{"lab__fix": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "image", Sequenced: true}},
 		Authorizations: az,
+		Session:        "s",
 	}
 	if d := g.Decide(context.Background(), ToolCall{Tool: "lab__fix", Args: args}); !d.Forward {
 		t.Fatal("first call must forward")
@@ -154,11 +190,12 @@ func TestDeniedCallDoesNotBurnTheGrant(t *testing.T) {
 	az := newMemAuthz()
 	args := map[string]string{"image": "/etc/shadow"} // recipe refuses this
 	fp := Fingerprint("lab__fix", args)
-	_ = az.Mint(context.Background(), Grant{Fingerprint: fp, Tool: "lab__fix", Source: "policy:x"})
+	_ = az.Mint(context.Background(), Grant{Fingerprint: fp, Tool: "lab__fix", Source: "policy:x", Session: "s"})
 
 	g := Gate{
 		Routes:         Router{"lab__fix": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "image", Sequenced: true}},
 		Authorizations: az,
+		Session:        "s",
 	}
 	g.Decide(context.Background(), ToolCall{Tool: "lab__fix", Args: args})
 	if len(az.burned) != 0 {
@@ -195,8 +232,8 @@ func TestNoAuthorizationStoreFailsClosed(t *testing.T) {
 // never read it as a human approval.
 func TestGrantRecordsItsMinter(t *testing.T) {
 	az := newMemAuthz()
-	_ = az.Mint(context.Background(), Grant{Fingerprint: "fp", Tool: "t", Source: "policy:lab_repair_badport"})
-	g, ok, _ := az.Lookup(context.Background(), "fp")
+	_ = az.Mint(context.Background(), Grant{Fingerprint: "fp", Tool: "t", Source: "policy:lab_repair_badport", Session: "s"})
+	g, ok, _ := az.Redeem(context.Background(), "fp", "s")
 	if !ok || g.Source == "" {
 		t.Fatal("a grant must name what minted it")
 	}

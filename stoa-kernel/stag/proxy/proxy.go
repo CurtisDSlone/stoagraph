@@ -142,18 +142,40 @@ type Grant struct {
 	Fingerprint string // Fingerprint(tool, args): binds the EXACT call
 	Tool        string
 	Source      string // what minted it, e.g. "policy:lab_repair_badport" — never "human"
+	// Session is the bound session whose sequence minted this grant. A grant is spendable
+	// ONLY by that session: sessions are the unit of authority in this product (a session is
+	// a grant, not a connection), so an authorization that floated free of the session that
+	// minted it would let one agent spend another agent's permission.
+	//
+	// The empty string is NOT a wildcard. A grant with no session cannot satisfy a
+	// session-bound call — "unset" must never widen to "any" (inv 8).
+	Session string
 }
 
-// Authorizations is the ephemeral-grant store. It is deliberately the same shape as Approvals:
-// mint, look up, burn.
-// kw: authorizations store mint lookup burn ephemeral one-shot
+// Authorizations is the ephemeral-grant store.
+// kw: authorizations store mint redeem sweep ephemeral one-shot atomic
 type Authorizations interface {
 	// Mint records a grant for exactly one call.
 	Mint(ctx context.Context, g Grant) error
-	// Lookup returns the live grant for a fingerprint, if one is outstanding.
-	Lookup(ctx context.Context, fingerprint string) (Grant, bool, error)
-	// Burn spends a grant. A replay then finds nothing and is denied.
-	Burn(ctx context.Context, fingerprint string) error
+	// Redeem CLAIMS a grant for `session` and returns it, atomically: a grant is removed by the
+	// same operation that finds it, so concurrent callers cannot both succeed.
+	//
+	// This is one method rather than Lookup-then-Burn on purpose. A check followed by a separate
+	// spend is a TOCTOU window, and under concurrency that window is wide enough to double-spend
+	// a one-shot authorization — measured at 2 forwards from a single grant across 32 racing
+	// calls before this was atomic. A one-shot grant that can authorize two non-idempotent
+	// actions is not one-shot.
+	//
+	// A grant belonging to another session is NOT redeemed and NOT consumed: another agent's
+	// failed attempt must not spend the owner's authorization.
+	Redeem(ctx context.Context, fingerprint, session string) (Grant, bool, error)
+	// Restore returns a redeemed grant when the call it covered did not happen after all (the
+	// gate refused it downstream of the claim). The authorization is still owed.
+	Restore(ctx context.Context, g Grant) error
+	// Sweep discards every outstanding grant for a session. A sequence that dies between minting
+	// and calling would otherwise leave a live authorization behind, and a one-shot grant with no
+	// expiry is a standing one.
+	Sweep(ctx context.Context, session string) error
 }
 
 // kw: gate routes sink deterministic tool-boundary approvals notify crossing-budget
@@ -270,13 +292,18 @@ func (g Gate) Decide(ctx context.Context, call ToolCall) Decision {
 	//
 	// A nil store means no grant can exist, so every unadvertised route is unreachable — absent
 	// machinery fails closed (inv 8).
-	grantFP := ""
+	var claimed *Grant
 	if route.Sequenced {
-		fp := Fingerprint(call.Tool, call.Args)
+		// CLAIM the grant atomically: found and removed in one operation, and only if it belongs
+		// to THIS session. A separate check-then-spend would leave a window in which two racing
+		// calls both pass the check, which double-spends a one-shot authorization.
+		//
+		// If the recipe then refuses the call, the grant is RESTORED below: the call did not
+		// happen, so the authorization is still owed.
 		ok := false
 		if g.Authorizations != nil {
-			if _, live, err := g.Authorizations.Lookup(ctx, fp); err == nil && live {
-				ok, grantFP = true, fp
+			if gr, got, err := g.Authorizations.Redeem(ctx, Fingerprint(call.Tool, call.Args), g.Session); err == nil && got {
+				ok, claimed = true, &gr
 			}
 		}
 		if !ok {
@@ -284,6 +311,12 @@ func (g Gate) Decide(ctx context.Context, call ToolCall) Decision {
 				Fault: "no live authorization for " + call.Tool + " (unadvertised: reachable only from the sequence that authorizes it)"}
 			g.record(ctx, d, route.RecipeName, route.RecipeHash)
 			return d
+		}
+	}
+	// restoreGrant returns a claimed grant on any path that does NOT forward the call.
+	restoreGrant := func() {
+		if claimed != nil && g.Authorizations != nil {
+			_ = g.Authorizations.Restore(ctx, *claimed)
 		}
 	}
 
@@ -302,6 +335,7 @@ func (g Gate) Decide(ctx context.Context, call ToolCall) Decision {
 	// Without this, a policy that gates `to` on wire_transfer(to, amount) looks complete and lets any
 	// `amount` through. The tool is routed, the listed path clears, and the effect is unbounded.
 	if cerr := coverage(route, call); cerr != nil {
+		restoreGrant() // the call did not happen; the authorization is still owed
 		d := Decision{Tool: call.Tool, Verdict: stag.Deny, Forward: false, Fault: cerr.Error()}
 		g.record(ctx, d, route.RecipeName, route.RecipeHash)
 		return d
@@ -312,6 +346,7 @@ func (g Gate) Decide(ctx context.Context, call ToolCall) Decision {
 		// A path that lands on an object, or on an array without [], cannot be judged. Denying is the
 		// only honest answer — the alternative is to stringify the composite and pretend a rule looked
 		// at it, which is the bug this replaced.
+		restoreGrant()
 		d := Decision{Tool: call.Tool, Verdict: stag.Deny, Forward: false, Fault: perr.Error()}
 		g.record(ctx, d, route.RecipeName, route.RecipeHash)
 		return d
@@ -338,6 +373,7 @@ func (g Gate) Decide(ctx context.Context, call ToolCall) Decision {
 	res, everr := evalSlots(recipe, slots, route.RecipeHash, strings.Contains(route.GateArg, ","))
 	if everr != nil {
 		// a deny: withhold the raw proposed value from the signed log (see redactedValue).
+		restoreGrant()
 		d := Decision{Tool: call.Tool, Verdict: stag.Deny, Forward: false, Value: redactedValue(slots), Fault: everr.Error()}
 		g.record(ctx, d, route.RecipeName, route.RecipeHash)
 		return d
@@ -376,12 +412,10 @@ func (g Gate) Decide(ctx context.Context, call ToolCall) Decision {
 	// boundary states it again so no caller can read a sequence off a call that was denied.
 	if forward {
 		d.Authorized = res.Authorized
-		// Spend the grant: it authorized ONE call and that call is now happening. A refused call
-		// does NOT burn — it never happened, so the authorization is still owed and expires with
-		// its sequence rather than with a refusal.
-		if grantFP != "" && g.Authorizations != nil {
-			_ = g.Authorizations.Burn(ctx, grantFP)
-		}
+		// The grant was already claimed (removed) at the start; forwarding KEEPS it spent.
+	} else {
+		// a refused call did not happen, so the authorization is still owed
+		restoreGrant()
 	}
 	g.record(ctx, d, route.RecipeName, route.RecipeHash)
 	return d

@@ -405,6 +405,7 @@ func executeAuthorized(ctx context.Context, gate proxy.Gate, fleet Fleet, dec pr
 				Fingerprint: proxy.Fingerprint(c.Tool, c.Args),
 				Tool:        c.Tool,
 				Source:      "policy:" + dec.Tool, // the plan that authorized it — never "human"
+				Session:     gate.Session,         // spendable ONLY by the session running this sequence
 			})
 		}
 		sd := gate.Decide(ctx, sub) // THE re-crossing: the target's own route and recipe
@@ -428,6 +429,12 @@ func executeAuthorized(ctx context.Context, gate proxy.Gate, fleet Fleet, dec pr
 			break
 		}
 		fmt.Fprintf(&b, "  %-10s %-16s made: %s\n", c.StepID, c.Tool, firstLine(textOf(out)))
+	}
+	// The sequence is over, whatever its outcome. Sweep any grant it minted and did not spend —
+	// a crash between minting and calling would otherwise leave a live authorization behind, and
+	// a one-shot grant that outlives its sequence is a standing one.
+	if gate.Authorizations != nil {
+		_ = gate.Authorizations.Sweep(ctx, gate.Session)
 	}
 	if halted != "" {
 		fmt.Fprintf(&b, "sequence HALTED at %q; earlier steps already ran and were not rolled back\n", halted)

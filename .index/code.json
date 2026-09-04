@@ -2267,7 +2267,7 @@
             "tool-error",
             "render"
           ],
-          "line": 442,
+          "line": 449,
           "name": "callErr"
         },
         {
@@ -2278,7 +2278,7 @@
             "content",
             "concat"
           ],
-          "line": 451,
+          "line": 458,
           "name": "textOf"
         },
         {
@@ -2290,7 +2290,7 @@
             "authorized",
             "call"
           ],
-          "line": 466,
+          "line": 473,
           "name": "rawArgs"
         },
         {
@@ -2305,7 +2305,7 @@
             "agent-visible",
             "summary"
           ],
-          "line": 479,
+          "line": 486,
           "name": "firstLine"
         }
       ]
@@ -2495,12 +2495,13 @@
             "authorizations",
             "store",
             "mint",
-            "lookup",
-            "burn",
+            "redeem",
+            "sweep",
             "ephemeral",
-            "one-shot"
+            "one-shot",
+            "atomic"
           ],
-          "line": 150,
+          "line": 157,
           "name": "Authorizations"
         },
         {
@@ -2514,7 +2515,7 @@
             "notify",
             "crossing-budget"
           ],
-          "line": 160,
+          "line": 182,
           "name": "Gate"
         },
         {
@@ -2527,7 +2528,7 @@
             "evict",
             "already-connected"
           ],
-          "line": 197,
+          "line": 219,
           "name": "Revoked"
         },
         {
@@ -2540,7 +2541,7 @@
             "bearer-credential",
             "attribution"
           ],
-          "line": 204,
+          "line": 226,
           "name": "SessionID"
         },
         {
@@ -2553,7 +2554,7 @@
             "fail-closed",
             "approval-loop"
           ],
-          "line": 253,
+          "line": 275,
           "name": "Decide"
         },
         {
@@ -2565,7 +2566,7 @@
             "top-level",
             "heads"
           ],
-          "line": 439,
+          "line": 473,
           "name": "Covered"
         },
         {
@@ -2576,7 +2577,7 @@
             "properties",
             "unaccounted"
           ],
-          "line": 483,
+          "line": 517,
           "name": "CoverageGaps"
         }
       ]
@@ -3831,11 +3832,12 @@
         "ephemeral",
         "one-shot",
         "mint",
-        "lookup",
-        "burn",
-        "sequenced",
-        "route",
-        "provenance"
+        "redeem",
+        "restore",
+        "sweep",
+        "session",
+        "atomic",
+        "sequenced"
       ],
       "layer": "gate",
       "package": "store",
@@ -3847,31 +3849,46 @@
             "grant",
             "one-shot",
             "replace",
-            "not-stack"
+            "not-stack",
+            "session-owned"
           ],
           "line": 18,
           "name": "Mint"
         },
         {
           "kw": [
-            "lookup",
-            "grant",
-            "live",
-            "outstanding"
+            "redeem",
+            "atomic",
+            "delete-returning",
+            "claim",
+            "session-scoped",
+            "no-toctou"
           ],
-          "line": 28,
-          "name": "Lookup"
+          "line": 36,
+          "name": "Redeem"
         },
         {
           "kw": [
-            "burn",
+            "restore",
             "grant",
-            "spend",
-            "one-time",
-            "replay-denied"
+            "refused",
+            "call",
+            "still-owed"
           ],
-          "line": 44,
-          "name": "Burn"
+          "line": 54,
+          "name": "Restore"
+        },
+        {
+          "kw": [
+            "sweep",
+            "session",
+            "grants",
+            "abandoned",
+            "expire",
+            "no-standing-authorization"
+          ],
+          "line": 62,
+          "name": "Sweep"
         }
       ]
     },
@@ -3904,7 +3921,7 @@
             "tools",
             "downstream-auth"
           ],
-          "line": 26,
+          "line": 27,
           "name": "MCPServer"
         },
         {
@@ -3916,7 +3933,7 @@
             "input",
             "schema"
           ],
-          "line": 53,
+          "line": 54,
           "name": "MCPTool"
         },
         {
@@ -3928,7 +3945,7 @@
             "config",
             "enabled"
           ],
-          "line": 60,
+          "line": 61,
           "name": "ContextProvider"
         },
         {
@@ -3939,7 +3956,7 @@
             "gate-arg",
             "binding"
           ],
-          "line": 68,
+          "line": 69,
           "name": "Route"
         },
         {
@@ -3949,7 +3966,7 @@
             "db",
             "handle"
           ],
-          "line": 80,
+          "line": 81,
           "name": "Store"
         },
         {
@@ -3962,7 +3979,7 @@
             "no-migrations",
             "single-conn"
           ],
-          "line": 85,
+          "line": 86,
           "name": "Open"
         },
         {
@@ -3976,8 +3993,27 @@
             "up-front",
             "actionable"
           ],
-          "line": 112,
+          "line": 113,
           "name": "checkSchema"
+        },
+        {
+          "kw": [
+            "sorted",
+            "deterministic",
+            "guard",
+            "error"
+          ],
+          "line": 144,
+          "name": "sortedTables"
+        },
+        {
+          "kw": [
+            "sorted",
+            "columns",
+            "deterministic"
+          ],
+          "line": 154,
+          "name": "sortedCols"
         },
         {
           "kw": [
@@ -3986,7 +4022,7 @@
             "pragma",
             "introspect"
           ],
-          "line": 137,
+          "line": 164,
           "name": "tableColumns"
         },
         {
@@ -3994,7 +4030,7 @@
             "close",
             "db"
           ],
-          "line": 155,
+          "line": 182,
           "name": "Close"
         },
         {
@@ -4008,7 +4044,7 @@
             "transaction",
             "atomic"
           ],
-          "line": 165,
+          "line": 192,
           "name": "PutMCPServer"
         },
         {
@@ -4021,7 +4057,7 @@
             "not-found",
             "fail-closed"
           ],
-          "line": 197,
+          "line": 224,
           "name": "GetMCPServer"
         },
         {
@@ -4031,7 +4067,7 @@
             "server",
             "ordered"
           ],
-          "line": 216,
+          "line": 243,
           "name": "toolsFor"
         },
         {
@@ -4043,7 +4079,7 @@
             "with",
             "tools"
           ],
-          "line": 235,
+          "line": 262,
           "name": "ListMCPServers"
         },
         {
@@ -4055,7 +4091,7 @@
             "tools",
             "transaction"
           ],
-          "line": 267,
+          "line": 294,
           "name": "DeleteMCPServer"
         },
         {
@@ -4064,7 +4100,7 @@
             "provider",
             "upsert"
           ],
-          "line": 283,
+          "line": 310,
           "name": "PutProvider"
         },
         {
@@ -4073,7 +4109,7 @@
             "providers",
             "ordered"
           ],
-          "line": 295,
+          "line": 322,
           "name": "ListProviders"
         },
         {
@@ -4081,7 +4117,7 @@
             "delete",
             "provider"
           ],
-          "line": 315,
+          "line": 342,
           "name": "DeleteProvider"
         },
         {
@@ -4092,7 +4128,7 @@
             "by",
             "tool+server"
           ],
-          "line": 326,
+          "line": 353,
           "name": "PutRoute"
         },
         {
@@ -4101,7 +4137,7 @@
             "routes",
             "ordered"
           ],
-          "line": 338,
+          "line": 365,
           "name": "ListRoutes"
         },
         {
@@ -4111,7 +4147,7 @@
             "by",
             "tool+server"
           ],
-          "line": 359,
+          "line": 386,
           "name": "DeleteRoute"
         }
       ]

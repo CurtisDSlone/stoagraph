@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
@@ -41,21 +42,51 @@ steps:
   - {id: s, kind: sink, in: name, field: step.name, sensitivity: authoritative, rule: tight, actor: "policy:step"}
 `
 
-// memAuthz is a minimal in-memory grant store for the sequenced-route tests.
-type memAuthz struct{ live map[string]proxy.Grant }
+// memAuthz is a minimal in-memory grant store for the sequenced-route tests. Redeem holds the
+// lock across find-and-remove: a check-then-spend pair can double-spend a one-shot grant.
+type memAuthz struct {
+	mu   sync.Mutex
+	live map[string]proxy.Grant
+}
 
 func (m *memAuthz) Mint(_ context.Context, g proxy.Grant) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.live == nil {
 		m.live = map[string]proxy.Grant{}
 	}
 	m.live[g.Fingerprint] = g
 	return nil
 }
-func (m *memAuthz) Lookup(_ context.Context, fp string) (proxy.Grant, bool, error) {
+
+func (m *memAuthz) Redeem(_ context.Context, fp, session string) (proxy.Grant, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	g, ok := m.live[fp]
-	return g, ok, nil
+	if !ok || g.Session != session {
+		return proxy.Grant{}, false, nil
+	}
+	delete(m.live, fp)
+	return g, true, nil
 }
-func (m *memAuthz) Burn(_ context.Context, fp string) error { delete(m.live, fp); return nil }
+
+func (m *memAuthz) Restore(_ context.Context, g proxy.Grant) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.live[g.Fingerprint] = g
+	return nil
+}
+
+func (m *memAuthz) Sweep(_ context.Context, session string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for fp, g := range m.live {
+		if g.Session == session {
+			delete(m.live, fp)
+		}
+	}
+	return nil
+}
 
 func planTestRigSequenced(t *testing.T) (context.Context, *mcp.ClientSession, *[]string) {
 	return buildPlanRig(t, true)
@@ -78,6 +109,7 @@ func buildPlanRigSink(t *testing.T, sequenced bool, onRec func(stag.DecisionReco
 	t.Helper()
 	ctx := context.Background()
 	var ran []string
+	var ranMu sync.Mutex // the downstream handler is entered concurrently by parallel sequences
 
 	var schema any = json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`)
 	var planSchema any = json.RawMessage(`{"type":"object","properties":{"which":{"type":"string"}},"required":["which"]}`)
@@ -89,14 +121,18 @@ func buildPlanRigSink(t *testing.T, sequenced bool, onRec func(stag.DecisionReco
 			func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				var m map[string]any
 				_ = json.Unmarshal(req.Params.Arguments, &m)
+				ranMu.Lock()
 				ran = append(ran, fmt.Sprintf("%s(%v)", name, m["name"]))
+				ranMu.Unlock()
 				return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "ok:" + name}}}, nil
 			})
 	}
 	// the PLAN tool: it takes the proposal and has no downstream work of its own
 	down.AddTool(&mcp.Tool{Name: "do_plan", Description: "plan", InputSchema: planSchema},
 		func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			ranMu.Lock()
 			ran = append(ran, "PLAN-TOOL-ITSELF-RAN")
+			ranMu.Unlock()
 			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "plan"}}}, nil
 		})
 
@@ -300,4 +336,47 @@ func TestGuessingASequencedToolIsRecorded(t *testing.T) {
 	if !found {
 		t.Fatalf("the attempt must be recorded as a denial, got %d record(s)", len(recorded))
 	}
+}
+
+// The end-of-sequence sweep must not disturb a CONCURRENT sequence on the same session. Sweep
+// is scoped to a session, and two sequences can share one — so a naive sweep would delete the
+// other sequence's outstanding grant mid-flight.
+func TestConcurrentSequencesOnOneSessionBothComplete(t *testing.T) {
+	ctx, sess, ran := planTestRigSequenced(t)
+	var wg sync.WaitGroup
+	errs := make(chan string, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			res, err := sess.CallTool(ctx, &mcp.CallToolParams{
+				Name: proxy.AdvertisedName("d", "do_plan"), Arguments: json.RawMessage(`{"which":"alpha"}`)})
+			if err != nil {
+				errs <- "call error: " + err.Error()
+				return
+			}
+			if res.IsError {
+				errs <- "sequence did not complete: " + textOfContent(res)
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
+	}
+	// two sequences of two steps each
+	if len(*ran) != 4 {
+		t.Errorf("both sequences must run every step: %v", *ran)
+	}
+}
+
+func textOfContent(res *mcp.CallToolResult) string {
+	var b strings.Builder
+	for _, c := range res.Content {
+		if tc, ok := c.(*mcp.TextContent); ok {
+			b.WriteString(tc.Text)
+		}
+	}
+	return b.String()
 }

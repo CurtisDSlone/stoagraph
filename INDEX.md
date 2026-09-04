@@ -213,10 +213,10 @@ Package mcpgate is the quarantined MCP adapter for the gating proxy (Planning/17
 
 - `SchemaArgs` (:124) — schema · args · properties · json-schema · top-level · bind-time · coverage
 - `executeAuthorized` (:387) — execute · authorized · plan · sequence · re-cross · halt · report · agent
-- `callErr` (:442) — call · error · transport · tool-error · render
-- `textOf` (:451) — text · of · result · content · concat
-- `rawArgs` (:466) — raw · args · json · encode · authorized · call
-- `firstLine` (:479) — first · line · truncate · tool · output · for · the · agent-visible · summary
+- `callErr` (:449) — call · error · transport · tool-error · render
+- `textOf` (:458) — text · of · result · content · concat
+- `rawArgs` (:473) — raw · args · json · encode · authorized · call
+- `firstLine` (:486) — first · line · truncate · tool · output · for · the · agent-visible · summary
 
 ### `stoa-kernel/stag/proxy/mcpgate/mcpresource.go`
 
@@ -241,13 +241,13 @@ Package proxy is the gating-proxy core (Planning/17, Slice 0): the transport-agn
 - `Sink` (:111) — sink · egress · record · release · event · (egress.JSONLSink · / · broker.MemSink · satisfy · this)
 - `Decision` (:116) — decision · tool · verdict · forward · value · events · fault · approval-id
 - `Grant` (:141) — grant · one-shot · ephemeral · authorization · fingerprint · minted · burned · provenance
-- `Authorizations` (:150) — authorizations · store · mint · lookup · burn · ephemeral · one-shot
-- `Gate` (:160) — gate · routes · sink · deterministic · tool-boundary · approvals · notify · crossing-budget
-- `Revoked` (:197) — revoked · session · withdrawn · per-request · live · evict · already-connected
-- `SessionID` (:204) — session · id · audit · digest · never-the-token · bearer-credential · attribution
-- `Decide` (:253) — decide · route · eval · forward-iff-cleared · record · fail-closed · approval-loop
-- `Covered` (:439) — coverage · accounted · gated · passthrough · top-level · heads
-- `CoverageGaps` (:483) — coverage · bind-time · schema · properties · unaccounted
+- `Authorizations` (:157) — authorizations · store · mint · redeem · sweep · ephemeral · one-shot · atomic
+- `Gate` (:182) — gate · routes · sink · deterministic · tool-boundary · approvals · notify · crossing-budget
+- `Revoked` (:219) — revoked · session · withdrawn · per-request · live · evict · already-connected
+- `SessionID` (:226) — session · id · audit · digest · never-the-token · bearer-credential · attribution
+- `Decide` (:275) — decide · route · eval · forward-iff-cleared · record · fail-closed · approval-loop
+- `Covered` (:473) — coverage · accounted · gated · passthrough · top-level · heads
+- `CoverageGaps` (:517) — coverage · bind-time · schema · properties · unaccounted
 
 ### `stoa-kernel/stag/proxy/sessiond/sessiond.go`
 Package sessiond is the stag-proxy v2 daemon surface: a standing HTTP server where each MCP session is bound to a dispatcher-chosen recipe (Planning/24 v2, /25). The TRUSTED dispatcher POSTs /sessions to bind a session t
@@ -401,37 +401,40 @@ Package stag is the public entry point to the StAG kernel: Eval, the recipe eval
 
 ### `stoa-kernel/stag/store/authz.go`
 
-**kw:** authorization · grant · ephemeral · one-shot · mint · lookup · burn · sequenced · route · provenance
+**kw:** authorization · grant · ephemeral · one-shot · mint · redeem · restore · sweep · session · atomic · sequenced
 
-- `Mint` (:18) — mint · grant · one-shot · replace · not-stack
-- `Lookup` (:28) — lookup · grant · live · outstanding
-- `Burn` (:44) — burn · grant · spend · one-time · replay-denied
+- `Mint` (:18) — mint · grant · one-shot · replace · not-stack · session-owned
+- `Redeem` (:36) — redeem · atomic · delete-returning · claim · session-scoped · no-toctou
+- `Restore` (:54) — restore · grant · refused · call · still-owed
+- `Sweep` (:62) — sweep · session · grants · abandoned · expire · no-standing-authorization
 
 ### `stoa-kernel/stag/store/store.go`
 Package store is the SQLite config store for the admin console's Adapters (Planning/18): the persisted, RELATIONAL config that the file-based recipes bind to — MCP servers (+ their tools), context providers, and routes (
 
 **kw:** sqlite · config · store · adapters · mcp-server · context-provider · route · ddl · no-migrations · quarantined
 
-- `MCPServer` (:26) — mcp · server · name · transport · target · enabled · tools · downstream-auth
-- `MCPTool` (:53) — mcp · tool · server · name · input · schema
-- `ContextProvider` (:60) — context · provider · name · kind · config · enabled
-- `Route` (:68) — route · tool · recipe · gate-arg · binding
-- `Store` (:80) — store · sqlite · db · handle
-- `Open` (:85) — open · create · run · ddl · fail-closed · no-migrations · single-conn
-- `checkSchema` (:112) — schema · guard · no-migrations · stale · database · refuse · up-front · actionable
-- `tableColumns` (:137) — table · columns · pragma · introspect
-- `Close` (:155) — close · db
-- `PutMCPServer` (:165) — put · mcp · server · upsert · replace · tools · transaction · atomic
-- `GetMCPServer` (:197) — get · mcp · server · with · tools · not-found · fail-closed
-- `toolsFor` (:216) — tools · for · server · ordered
-- `ListMCPServers` (:235) — list · mcp · servers · ordered · with · tools
-- `DeleteMCPServer` (:267) — delete · mcp · server · and · tools · transaction
-- `PutProvider` (:283) — put · provider · upsert
-- `ListProviders` (:295) — list · providers · ordered
-- `DeleteProvider` (:315) — delete · provider
-- `PutRoute` (:326) — put · route · upsert · by · tool+server
-- `ListRoutes` (:338) — list · routes · ordered
-- `DeleteRoute` (:359) — delete · route · by · tool+server
+- `MCPServer` (:27) — mcp · server · name · transport · target · enabled · tools · downstream-auth
+- `MCPTool` (:54) — mcp · tool · server · name · input · schema
+- `ContextProvider` (:61) — context · provider · name · kind · config · enabled
+- `Route` (:69) — route · tool · recipe · gate-arg · binding
+- `Store` (:81) — store · sqlite · db · handle
+- `Open` (:86) — open · create · run · ddl · fail-closed · no-migrations · single-conn
+- `checkSchema` (:113) — schema · guard · no-migrations · stale · database · refuse · up-front · actionable
+- `sortedTables` (:144) — sorted · deterministic · guard · error
+- `sortedCols` (:154) — sorted · columns · deterministic
+- `tableColumns` (:164) — table · columns · pragma · introspect
+- `Close` (:182) — close · db
+- `PutMCPServer` (:192) — put · mcp · server · upsert · replace · tools · transaction · atomic
+- `GetMCPServer` (:224) — get · mcp · server · with · tools · not-found · fail-closed
+- `toolsFor` (:243) — tools · for · server · ordered
+- `ListMCPServers` (:262) — list · mcp · servers · ordered · with · tools
+- `DeleteMCPServer` (:294) — delete · mcp · server · and · tools · transaction
+- `PutProvider` (:310) — put · provider · upsert
+- `ListProviders` (:322) — list · providers · ordered
+- `DeleteProvider` (:342) — delete · provider
+- `PutRoute` (:353) — put · route · upsert · by · tool+server
+- `ListRoutes` (:365) — list · routes · ordered
+- `DeleteRoute` (:386) — delete · route · by · tool+server
 
 ## orchestrator
 
