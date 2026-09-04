@@ -89,5 +89,6 @@ CREATE TABLE IF NOT EXISTS authorization_grant (
   tool         TEXT NOT NULL,
   source       TEXT NOT NULL,                  -- the policy that minted it; never a person
   session      TEXT NOT NULL DEFAULT '',       -- the bound session that may spend it; '' is NOT a wildcard
+  run          TEXT NOT NULL DEFAULT '',       -- the ONE sequence execution that minted it
   created_at   TEXT NOT NULL DEFAULT ''
 );

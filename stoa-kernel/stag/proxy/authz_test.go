@@ -60,11 +60,11 @@ func (m *memAuthz) Restore(_ context.Context, g Grant) error {
 	return nil
 }
 
-func (m *memAuthz) Sweep(_ context.Context, session string) error {
+func (m *memAuthz) Sweep(_ context.Context, session, run string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for fp, g := range m.live {
-		if g.Session == session {
+		if g.Session == session && g.Run == run {
 			delete(m.live, fp)
 		}
 	}

@@ -145,15 +145,15 @@ func TestSweepIsScopedToItsSession(t *testing.T) {
 	s := authzStore(t)
 	ctx := context.Background()
 	for _, g := range []proxy.Grant{
-		{Fingerprint: "a1", Tool: "t", Source: "p", Session: "doomed"},
-		{Fingerprint: "a2", Tool: "t", Source: "p", Session: "doomed"},
-		{Fingerprint: "b1", Tool: "t", Source: "p", Session: "other"},
+		{Fingerprint: "a1", Tool: "t", Source: "p", Session: "doomed", Run: "r1"},
+		{Fingerprint: "a2", Tool: "t", Source: "p", Session: "doomed", Run: "r1"},
+		{Fingerprint: "b1", Tool: "t", Source: "p", Session: "other", Run: "r2"},
 	} {
 		if err := s.Mint(ctx, g); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := s.Sweep(ctx, "doomed"); err != nil {
+	if err := s.Sweep(ctx, "doomed", "r1"); err != nil {
 		t.Fatal(err)
 	}
 	for _, fp := range []string{"a1", "a2"} {

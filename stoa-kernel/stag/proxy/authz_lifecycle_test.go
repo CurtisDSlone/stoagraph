@@ -95,10 +95,10 @@ func TestGrantDoesNotOutliveItsSequence(t *testing.T) {
 
 	// a sequence mints a grant and then never uses it (the process died)
 	_ = az.Mint(context.Background(), Grant{
-		Fingerprint: fp, Tool: "lab__fix", Source: "policy:seq", Session: "s1"})
+		Fingerprint: fp, Tool: "lab__fix", Source: "policy:seq", Session: "s1", Run: "run-1"})
 
 	// the sequence is over. Whatever ends it must have released the grant.
-	if err := az.Sweep(context.Background(), "s1"); err != nil {
+	if err := az.Sweep(context.Background(), "s1", "run-1"); err != nil {
 		t.Fatal(err)
 	}
 	g := lifecycleGate(az, "s1")
@@ -118,5 +118,32 @@ func TestSessionlessGrantIsNotAWildcard(t *testing.T) {
 	g := lifecycleGate(az, "session-A")
 	if d := g.Decide(context.Background(), ToolCall{Tool: "lab__fix", Args: args}); d.Forward {
 		t.Fatal("a grant with no session must not satisfy a session-bound call")
+	}
+}
+
+// HOLE 4 — SWEEP IS TOO COARSE. Two sequences can share one session, so sweeping by session
+// deletes a CONCURRENT sequence's outstanding grant mid-flight and halts it for no policy
+// reason. A grant belongs to the RUN that minted it, not merely to the session.
+func TestSweepDoesNotDisturbAConcurrentRun(t *testing.T) {
+	az := newMemAuthz()
+	ctx := context.Background()
+	argsA := map[string]string{"image": "badport"}
+	argsB := map[string]string{"image": "toolchain"}
+
+	// two runs on the SAME session, each with an outstanding grant
+	_ = az.Mint(ctx, Grant{Fingerprint: Fingerprint("lab__fix", argsA), Tool: "lab__fix",
+		Source: "policy:seq", Session: "s1", Run: "run-A"})
+	_ = az.Mint(ctx, Grant{Fingerprint: Fingerprint("lab__fix", argsB), Tool: "lab__fix",
+		Source: "policy:seq", Session: "s1", Run: "run-B"})
+
+	// run A finishes and sweeps ITS OWN grants
+	if err := az.Sweep(ctx, "s1", "run-A"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := az.Redeem(ctx, Fingerprint("lab__fix", argsA), "s1"); ok {
+		t.Error("run A's own grant must be swept")
+	}
+	if _, ok, _ := az.Redeem(ctx, Fingerprint("lab__fix", argsB), "s1"); !ok {
+		t.Fatal("run B's grant must survive run A's sweep: they share a session, not a run")
 	}
 }

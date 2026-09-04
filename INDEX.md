@@ -212,14 +212,15 @@ Package mcpgate is the quarantined MCP adapter for the gating proxy (Planning/17
 
 **kw:** mcp · adapter · gating · proxy · server · client · forward-iff-cleared · quarantined · tool · boundary · capabilities · listchanged-false · honest-advertisement · revocation-per-request · middleware
 
-- `SchemaArgs` (:125) — schema · args · properties · json-schema · top-level · bind-time · coverage
-- `executeAuthorized` (:388) — execute · authorized · plan · sequence · re-cross · halt · report · agent
-- `callErr` (:486) — call · error · transport · tool-error · render
-- `textOf` (:495) — text · of · result · content · concat
-- `quotedForCompare` (:512) — quoted · compare · exact · bytes · trailing · whitespace · visible
-- `sleepCtx` (:522) — sleep · context · cancellable · poll · interval
-- `rawArgs` (:538) — raw · args · json · encode · authorized · call
-- `firstLine` (:551) — first · line · truncate · tool · output · for · the · agent-visible · summary
+- `SchemaArgs` (:128) — schema · args · properties · json-schema · top-level · bind-time · coverage
+- `executeAuthorized` (:391) — execute · authorized · plan · sequence · re-cross · halt · report · agent
+- `callErr` (:492) — call · error · transport · tool-error · render
+- `textOf` (:501) — text · of · result · content · concat
+- `quotedForCompare` (:518) — quoted · compare · exact · bytes · trailing · whitespace · visible
+- `sleepCtx` (:528) — sleep · context · cancellable · poll · interval
+- `newRunID` (:546) — run · id · sequence · execution · unique · concurrent · sweep · scope
+- `rawArgs` (:560) — raw · args · json · encode · authorized · call
+- `firstLine` (:573) — first · line · truncate · tool · output · for · the · agent-visible · summary
 
 ### `stoa-kernel/stag/proxy/mcpgate/mcpresource.go`
 
@@ -244,13 +245,13 @@ Package proxy is the gating-proxy core (Planning/17, Slice 0): the transport-agn
 - `Sink` (:111) — sink · egress · record · release · event · (egress.JSONLSink · / · broker.MemSink · satisfy · this)
 - `Decision` (:116) — decision · tool · verdict · forward · value · events · fault · approval-id
 - `Grant` (:141) — grant · one-shot · ephemeral · authorization · fingerprint · minted · burned · provenance
-- `Authorizations` (:157) — authorizations · store · mint · redeem · sweep · ephemeral · one-shot · atomic
-- `Gate` (:182) — gate · routes · sink · deterministic · tool-boundary · approvals · notify · crossing-budget
-- `Revoked` (:219) — revoked · session · withdrawn · per-request · live · evict · already-connected
-- `SessionID` (:226) — session · id · audit · digest · never-the-token · bearer-credential · attribution
-- `Decide` (:275) — decide · route · eval · forward-iff-cleared · record · fail-closed · approval-loop
-- `Covered` (:473) — coverage · accounted · gated · passthrough · top-level · heads
-- `CoverageGaps` (:517) — coverage · bind-time · schema · properties · unaccounted
+- `Authorizations` (:162) — authorizations · store · mint · redeem · sweep · ephemeral · one-shot · atomic
+- `Gate` (:190) — gate · routes · sink · deterministic · tool-boundary · approvals · notify · crossing-budget
+- `Revoked` (:227) — revoked · session · withdrawn · per-request · live · evict · already-connected
+- `SessionID` (:234) — session · id · audit · digest · never-the-token · bearer-credential · attribution
+- `Decide` (:283) — decide · route · eval · forward-iff-cleared · record · fail-closed · approval-loop
+- `Covered` (:481) — coverage · accounted · gated · passthrough · top-level · heads
+- `CoverageGaps` (:525) — coverage · bind-time · schema · properties · unaccounted
 
 ### `stoa-kernel/stag/proxy/sessiond/sessiond.go`
 Package sessiond is the stag-proxy v2 daemon surface: a standing HTTP server where each MCP session is bound to a dispatcher-chosen recipe (Planning/24 v2, /25). The TRUSTED dispatcher POSTs /sessions to bind a session t
@@ -409,7 +410,7 @@ Package stag is the public entry point to the StAG kernel: Eval, the recipe eval
 - `Mint` (:18) — mint · grant · one-shot · replace · not-stack · session-owned
 - `Redeem` (:36) — redeem · atomic · delete-returning · claim · session-scoped · no-toctou
 - `Restore` (:54) — restore · grant · refused · call · still-owed
-- `Sweep` (:62) — sweep · session · grants · abandoned · expire · no-standing-authorization
+- `Sweep` (:66) — sweep · run-scoped · grants · abandoned · expire · no-standing-authorization · concurrent-safe
 
 ### `stoa-kernel/stag/store/store.go`
 Package store is the SQLite config store for the admin console's Adapters (Planning/18): the persisted, RELATIONAL config that the file-based recipes bind to — MCP servers (+ their tools), context providers, and routes (

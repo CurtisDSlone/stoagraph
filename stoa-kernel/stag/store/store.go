@@ -115,7 +115,7 @@ func checkSchema(db *sql.DB) error {
 	// that produces a WRONG column is worse than no hint at all.
 	required := map[string]map[string]string{
 		"route":               {"sequenced": "INTEGER NOT NULL DEFAULT 0"},
-		"authorization_grant": {"session": "TEXT NOT NULL DEFAULT ''"},
+		"authorization_grant": {"session": "TEXT NOT NULL DEFAULT ''", "run": "TEXT NOT NULL DEFAULT ''"},
 	}
 	for _, table := range sortedTables(required) {
 		have, err := tableColumns(db, table)

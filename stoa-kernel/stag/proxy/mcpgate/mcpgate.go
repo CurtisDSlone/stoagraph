@@ -9,11 +9,14 @@ package mcpgate
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
@@ -386,6 +389,9 @@ func gatingHandler(gate proxy.Gate, fleet Fleet, downstream *mcp.ClientSession, 
 // failure than the halt.
 // kw: execute authorized plan sequence re-cross halt report agent
 func executeAuthorized(ctx context.Context, gate proxy.Gate, fleet Fleet, dec proxy.Decision) *mcp.CallToolResult {
+	// One id for THIS execution. Grants are minted against it and swept against it, so two
+	// sequences sharing a session cannot cut each other's authorizations down mid-flight.
+	run := newRunID()
 	var b strings.Builder
 	fmt.Fprintf(&b, "stag: policy authorized %d call(s)\n", len(dec.Authorized))
 	halted := ""
@@ -471,7 +477,7 @@ func executeAuthorized(ctx context.Context, gate proxy.Gate, fleet Fleet, dec pr
 	// a crash between minting and calling would otherwise leave a live authorization behind, and
 	// a one-shot grant that outlives its sequence is a standing one.
 	if gate.Authorizations != nil {
-		_ = gate.Authorizations.Sweep(ctx, gate.Session)
+		_ = gate.Authorizations.Sweep(ctx, gate.Session, run)
 	}
 	if halted != "" {
 		fmt.Fprintf(&b, "sequence HALTED at %q; earlier steps already ran and were not rolled back\n", halted)
@@ -532,6 +538,22 @@ func sleepCtx(ctx context.Context, ms int) bool {
 		return false
 	}
 }
+
+// newRunID identifies one sequence execution. It needs to be unique, not unguessable: a grant
+// is already bound to its session and its exact arguments, so the run id only has to separate
+// concurrent executions from one another.
+// kw: run id sequence execution unique concurrent sweep scope
+func newRunID() string {
+	var b [12]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// A collision would let one run sweep another's grants — a liveness bug, not a safety
+		// one, but still wrong. Fall back to a monotonic counter rather than a constant.
+		return fmt.Sprintf("run-%d", atomic.AddUint64(&runCounter, 1))
+	}
+	return hex.EncodeToString(b[:])
+}
+
+var runCounter uint64
 
 // rawArgs renders authorized args as a JSON object for the downstream call.
 // kw: raw args json encode authorized call

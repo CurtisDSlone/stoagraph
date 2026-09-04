@@ -150,6 +150,11 @@ type Grant struct {
 	// The empty string is NOT a wildcard. A grant with no session cannot satisfy a
 	// session-bound call — "unset" must never widen to "any" (inv 8).
 	Session string
+	// Run identifies the ONE sequence execution that minted this grant. Two sequences can share
+	// a session, so a sweep scoped only to the session would delete a concurrent run's
+	// outstanding grant mid-flight and halt it for no policy reason. A grant belongs to the run
+	// that minted it.
+	Run string
 }
 
 // Authorizations is the ephemeral-grant store.
@@ -172,10 +177,13 @@ type Authorizations interface {
 	// Restore returns a redeemed grant when the call it covered did not happen after all (the
 	// gate refused it downstream of the claim). The authorization is still owed.
 	Restore(ctx context.Context, g Grant) error
-	// Sweep discards every outstanding grant for a session. A sequence that dies between minting
-	// and calling would otherwise leave a live authorization behind, and a one-shot grant with no
+	// Sweep discards the outstanding grants of ONE RUN. A sequence that dies between minting and
+	// calling would otherwise leave a live authorization behind, and a one-shot grant with no
 	// expiry is a standing one.
-	Sweep(ctx context.Context, session string) error
+	//
+	// It is scoped to the run, not just the session: two sequences can share a session, and a
+	// session-wide sweep would cut down a concurrent run's grant mid-flight.
+	Sweep(ctx context.Context, session, run string) error
 }
 
 // kw: gate routes sink deterministic tool-boundary approvals notify crossing-budget

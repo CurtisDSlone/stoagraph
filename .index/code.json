@@ -2253,7 +2253,7 @@
             "bind-time",
             "coverage"
           ],
-          "line": 125,
+          "line": 128,
           "name": "SchemaArgs"
         },
         {
@@ -2267,7 +2267,7 @@
             "report",
             "agent"
           ],
-          "line": 388,
+          "line": 391,
           "name": "executeAuthorized"
         },
         {
@@ -2278,7 +2278,7 @@
             "tool-error",
             "render"
           ],
-          "line": 486,
+          "line": 492,
           "name": "callErr"
         },
         {
@@ -2289,7 +2289,7 @@
             "content",
             "concat"
           ],
-          "line": 495,
+          "line": 501,
           "name": "textOf"
         },
         {
@@ -2302,7 +2302,7 @@
             "whitespace",
             "visible"
           ],
-          "line": 512,
+          "line": 518,
           "name": "quotedForCompare"
         },
         {
@@ -2313,8 +2313,22 @@
             "poll",
             "interval"
           ],
-          "line": 522,
+          "line": 528,
           "name": "sleepCtx"
+        },
+        {
+          "kw": [
+            "run",
+            "id",
+            "sequence",
+            "execution",
+            "unique",
+            "concurrent",
+            "sweep",
+            "scope"
+          ],
+          "line": 546,
+          "name": "newRunID"
         },
         {
           "kw": [
@@ -2325,7 +2339,7 @@
             "authorized",
             "call"
           ],
-          "line": 538,
+          "line": 560,
           "name": "rawArgs"
         },
         {
@@ -2340,7 +2354,7 @@
             "agent-visible",
             "summary"
           ],
-          "line": 551,
+          "line": 573,
           "name": "firstLine"
         }
       ]
@@ -2536,7 +2550,7 @@
             "one-shot",
             "atomic"
           ],
-          "line": 157,
+          "line": 162,
           "name": "Authorizations"
         },
         {
@@ -2550,7 +2564,7 @@
             "notify",
             "crossing-budget"
           ],
-          "line": 182,
+          "line": 190,
           "name": "Gate"
         },
         {
@@ -2563,7 +2577,7 @@
             "evict",
             "already-connected"
           ],
-          "line": 219,
+          "line": 227,
           "name": "Revoked"
         },
         {
@@ -2576,7 +2590,7 @@
             "bearer-credential",
             "attribution"
           ],
-          "line": 226,
+          "line": 234,
           "name": "SessionID"
         },
         {
@@ -2589,7 +2603,7 @@
             "fail-closed",
             "approval-loop"
           ],
-          "line": 275,
+          "line": 283,
           "name": "Decide"
         },
         {
@@ -2601,7 +2615,7 @@
             "top-level",
             "heads"
           ],
-          "line": 473,
+          "line": 481,
           "name": "Covered"
         },
         {
@@ -2612,7 +2626,7 @@
             "properties",
             "unaccounted"
           ],
-          "line": 517,
+          "line": 525,
           "name": "CoverageGaps"
         }
       ]
@@ -3916,13 +3930,14 @@
         {
           "kw": [
             "sweep",
-            "session",
+            "run-scoped",
             "grants",
             "abandoned",
             "expire",
-            "no-standing-authorization"
+            "no-standing-authorization",
+            "concurrent-safe"
           ],
-          "line": 62,
+          "line": 66,
           "name": "Sweep"
         }
       ]

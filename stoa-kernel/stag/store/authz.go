@@ -17,10 +17,10 @@ import (
 // kw: mint grant one-shot replace not-stack session-owned
 func (s *Store) Mint(ctx context.Context, g proxy.Grant) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO authorization_grant (fingerprint, tool, source, session, created_at) VALUES (?,?,?,?,?)
+		`INSERT INTO authorization_grant (fingerprint, tool, source, session, run, created_at) VALUES (?,?,?,?,?,?)
 		 ON CONFLICT(fingerprint) DO UPDATE SET tool=excluded.tool, source=excluded.source,
-		   session=excluded.session, created_at=excluded.created_at`,
-		g.Fingerprint, g.Tool, g.Source, g.Session, nowRFC3339())
+		   session=excluded.session, run=excluded.run, created_at=excluded.created_at`,
+		g.Fingerprint, g.Tool, g.Source, g.Session, g.Run, nowRFC3339())
 	return err
 }
 
@@ -37,8 +37,8 @@ func (s *Store) Redeem(ctx context.Context, fingerprint, session string) (proxy.
 	var g proxy.Grant
 	err := s.db.QueryRowContext(ctx,
 		`DELETE FROM authorization_grant WHERE fingerprint = ? AND session = ?
-		 RETURNING fingerprint, tool, source, session`, fingerprint, session).
-		Scan(&g.Fingerprint, &g.Tool, &g.Source, &g.Session)
+		 RETURNING fingerprint, tool, source, session, run`, fingerprint, session).
+		Scan(&g.Fingerprint, &g.Tool, &g.Source, &g.Session, &g.Run)
 	if err == sql.ErrNoRows {
 		return proxy.Grant{}, false, nil
 	}
@@ -55,11 +55,16 @@ func (s *Store) Restore(ctx context.Context, g proxy.Grant) error {
 	return s.Mint(ctx, g)
 }
 
-// Sweep discards every outstanding grant for a session. A sequence that dies between minting and
+// Sweep discards the outstanding grants of ONE RUN. A sequence that dies between minting and
 // calling would otherwise leave a live authorization in the database, and a one-shot grant that
 // survives its sequence is a standing one.
-// kw: sweep session grants abandoned expire no-standing-authorization
-func (s *Store) Sweep(ctx context.Context, session string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM authorization_grant WHERE session = ?`, session)
+//
+// Scoped to the run, not just the session: two sequences can share a session, and a
+// session-wide sweep would delete a concurrent run's grant mid-flight and halt it for no
+// policy reason.
+// kw: sweep run-scoped grants abandoned expire no-standing-authorization concurrent-safe
+func (s *Store) Sweep(ctx context.Context, session, run string) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM authorization_grant WHERE session = ? AND run = ?`, session, run)
 	return err
 }
