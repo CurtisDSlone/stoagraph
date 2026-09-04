@@ -596,6 +596,21 @@ func executeAuthorized(ctx context.Context, gate proxy.Gate, fleet Fleet, dec pr
 				if !gate.Budget.Reserve() {
 					break
 				}
+				// EVERY ATTEMPT NEEDS ITS OWN GRANT. A grant is one-shot and Decide spends it,
+				// so a poll that minted once was authorized once — the second attempt was denied
+				// as unauthorized and the await collapsed to a single try. Burn-on-use and retry
+				// are each correct alone and wrong together unless the grant is re-minted here.
+				//
+				// This does not weaken the one-shot property: each mint authorizes exactly one
+				// call, and the number of calls is still bounded by the attempts the KERNEL
+				// authorized, not by how many times the executor is willing to ask.
+				if gate.Authorizations != nil {
+					_ = gate.Authorizations.Mint(ctx, proxy.Grant{
+						Fingerprint: proxy.Fingerprint(c.Tool, c.Args),
+						Tool:        c.Tool, Source: "policy:" + dec.Tool,
+						Session: gate.Session, Run: run,
+					})
+				}
 				sd := gate.Decide(ctx, sub)
 				if !sd.Forward {
 					gate.Budget.Release()

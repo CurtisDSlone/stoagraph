@@ -2535,7 +2535,7 @@
             "tool-error",
             "render"
           ],
-          "line": 640,
+          "line": 655,
           "name": "callErr"
         },
         {
@@ -2546,7 +2546,7 @@
             "content",
             "concat"
           ],
-          "line": 649,
+          "line": 664,
           "name": "textOf"
         },
         {
@@ -2559,7 +2559,7 @@
             "whitespace",
             "visible"
           ],
-          "line": 666,
+          "line": 681,
           "name": "quotedForCompare"
         },
         {
@@ -2570,7 +2570,7 @@
             "poll",
             "interval"
           ],
-          "line": 676,
+          "line": 691,
           "name": "sleepCtx"
         },
         {
@@ -2584,7 +2584,7 @@
             "sweep",
             "scope"
           ],
-          "line": 694,
+          "line": 709,
           "name": "newRunID"
         },
         {
@@ -2596,7 +2596,7 @@
             "authorized",
             "call"
           ],
-          "line": 708,
+          "line": 723,
           "name": "rawArgs"
         },
         {
@@ -2611,7 +2611,7 @@
             "agent-visible",
             "summary"
           ],
-          "line": 721,
+          "line": 736,
           "name": "firstLine"
         }
       ]
@@ -3203,7 +3203,7 @@
             "dead",
             "declarations"
           ],
-          "line": 1376,
+          "line": 1382,
           "name": "lint"
         }
       ]

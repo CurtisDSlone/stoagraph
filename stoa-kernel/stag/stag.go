@@ -521,10 +521,18 @@ walk:
 				fault(step.Kind.String() + " inside foreach " + step.Id)
 				break walk
 			}
-			if step.Tool == "" || len(step.ArgRules) == 0 {
-				fault("invoke " + step.Id) // no tool or no arguments: fail closed (inv 8)
+			if step.Tool == "" {
+				fault(step.Kind.String() + " without a tool " + step.Id) // fail closed (inv 8)
 				break walk
 			}
+			// A tool that takes NO ARGUMENTS is still worth sequencing — restart, status, list.
+			// Requiring one forced a recipe to pass a fake argument to satisfy the check, which
+			// puts a lie in the policy and gates a value the tool never receives.
+			//
+			// An argumentless call is authorized by the STEP being in the recipe, exactly as an
+			// empty GateArg on a route means "no arguments to judge; the route is the
+			// authorization". There is nothing to gate, so nothing is gated, and that is stated
+			// rather than smuggled in behind a decorative rule.
 			if step.Kind == NodeAwait {
 				// An await with no condition is not an await: it would degenerate into an
 				// unconditional poll that always "succeeds". Fail closed.

@@ -380,3 +380,100 @@ func textOfContent(res *mcp.CallToolResult) string {
 	}
 	return b.String()
 }
+
+// AWAIT ON A SEQUENCED ROUTE. A grant is one-shot and a poll makes many calls, so each attempt
+// needs its own authorization — the first version minted one grant before the first call and the
+// second attempt was denied as unauthorized, collapsing every poll to a single try.
+//
+// Two features built separately and correct alone: burn-on-use, and retry. Together they were
+// wrong, and only an await on a SEQUENCED route shows it.
+func TestAwaitOnASequencedRoutePollsMoreThanOnce(t *testing.T) {
+	ctx := context.Background()
+	var calls int
+	var mu sync.Mutex
+
+	var schema any = json.RawMessage(`{"type":"object","properties":{}}`)
+	down := mcp.NewServer(&mcp.Implementation{Name: "d", Version: "0"}, nil)
+	down.AddTool(&mcp.Tool{Name: "status", Description: "status", InputSchema: schema},
+		func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			mu.Lock()
+			calls++
+			n := calls
+			mu.Unlock()
+			text := "progressing"
+			if n >= 3 { // settles on the third poll
+				text = "complete"
+			}
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, nil
+		})
+	down.AddTool(&mcp.Tool{Name: "go", Description: "trigger", InputSchema: schema},
+		func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "ok"}}}, nil
+		})
+	dc, ds := mcp.NewInMemoryTransports()
+	dss, err := down.Connect(ctx, ds, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dss.Close()
+	pc := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "0"}, nil)
+	downstream, err := pc.Connect(ctx, dc, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer downstream.Close()
+
+	done := stag.ReleaseRule{Kind: stag.RuleSetMembership, Set: []string{"complete"}}
+	any := stag.ReleaseRule{Kind: stag.RuleSetMembership, Set: []string{"x"}}
+	plan := stag.Recipe{Steps: []stag.Step{
+		{Id: "p", Kind: stag.NodePropose, Out: "v"},
+		{Id: "settle", Kind: stag.NodeAwait, Tool: proxy.AdvertisedName("d", "status"),
+			Actor: "a", Until: &done, UntilID: "done", Attempts: 6, DelayMS: 1},
+	}}
+	target := stag.Recipe{Steps: []stag.Step{
+		{Id: "p", Kind: stag.NodePropose, Out: "v"},
+		{Id: "s", Kind: stag.NodeSink, In: "v", Field: "f", Sensitivity: stag.SinkBenign},
+	}}
+	routes := proxy.Router{
+		proxy.AdvertisedName("d", "go"): {Recipe: plan, RecipeHash: "h", RecipeName: "plan",
+			GateArg: "v", Server: "d", Tool: "go"},
+		// the polled tool is SEQUENCED: reachable only via a grant the executor mints
+		proxy.AdvertisedName("d", "status"): {Recipe: target, RecipeHash: "h", RecipeName: "t",
+			GateArg: "", Server: "d", Tool: "status", Sequenced: true},
+	}
+	_ = any
+	gate := proxy.Gate{Routes: routes, Authorizations: &memAuthz{}}
+	srv := mcpgate.NewGatingServer(gate,
+		mcpgate.NewFleet([]mcpgate.Downstream{{Name: "d", Session: downstream,
+			Tools: []*mcp.Tool{
+				{Name: "go", Description: "t", InputSchema: schema},
+				{Name: "status", Description: "s", InputSchema: schema}}}}),
+		mcpgate.ReadChannel{})
+	ac, as := mcp.NewInMemoryTransports()
+	gs, err := srv.Connect(ctx, as, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gs.Close()
+	agent := mcp.NewClient(&mcp.Implementation{Name: "agent", Version: "0"}, nil)
+	sess, err := agent.Connect(ctx, ac, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	res, err := sess.CallTool(ctx, &mcp.CallToolParams{
+		Name: proxy.AdvertisedName("d", "go"), Arguments: json.RawMessage(`{"v":"x"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	got := calls
+	mu.Unlock()
+	if got < 3 {
+		t.Fatalf("the poll must retry: %d call(s) — a one-shot grant must not collapse an await to one attempt", got)
+	}
+	if res.IsError {
+		t.Errorf("the condition settles on the third poll, so the sequence must complete: %+v", res.Content)
+	}
+}

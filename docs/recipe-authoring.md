@@ -228,8 +228,19 @@ remediation arc in a fixed order, with no model choosing that order.
 **`tool` is the advertised name** (`<server>__<tool>`) — the same name the agent would call and
 the name the audit records.
 
+**`args` is optional.** A tool that takes none — restart, status, list — is authorized by the step
+being in the recipe, exactly as an empty `gateArg` on a route means *no arguments to judge*.
+Requiring one would force a decorative argument into the policy, gating a value the tool never
+receives. An `args: {}` mapping is still rejected: omit the key.
+
 **Every argument carries its own rule.** `args` maps an argument name to the slot that supplies
-it *and* the rule that must clear it. This is required, not optional: an invoke's arguments are
+it *and* the rule that must clear it.
+
+Per-argument rules bound each argument; they cannot express a relationship *between* them. Gating
+`key` in `{log_level, max_workers}` and `value` in `{info, debug, 2, 4, 8}` clears
+`max_workers=debug` — each argument is legal and the pair is nonsense. When two arguments'
+value spaces depend on each other, that is a sign the recipe is covering two operations: write
+one recipe per key, and let the rule be the values *that* key accepts. This is required, not optional: an invoke's arguments are
 usually different *kinds* of value — a target, an operation, a payload — and one rule shared
 across them could only be the union of what each may be, which is a flat set of permitted strings
 with no idea which argument it is looking at.

@@ -238,13 +238,13 @@ Package mcpgate is the quarantined MCP adapter for the gating proxy (Planning/17
 - `contextToolHandler` (:382) — context · tool · handler · read · untrusted · never-denied
 - `withReads` (:499) — with · reads · recipe-authorized · context · prepend · untrusted · every-decision
 - `executeAuthorized` (:539) — execute · authorized · plan · sequence · re-cross · halt · report · agent
-- `callErr` (:640) — call · error · transport · tool-error · render
-- `textOf` (:649) — text · of · result · content · concat
-- `quotedForCompare` (:666) — quoted · compare · exact · bytes · trailing · whitespace · visible
-- `sleepCtx` (:676) — sleep · context · cancellable · poll · interval
-- `newRunID` (:694) — run · id · sequence · execution · unique · concurrent · sweep · scope
-- `rawArgs` (:708) — raw · args · json · encode · authorized · call
-- `firstLine` (:721) — first · line · truncate · tool · output · for · the · agent-visible · summary
+- `callErr` (:655) — call · error · transport · tool-error · render
+- `textOf` (:664) — text · of · result · content · concat
+- `quotedForCompare` (:681) — quoted · compare · exact · bytes · trailing · whitespace · visible
+- `sleepCtx` (:691) — sleep · context · cancellable · poll · interval
+- `newRunID` (:709) — run · id · sequence · execution · unique · concurrent · sweep · scope
+- `rawArgs` (:723) — raw · args · json · encode · authorized · call
+- `firstLine` (:736) — first · line · truncate · tool · output · for · the · agent-visible · summary
 
 ### `stoa-kernel/stag/proxy/mcpgate/mcpresource.go`
 
@@ -312,7 +312,7 @@ Package recipe is the recipe boundary: the only door through which authored YAML
 - `parseIngredient` (:910) — ingredient · origin · trust · closed · keys · value · unauthorable
 - `parseRule` (:947) — rule · registry · per-kind · required · forbidden · sorted · set
 - `parseStep` (:1040) — step · per-kind · key · tables · vocabulary · foreach · exit · distinct
-- `lint` (:1376) — lint · declare-before-use · edges · reachability · guaranteed-deny · guarded · segment · dead · declarations
+- `lint` (:1382) — lint · declare-before-use · edges · reachability · guaranteed-deny · guarded · segment · dead · declarations
 
 ### `stoa-kernel/stag/recipestore/recipestore.go`
 Package recipestore is the recipe-authoring core for the admin console: validate recipe YAML through the REAL parser + linter and persist valid recipes. Validate returns whether a draft parses, its lint error or warnings

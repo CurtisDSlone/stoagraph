@@ -294,3 +294,47 @@ steps:
 		t.Error("a step-level rule on an invoke must be rejected")
 	}
 }
+
+// A tool that takes no arguments needs no `args`. Requiring one would force a fake argument into
+// the policy purely to satisfy the parser.
+func TestInvokeWithoutArgsParses(t *testing.T) {
+	src := `
+recipe: r
+version: 1
+rules:
+  done: {kind: set_membership, set: ["complete"]}
+steps:
+  - {id: p, kind: propose, out: v}
+  - {id: restart, kind: invoke, tool: k8s__restart_workload, actor: "policy:x"}
+  - {id: settle, kind: await, tool: k8s__rollout_status, until: done,
+     attempts: 4, every_ms: 1000, actor: "policy:x"}
+  - {id: s, kind: sink, in: v, field: f, sensitivity: authoritative, rule: done, actor: a}
+`
+	p, err := Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("an argumentless invoke and await must parse: %v", err)
+	}
+	if p.Recipe.Steps[1].Tool != "k8s__restart_workload" || len(p.Recipe.Steps[1].ArgRules) != 0 {
+		t.Errorf("invoke: %+v", p.Recipe.Steps[1])
+	}
+	if p.Recipe.Steps[2].Until == nil {
+		t.Error("an argumentless await still needs its condition")
+	}
+}
+
+// An EMPTY args mapping is still rejected: `args: {}` is an author saying something they did not
+// mean. Omit the key.
+func TestEmptyArgsMappingRejected(t *testing.T) {
+	src := `
+recipe: r
+version: 1
+rules: {ok: {kind: set_membership, set: ["a"]}}
+steps:
+  - {id: p, kind: propose, out: v}
+  - {id: i, kind: invoke, tool: t, args: {}, actor: a}
+  - {id: s, kind: sink, in: v, field: f, sensitivity: authoritative, rule: ok, actor: a}
+`
+	if _, err := Parse([]byte(src)); err == nil {
+		t.Error("an empty args mapping must be rejected — omit the key instead")
+	}
+}

@@ -1268,12 +1268,18 @@ func parseStep(idx int, n *yaml.Node) (rawStep, error) {
 		if st.tool, err = need("tool", "tool"); err != nil {
 			return rawStep{}, err
 		}
-		an, ok := byKey["args"]
-		if !ok || an.Kind != yaml.MappingNode || len(an.Content) == 0 {
-			return rawStep{}, errf(n, "invoke %q args must be a non-empty mapping of argname -> slot", id)
-		}
 		st.args = map[string]string{}
 		st.argRules = map[string]string{}
+		// `args` is OPTIONAL: a tool that takes none (restart, status, list) is authorized by
+		// the step being in the recipe, exactly as an empty GateArg on a route means "no
+		// arguments to judge". Requiring one would force a fake argument into the policy.
+		an, hasArgs := byKey["args"]
+		if hasArgs && (an.Kind != yaml.MappingNode || len(an.Content) == 0) {
+			return rawStep{}, errf(n, "%s %q: args, when present, must be a non-empty mapping of argname -> {slot, rule} (omit it for a tool that takes none)", kind, id)
+		}
+		if !hasArgs {
+			an = &yaml.Node{Kind: yaml.MappingNode}
+		}
 		// Each argument is `<name>: {slot: <slot>, rule: <rule>}`. Per-argument rules are
 		// required, not optional: an invoke's arguments are different KINDS of value, and one
 		// rule shared across them could only be the union of what each may be — a flat set

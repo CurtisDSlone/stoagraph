@@ -131,6 +131,9 @@ func TestInvokeBranchSelectsSequence(t *testing.T) {
 
 // Fail closed on every structural defect: a severed slot, an absent rule, an unresolvable
 // argument, a missing tool. None may authorize a call.
+//
+// "No arguments" is NOT a defect — see TestInvokeWithNoArgumentsIsAuthorizedByTheStep. A tool
+// that takes none is authorized by the step being in the recipe.
 func TestInvokeFailsClosed(t *testing.T) {
 	cases := []struct {
 		name string
@@ -139,7 +142,6 @@ func TestInvokeFailsClosed(t *testing.T) {
 		{"severed slot", Step{Id: "i", Kind: NodeInvoke, Tool: "t", ArgRules: map[string]ArgRule{"a": {Slot: "nope", Rule: nsSafe(), RuleID: "r"}}, Actor: "a"}},
 		{"absent rule", Step{Id: "i", Kind: NodeInvoke, Tool: "t", ArgRules: map[string]ArgRule{"a": {Slot: "ns", RuleID: "r"}}, Actor: "a"}},
 		{"empty tool", Step{Id: "i", Kind: NodeInvoke, ArgRules: map[string]ArgRule{"a": {Slot: "ns", Rule: nsSafe(), RuleID: "r"}}, Actor: "a"}},
-		{"no args", Step{Id: "i", Kind: NodeInvoke, Tool: "t", Actor: "a"}},
 	}
 	for _, c := range cases {
 		r := Recipe{Steps: []Step{{Id: "p", Kind: NodePropose, Out: "ns"}, c.step}}
@@ -236,5 +238,82 @@ func TestAuthorizedCallIsCanonical(t *testing.T) {
 	}
 	if len(b) == 0 || string(b) == "null" {
 		t.Error("authorized plan must serialize to a reviewable value")
+	}
+}
+
+// A tool that takes NO ARGUMENTS is still a tool worth sequencing: restart, status, list. The
+// first cut required at least one argument, which forced a recipe to pass a fake one purely to
+// satisfy the check — putting a lie in the policy, and gating a value the tool never receives.
+//
+// An argumentless invoke is authorized by the STEP being in the recipe, exactly as an empty
+// GateArg means "no arguments to judge; the route is the authorization". There is nothing to
+// gate, so nothing is gated — and that is stated, not smuggled in behind a decorative rule.
+func TestInvokeWithNoArgumentsIsAuthorizedByTheStep(t *testing.T) {
+	r := Recipe{Steps: []Step{
+		{Id: "p", Kind: NodePropose, Out: "v"},
+		{Id: "restart", Kind: NodeInvoke, Tool: "k8s__restart_workload", Actor: "policy:x"},
+	}}
+	res := EvalArgs(r, map[string]string{"v": "anything"}, "h")
+	if res.Verdict != Allow || res.Fault != "" {
+		t.Fatalf("an argumentless invoke must authorize: %+v", res)
+	}
+	if len(res.Authorized) != 1 {
+		t.Fatalf("want 1 authorized call, got %d", len(res.Authorized))
+	}
+	c := res.Authorized[0]
+	if c.Tool != "k8s__restart_workload" {
+		t.Errorf("tool: %q", c.Tool)
+	}
+	if len(c.Args) != 0 {
+		t.Errorf("it must carry no arguments, got %+v", c.Args)
+	}
+}
+
+// It still records a crossing: the call happens, and the audit must say so. There is simply no
+// per-argument release to attach.
+func TestArgumentlessInvokeStillRecordsTheCall(t *testing.T) {
+	r := Recipe{Steps: []Step{
+		{Id: "p", Kind: NodePropose, Out: "v"},
+		{Id: "restart", Kind: NodeInvoke, Tool: "t", Actor: "policy:x"},
+	}}
+	res := EvalArgs(r, map[string]string{"v": "x"}, "h")
+	if len(res.Authorized) != 1 {
+		t.Fatal("must authorize")
+	}
+	// no arguments means no argument crossings — the call is authorized by the step
+	if len(res.Events) != 0 {
+		t.Errorf("no argument, no argument-crossing: %d events", len(res.Events))
+	}
+}
+
+// A tool name is still required: an invoke naming nothing is a fault, not an argumentless call.
+func TestInvokeStillNeedsATool(t *testing.T) {
+	r := Recipe{Steps: []Step{
+		{Id: "p", Kind: NodePropose, Out: "v"},
+		{Id: "i", Kind: NodeInvoke, Actor: "a"},
+	}}
+	res := EvalArgs(r, map[string]string{"v": "x"}, "h")
+	if res.Fault == "" || len(res.Authorized) != 0 {
+		t.Errorf("an invoke with no tool must fault: %+v", res)
+	}
+}
+
+// An AWAIT with no arguments is the common case for a status poll, and it still needs its
+// condition — that is what makes it an await rather than a call in a loop.
+func TestArgumentlessAwaitStillNeedsItsCondition(t *testing.T) {
+	done := ReleaseRule{Kind: RuleSetMembership, Set: []string{"complete"}}
+	ok := Recipe{Steps: []Step{
+		{Id: "p", Kind: NodePropose, Out: "v"},
+		{Id: "settle", Kind: NodeAwait, Tool: "k8s__rollout_status", Actor: "a",
+			Until: &done, UntilID: "rollout.done", Attempts: 4, DelayMS: 1000},
+	}}
+	if res := EvalArgs(ok, map[string]string{"v": "x"}, "h"); len(res.Authorized) != 1 {
+		t.Fatalf("an argumentless await must authorize: %+v", res)
+	}
+	bad := ok
+	bad.Steps = append([]Step{}, ok.Steps...)
+	bad.Steps[1].Until = nil
+	if res := EvalArgs(bad, map[string]string{"v": "x"}, "h"); res.Fault == "" {
+		t.Error("an await with no condition must still fault, arguments or not")
 	}
 }
