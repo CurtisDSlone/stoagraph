@@ -2303,8 +2303,59 @@
             "bind-time",
             "coverage"
           ],
-          "line": 128,
+          "line": 142,
           "name": "SchemaArgs"
+        },
+        {
+          "kw": [
+            "read",
+            "crossing",
+            "shared",
+            "bounded",
+            "query",
+            "gather",
+            "stamp",
+            "untrusted",
+            "frame",
+            "hash",
+            "record"
+          ],
+          "line": 322,
+          "name": "doRead"
+        },
+        {
+          "kw": [
+            "context",
+            "tool",
+            "name",
+            "namespace",
+            "no-collision"
+          ],
+          "line": 349,
+          "name": "ContextToolName"
+        },
+        {
+          "kw": [
+            "context",
+            "tool",
+            "declaration",
+            "schema",
+            "query"
+          ],
+          "line": 357,
+          "name": "contextTool"
+        },
+        {
+          "kw": [
+            "context",
+            "tool",
+            "handler",
+            "read",
+            "untrusted",
+            "never-denied"
+          ],
+          "line": 370,
+          "name": "contextToolHandler"
         },
         {
           "kw": [
@@ -2317,7 +2368,7 @@
             "report",
             "agent"
           ],
-          "line": 391,
+          "line": 479,
           "name": "executeAuthorized"
         },
         {
@@ -2328,7 +2379,7 @@
             "tool-error",
             "render"
           ],
-          "line": 492,
+          "line": 580,
           "name": "callErr"
         },
         {
@@ -2339,7 +2390,7 @@
             "content",
             "concat"
           ],
-          "line": 501,
+          "line": 589,
           "name": "textOf"
         },
         {
@@ -2352,7 +2403,7 @@
             "whitespace",
             "visible"
           ],
-          "line": 518,
+          "line": 606,
           "name": "quotedForCompare"
         },
         {
@@ -2363,7 +2414,7 @@
             "poll",
             "interval"
           ],
-          "line": 528,
+          "line": 616,
           "name": "sleepCtx"
         },
         {
@@ -2377,7 +2428,7 @@
             "sweep",
             "scope"
           ],
-          "line": 546,
+          "line": 634,
           "name": "newRunID"
         },
         {
@@ -2389,7 +2440,7 @@
             "authorized",
             "call"
           ],
-          "line": 560,
+          "line": 648,
           "name": "rawArgs"
         },
         {
@@ -2404,7 +2455,7 @@
             "agent-visible",
             "summary"
           ],
-          "line": 573,
+          "line": 661,
           "name": "firstLine"
         }
       ]

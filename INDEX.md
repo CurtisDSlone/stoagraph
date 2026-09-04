@@ -212,15 +212,19 @@ Package mcpgate is the quarantined MCP adapter for the gating proxy (Planning/17
 
 **kw:** mcp · adapter · gating · proxy · server · client · forward-iff-cleared · quarantined · tool · boundary · capabilities · listchanged-false · honest-advertisement · revocation-per-request · middleware
 
-- `SchemaArgs` (:128) — schema · args · properties · json-schema · top-level · bind-time · coverage
-- `executeAuthorized` (:391) — execute · authorized · plan · sequence · re-cross · halt · report · agent
-- `callErr` (:492) — call · error · transport · tool-error · render
-- `textOf` (:501) — text · of · result · content · concat
-- `quotedForCompare` (:518) — quoted · compare · exact · bytes · trailing · whitespace · visible
-- `sleepCtx` (:528) — sleep · context · cancellable · poll · interval
-- `newRunID` (:546) — run · id · sequence · execution · unique · concurrent · sweep · scope
-- `rawArgs` (:560) — raw · args · json · encode · authorized · call
-- `firstLine` (:573) — first · line · truncate · tool · output · for · the · agent-visible · summary
+- `SchemaArgs` (:142) — schema · args · properties · json-schema · top-level · bind-time · coverage
+- `doRead` (:322) — read · crossing · shared · bounded · query · gather · stamp · untrusted · frame · hash · record
+- `ContextToolName` (:349) — context · tool · name · namespace · no-collision
+- `contextTool` (:357) — context · tool · declaration · schema · query
+- `contextToolHandler` (:370) — context · tool · handler · read · untrusted · never-denied
+- `executeAuthorized` (:479) — execute · authorized · plan · sequence · re-cross · halt · report · agent
+- `callErr` (:580) — call · error · transport · tool-error · render
+- `textOf` (:589) — text · of · result · content · concat
+- `quotedForCompare` (:606) — quoted · compare · exact · bytes · trailing · whitespace · visible
+- `sleepCtx` (:616) — sleep · context · cancellable · poll · interval
+- `newRunID` (:634) — run · id · sequence · execution · unique · concurrent · sweep · scope
+- `rawArgs` (:648) — raw · args · json · encode · authorized · call
+- `firstLine` (:661) — first · line · truncate · tool · output · for · the · agent-visible · summary
 
 ### `stoa-kernel/stag/proxy/mcpgate/mcpresource.go`
 
