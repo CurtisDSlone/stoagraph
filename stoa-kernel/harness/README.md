@@ -26,11 +26,11 @@ allowed.
 It depends on the stag **kernel** (`github.com/scanset/StAG`) for shared trust types, via a `replace`
 directive in `go.mod` pointing at `../harness/workspaces/stag`.
 
-## `cmd/harness-serve` — the console (frontend + backend, built)
+## `cmd/harness-serve` — the orchestrator's API (built)
 
-The event_harness UI. Connect models (keys stored here), **simulate an event**, forward it through `stag-proxy`,
-and watch the **gated transcript** stream (the model proposes; the stag gate disposes). Self-contained: an embedded
-page (`index.html`) + a Go backend with SSE. Multi-model tool-use — Claude and OpenAI-compatible (OpenRouter).
+Connect models (keys stored here), **simulate an event**, forward it through `stag-proxy`, and watch the
+**gated transcript** stream (the model proposes; the stag gate disposes) over SSE. API-only, no bundled UI.
+Multi-model tool-use — Claude and OpenAI-compatible (OpenRouter).
 
 ```bash
 go build -o /tmp/stag-proxy ../harness/workspaces/stag/cmd/stag-proxy
@@ -60,7 +60,7 @@ ANTHROPIC_API_KEY=<key> /tmp/harness -proxy "/tmp/stag-proxy -downstream my-tool
 - **Multi-model tool-use** — the loop is Claude-only today; add OpenAI/OpenRouter tool-use.
 - **Model-provider config + keys UI** — stag's `model_provider` store, the Models tab, and the
   connectivity/propose-then-gate surfaces were removed from stag; reintroduce them here as the
-  orchestrator's config + its own frontend (`web/`).
+  orchestrator's own config surface.
 - **Event ingress** — a trigger (webhook / queue subscriber) that maps an event type to a recipe and dispatches
   (pairs with stag-proxy's session→recipe binding, Planning/24 v2).
 

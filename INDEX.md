@@ -232,19 +232,19 @@ Package mcpgate is the quarantined MCP adapter for the gating proxy (Planning/17
 **kw:** mcp · adapter · gating · proxy · server · client · forward-iff-cleared · quarantined · tool · boundary · capabilities · listchanged-false · honest-advertisement · revocation-per-request · middleware
 
 - `SchemaArgs` (:142) — schema · args · properties · json-schema · top-level · bind-time · coverage
-- `doRead` (:322) — read · crossing · shared · bounded · query · gather · stamp · untrusted · frame · hash · record
-- `ContextToolName` (:361) — context · tool · name · namespace · no-collision
-- `contextTool` (:369) — context · tool · declaration · schema · query
-- `contextToolHandler` (:382) — context · tool · handler · read · untrusted · never-denied
-- `withReads` (:499) — with · reads · recipe-authorized · context · prepend · untrusted · every-decision
-- `executeAuthorized` (:539) — execute · authorized · plan · sequence · re-cross · halt · report · agent
-- `callErr` (:656) — call · error · transport · tool-error · render
-- `textOf` (:665) — text · of · result · content · concat
-- `quotedForCompare` (:682) — quoted · compare · exact · bytes · trailing · whitespace · visible
-- `sleepCtx` (:692) — sleep · context · cancellable · poll · interval
-- `newRunID` (:710) — run · id · sequence · execution · unique · concurrent · sweep · scope
-- `rawArgs` (:724) — raw · args · json · encode · authorized · call
-- `firstLine` (:737) — first · line · truncate · tool · output · for · the · agent-visible · summary
+- `doRead` (:335) — read · crossing · shared · bounded · query · gather · stamp · untrusted · frame · hash · record
+- `ContextToolName` (:374) — context · tool · name · namespace · no-collision
+- `contextTool` (:382) — context · tool · declaration · schema · query
+- `contextToolHandler` (:395) — context · tool · handler · read · untrusted · never-denied
+- `withReads` (:512) — with · reads · recipe-authorized · context · prepend · untrusted · every-decision
+- `executeAuthorized` (:552) — execute · authorized · plan · sequence · re-cross · halt · report · agent
+- `callErr` (:669) — call · error · transport · tool-error · render
+- `textOf` (:678) — text · of · result · content · concat
+- `quotedForCompare` (:695) — quoted · compare · exact · bytes · trailing · whitespace · visible
+- `sleepCtx` (:705) — sleep · context · cancellable · poll · interval
+- `newRunID` (:723) — run · id · sequence · execution · unique · concurrent · sweep · scope
+- `rawArgs` (:737) — raw · args · json · encode · authorized · call
+- `firstLine` (:750) — first · line · truncate · tool · output · for · the · agent-visible · summary
 
 ### `stoa-kernel/stag/proxy/mcpgate/mcpresource.go`
 
@@ -268,16 +268,16 @@ Package proxy is the gating-proxy core (Planning/17, Slice 0): the transport-agn
 - `Router` (:112) — router · advertised · name · to · route · unique-per-fleet
 - `Sink` (:115) — sink · egress · record · release · event · (egress.JSONLSink · / · broker.MemSink · satisfy · this)
 - `Decision` (:120) — decision · tool · verdict · forward · value · events · fault · approval-id
-- `Grant` (:149) — grant · one-shot · ephemeral · authorization · fingerprint · minted · burned · provenance
-- `GrantKey` (:179) — grant · key · fingerprint · run · identity · concurrent-runs · no-collision
-- `Authorizations` (:188) — authorizations · store · mint · redeem · sweep · ephemeral · one-shot · atomic
-- `Gate` (:216) — gate · routes · sink · deterministic · tool-boundary · approvals · notify · crossing-budget
-- `Revoked` (:253) — revoked · session · withdrawn · per-request · live · evict · already-connected
-- `SessionID` (:260) — session · id · audit · digest · never-the-token · bearer-credential · attribution
-- `Decide` (:309) — decide · route · eval · forward-iff-cleared · record · fail-closed · approval-loop
-- `Covered` (:509) — coverage · accounted · gated · passthrough · top-level · heads
-- `CoverageGaps` (:553) — coverage · bind-time · schema · properties · unaccounted
-- `hasApprovedArg` (:926) — has · approved · arg · placeholder · scan
+- `Grant` (:152) — grant · one-shot · ephemeral · authorization · fingerprint · minted · burned · provenance
+- `GrantKey` (:182) — grant · key · fingerprint · run · identity · concurrent-runs · no-collision
+- `Authorizations` (:191) — authorizations · store · mint · redeem · sweep · ephemeral · one-shot · atomic
+- `Gate` (:219) — gate · routes · sink · deterministic · tool-boundary · approvals · notify · crossing-budget
+- `Revoked` (:256) — revoked · session · withdrawn · per-request · live · evict · already-connected
+- `SessionID` (:263) — session · id · audit · digest · never-the-token · bearer-credential · attribution
+- `Decide` (:312) — decide · route · eval · forward-iff-cleared · record · fail-closed · approval-loop
+- `Covered` (:512) — coverage · accounted · gated · passthrough · top-level · heads
+- `CoverageGaps` (:556) — coverage · bind-time · schema · properties · unaccounted
+- `hasApprovedArg` (:929) — has · approved · arg · placeholder · scan
 
 ### `stoa-kernel/stag/proxy/sessiond/sessiond.go`
 Package sessiond is the stag-proxy v2 daemon surface: a standing HTTP server where each MCP session is bound to a dispatcher-chosen recipe (Planning/24 v2, /25). The TRUSTED dispatcher POSTs /sessions to bind a session t
@@ -417,12 +417,12 @@ Package stag is the public entry point to the StAG kernel: Eval, the recipe eval
 - `Recipe` (:229) — recipe · ingredients · steps
 - `AuthorizedCall` (:249) — authorized · call · invoke · tool · args · ordinal · executor · re-cross
 - `SinkOutcome` (:266) — sink · outcome · verdict · per · sink
-- `GateOutcome` (:275) — gate · outcome · checkpoint · pass · fail · escalate
-- `EvalResult` (:283) — eval · result · verdict · sinks · gates · events · fault
-- `Eval` (:300) — eval · recipe · path · walk · forward-only · compose · kernel · invariant · foreach · single-arg
-- `EvalArgs` (:309) — eval · multi-arg · named · inputs · propose-by-name
-- `sortedArgs` (:340) — sorted · argument · names · deterministic · audit · invoke
-- `sortedKeys` (:352) — sorted · keys · deterministic · map · iteration · audit
+- `GateOutcome` (:281) — gate · outcome · checkpoint · pass · fail · escalate
+- `EvalResult` (:292) — eval · result · verdict · sinks · gates · events · fault
+- `Eval` (:317) — eval · recipe · path · walk · forward-only · compose · kernel · invariant · foreach · single-arg
+- `EvalArgs` (:326) — eval · multi-arg · named · inputs · propose-by-name
+- `sortedArgs` (:401) — sorted · argument · names · deterministic · audit · invoke
+- `sortedKeys` (:413) — sorted · keys · deterministic · map · iteration · audit
 
 ### `stoa-kernel/stag/store/approval.go`
 
@@ -609,14 +609,14 @@ Command stag-tools serves a DECLARED set of local commands to an agent as MCP to
 **kw:** cmd · stag-tools · local · tools · mcp · stdio · http · declared · no-shell · gate-able
 
 ### `stoa-kernel/cmd/stag-verify/main.go`
-Command stag-verify replays a hash-chained stag audit log and reports whether the chain is INTACT — the "verify the audit yourself" half of verifiable control. It recomputes every leaf hash and the prev-hash links (egres
+Command stag-verify replays a hash-chained stag audit log and reports whether the chain is INTACT — the "verify the audit yourself" half of verifiable control. It recomputes every leaf hash and the prev-hash links; tampe
 
-**kw:** cli · verify · audit · chain · tamper-evident · replay · leaves · allow · deny · escalate · signed · checkpoint · session-column · policy-column · interleaved-runs · which-agent · which-policy-version
+**kw:** cli · verify · audit · chain · tamper-evident · replay · leaves · allow · deny · escalate · signed · checkpoint · session-column · policy-column · interleaved-runs · which-agent · which-policy-version · generic-chain · reads-log · ingress-log · three-shapes · sniff
 
 ### `stoa-kernel/cmd/stoagraph/main.go`
-Command stoagraph is the installer and launcher: one binary that gets you from nothing to a running, authenticated gate.  stoagraph up       mint the secrets, pull the signed images, start, print the login link stoagraph
+Command stoagraph is the installer and launcher: one binary that gets you from nothing to a running, authenticated gate.  stoagraph up      mint the secrets, pull the signed images, start, print your tokens stoagraph tok
 
-**kw:** cli · installer · launcher · up · down · console · login-link · compose · ghcr · role-secrets · mint · one-click
+**kw:** cli · installer · launcher · up · down · tokens · compose · ghcr · role-secrets · mint
 
 ## other
 

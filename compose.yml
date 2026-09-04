@@ -2,8 +2,8 @@
 #
 #   docker compose up
 #
-# FOUR containers by default, not one. That is the security posture, not a diagram preference.
-# (A fifth, the local tool server, is OPT-IN behind the `tools` profile — it mounts a workspace you
+# THREE containers by default, not one. That is the security posture, not a diagram preference.
+# (A fourth, the local tool server, is OPT-IN behind the `tools` profile — it mounts a workspace you
 #  choose, and there is no sane default for "your project". See local-tools below.)
 #
 # THREE secrets, and the split is the whole security posture. What matters is that the ORCHESTRATOR —
@@ -19,10 +19,9 @@
 #   stag-proxy     dispatch                               it only guards POST /sessions
 #   harness-serve  operator, dispatch                     NEVER the console/approve secret. It waits on
 #                                                          a human; it can never be one.
-#   console        (none at rest)                         the human logs in via a one-click link
 #
-# The human's login carries TWO role-scoped keys (console + operator) behind one link — they never see
-# the seam. Only `dispatch` is machine-only and never leaves a container.
+# The human's login carries TWO role-scoped keys (console + operator) — they never see the seam. Only
+# `dispatch` is machine-only and never leaves a container.
 #
 # THIS FILE IS PULL-ONLY. It references published, signed images and NOTHING on your disk, so it works
 # for someone who has never cloned the repo. Contributors get `compose.override.yml` alongside it, which
@@ -127,14 +126,6 @@ services:
       timeout: 3s
       retries: 3
       start_period: 5s
-    restart: unless-stopped
-
-  # ------------------------------------------------------------ THE CONSOLE
-  # Holds no secret at build or run time. The human logs in via a one-click link (see stoagraph up).
-  console:
-    image: ghcr.io/CurtisDSlone/stoagraph/console:${STOAGRAPH_VERSION:-latest}
-    ports: ["3000:3000"]
-    depends_on: [stag-serve, harness-serve]
     restart: unless-stopped
 
   # ------------------------------------------------- THE LOCAL TOOL SERVER

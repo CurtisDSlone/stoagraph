@@ -84,8 +84,21 @@ gate enforces it on every call, forever, regardless of what the model was talked
 
 11. **A bounded, computable leak.** Even a closed-set gate leaves the model a *choice* among the allowed
     values — a residual channel. StoaGraph computes a signed number that ceilings it (`recipe.Leakage`),
-    and refuses — with `-require-bounded` — to serve a policy whose leak is not bounded. No competitor
-    emits this number.
+    and refuses — with `-require-bounded` — to serve a policy whose leak is not bounded.
+
+    The number is *static*: it is derived from the policy before anything runs, with no model in the
+    computation, so it is a property of what you authored rather than an observation of what happened.
+    It composes across a session (`SessionBound`), and it holds only under stated preconditions —
+    canonical-only release, an order-only observer, a crossing cap — which [`leakage.go`](../stoa-kernel/stag/recipe/leakage.go)
+    names rather than assumes. It is a per-session *rate*, not a lifetime guarantee.
+
+    The research literature is converging on the same problem from the other side: runtime mediators
+    that accumulate a leakage budget over a trajectory, several of which put a model back in the
+    measurement path to judge semantic content. That buys a finer confidentiality tradeoff than a
+    closed-set bound can express. It also means the ceiling is only as sound as the judgment producing
+    it — which is the trade StoaGraph declines to make. We know of no other system that publishes a
+    static, model-free leak bound computed from policy alone; we do not claim to be the only ones
+    measuring the channel.
 
 12. **Open by construction.** Apache-2.0, the whole product, no held-back edition. A control that asks you
     to "don't trust — verify" has to be verifiable, all the way down.

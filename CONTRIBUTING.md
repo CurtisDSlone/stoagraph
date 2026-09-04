@@ -88,8 +88,8 @@ CI enforces it. `git config format.signoff true` to make it automatic.
 tools/check.sh
 ```
 
-That runs exactly what CI runs — fmt, vet, tests, the **architecture rule**, the console typecheck, the
-index, and repo hygiene. Nothing is expected of you that a single command cannot tell you.
+That runs exactly what CI runs — fmt, vet, tests, the **architecture rule**, the index, and repo
+hygiene. Nothing is expected of you that a single command cannot tell you.
 
 If you touched dependencies or a Dockerfile:
 

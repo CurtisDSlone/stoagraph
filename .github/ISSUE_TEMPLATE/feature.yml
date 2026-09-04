@@ -24,7 +24,6 @@ body:
       options:
         - gate — stag/ (no model, no keys)
         - orchestrator — harness/ (holds the keys)
-        - console
         - not sure
     validations: {required: true}
   - type: textarea

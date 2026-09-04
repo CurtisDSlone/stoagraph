@@ -124,6 +124,9 @@ type Decision struct {
 	Value      string
 	Events     []stag.ReleaseEvent
 	Fault      string
+	// RuleFault: see stag.EvalResult.RuleFault. Distinct from Fault — a structural halt vs. a
+	// clean rule denial an agent could retry with a different value.
+	RuleFault  string
 	ApprovalID string // set when an escalate is (or awaits) a human approval; "" otherwise
 	// Reads is the context this recipe's `read` steps authorized fetching. Unlike Authorized it
 	// survives a refusal: a read cannot cause a denial, and a refused action is exactly when an
@@ -441,7 +444,7 @@ func (g Gate) Decide(ctx context.Context, call ToolCall) Decision {
 	if res.Verdict == stag.Deny || res.Verdict == stag.Escalate {
 		auditVal = redactedValue(slots)
 	}
-	d := Decision{Tool: call.Tool, Verdict: res.Verdict, Forward: forward, Value: auditVal, Events: res.Events, Fault: res.Fault, ApprovalID: approvalIDForView(res.Verdict, approvedID, fingerprint, needsApproval)}
+	d := Decision{Tool: call.Tool, Verdict: res.Verdict, Forward: forward, Value: auditVal, Events: res.Events, Fault: res.Fault, RuleFault: res.RuleFault, ApprovalID: approvalIDForView(res.Verdict, approvedID, fingerprint, needsApproval)}
 	// a refused decision hands out no plan: the kernel already retracted them, and the
 	// boundary states it again so no caller can read a sequence off a call that was denied.
 	// Reads ride on EVERY decision, forwarded or not.

@@ -144,7 +144,11 @@ Being explicit here is the point.
 - **Model correctness or output quality.** StoaGraph governs *actions*, not reasoning or prose.
 - **Taint propagation through the model.** See the trust invariant above. This is deliberate.
 - **Eliminating the choice channel, or timing.** The gate *bounds and reports* the residual leak (see
-  "Integrity, and a bounded residual"); it does not reduce it to zero. **Timing** — how long a decision
+  "Integrity, and a bounded residual"); it does not reduce it to zero. The bound is **static and
+  policy-derived**: it ceilings what your recipes *permit*, and is not a measurement of what a given run
+  actually leaked, nor a semantic judgement about the sensitivity of the values crossing. It holds only
+  under the preconditions stated in `leakage.go` — canonical-only release, an order-only/log-private
+  observer, and a crossing cap — and it is a per-session **rate**, not a lifetime total. **Timing** — how long a decision
   takes, in what order calls arrive — is a separate side channel StoaGraph does not bound. And a *denied*
   leaf's reason string (`Fault`) can name an agent-chosen tool or argument: useful forensics on a private
   log, but an agent-controlled substring if you export that log to an untrusted reader.

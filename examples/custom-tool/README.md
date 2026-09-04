@@ -19,8 +19,6 @@ go run .                    # stdio (a host-run gate spawns it)
 
 ## 2. Register it with the gate
 
-Console → **Adapters** → add an MCP server, or:
-
 ```bash
 ADMIN=$(grep STAG_CONSOLE_TOKEN ../../.env | cut -d= -f2)     # your gate key
 curl -s -H "Authorization: Bearer $ADMIN" -X POST localhost:8080/api/mcp-servers \

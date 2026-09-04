@@ -279,17 +279,30 @@ func recordUnrouted(gate proxy.Gate, boundContext map[string]bool) mcp.Middlewar
 
 // refusal is the tool-level error an agent sees for a call the gate did not forward. Structured gate
 // metadata rides in the protocol-reserved _meta so an orchestrator can act on it without parsing prose.
+//
+// dec.RuleFault, when set, names WHICH argument and rule decided a clean rule denial (see
+// stag.EvalResult.RuleFault) — recipe-structural facts (argument names, rule labels) an operator
+// already chose to disclose on deny (proxy.redactedValue treats them the same way), never the rule's
+// permitted values. Surfacing it here is what lets a retried call choose a DIFFERENT value instead of
+// giving up: without it, "wrong value, try again" and "this tool is off-limits" (dec.Fault, a
+// structural halt — deliberately NOT echoed here, since it can name things the recipe author wrote
+// that were never part of any call) are indistinguishable to a caller.
 func refusal(dec proxy.Decision) *mcp.CallToolResult {
 	meta := map[string]any{"verdict": dec.Verdict.String(), "tool": dec.Tool}
 	if dec.ApprovalID != "" {
 		meta["approvalId"] = dec.ApprovalID
 	}
+	if dec.RuleFault != "" {
+		meta["ruleFault"] = dec.RuleFault
+	}
+	text := fmt.Sprintf("stag gate: %s — %q not forwarded", dec.Verdict, dec.Tool)
+	if dec.RuleFault != "" {
+		text += fmt.Sprintf(" (%s)", dec.RuleFault)
+	}
 	return &mcp.CallToolResult{
 		Meta:    mcp.Meta{"stag": meta},
 		IsError: true,
-		Content: []mcp.Content{&mcp.TextContent{
-			Text: fmt.Sprintf("stag gate: %s — %q not forwarded", dec.Verdict, dec.Tool),
-		}},
+		Content: []mcp.Content{&mcp.TextContent{Text: text}},
 	}
 }
 

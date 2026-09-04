@@ -71,7 +71,9 @@ func (s *Server) liveGate(r *http.Request) proxy.Gate {
 	}
 	specs := make([]router.Spec, 0, len(routes))
 	for _, rt := range routes {
-		specs = append(specs, router.Spec{Tool: rt.Tool, Server: rt.Server, Recipe: rt.Recipe, GateArg: rt.GateArg})
+		// Sequenced MUST be carried — see the same note in cmd/stag-proxy. Dropping it here makes
+		// the live gate advertise and freely accept tools the store marks grant-only.
+		specs = append(specs, router.Spec{Tool: rt.Tool, Server: rt.Server, Recipe: rt.Recipe, GateArg: rt.GateArg, Sequenced: rt.Sequenced})
 	}
 	resolved := router.Build(specs, s.Recipes.Get)
 	// The live gate carries the approval store (Stage 5): an escalate on an approval-gated recipe

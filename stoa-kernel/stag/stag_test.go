@@ -242,6 +242,71 @@ func TestRecipeEval(t *testing.T) {
 	}
 }
 
+// TestRuleFaultNamesArgAndRuleWithoutTouchingFault: a clean rule denial (argument present, rule
+// evaluated, just didn't clear) must set RuleFault so a caller can retry with a different value —
+// but must NOT set Fault, which stays reserved for a structural halt (inv 8/10). Confirms the two
+// fields carry genuinely different meanings rather than duplicating one signal under two names.
+func TestRuleFaultNamesArgAndRuleWithoutTouchingFault(t *testing.T) {
+	// sink deny: argument present, rule declared, value simply not in the set
+	sd := Eval(Recipe{
+		Ingredients: map[string]Slot{"value": {Value: "40", Class: Untrusted}},
+		Steps: []Step{
+			{Id: "s", Kind: NodeSink, In: "value", Sensitivity: SinkAuthoritative,
+				Rule: &ReleaseRule{Kind: RuleSetMembership, Set: []string{"4", "8", "12", "16"}},
+				RuleID: "value.safe", Field: "f"},
+		},
+	}, "", rh)
+	if sd.Verdict != Deny {
+		t.Fatalf("sink deny: verdict=%v, want Deny", sd.Verdict)
+	}
+	if sd.Fault != "" {
+		t.Errorf("sink deny: Fault=%q, want \"\" (this is a clean rule denial, not a structural halt)", sd.Fault)
+	}
+	if sd.RuleFault != `argument "value" failed rule "value.safe"` {
+		t.Errorf("sink deny: RuleFault=%q, want it to name the argument and rule", sd.RuleFault)
+	}
+
+	// gate deny: same shape, via NodeGate instead of NodeSink
+	gd := Eval(Recipe{
+		Ingredients: map[string]Slot{"field": {Value: "port", Class: Untrusted}},
+		Steps: []Step{
+			{Id: "g", Kind: NodeGate, In: "field",
+				Rule: &ReleaseRule{Kind: RuleSetMembership, Set: []string{"path"}}, RuleID: "field.known"},
+		},
+	}, "", rh)
+	if gd.Verdict != Deny || gd.Fault != "" {
+		t.Errorf("gate deny: verdict=%v fault=%q, want Deny,\"\"", gd.Verdict, gd.Fault)
+	}
+	if gd.RuleFault != `argument "field" failed rule "field.known"` {
+		t.Errorf("gate deny: RuleFault=%q, want it to name the argument and rule", gd.RuleFault)
+	}
+
+	// structural fault (unknown goto): Fault set, RuleFault must stay empty — rule evaluation
+	// never ran, so there is nothing for RuleFault to name.
+	sf := Eval(Recipe{Steps: []Step{
+		{Id: "p", Kind: NodePropose, Out: "o", Goto: "nowhere"},
+		{Id: "s", Kind: NodeSink, In: "o", Sensitivity: SinkBenign, Field: "f"},
+	}}, "v", rh)
+	if sf.Fault == "" {
+		t.Fatalf("structural fault: Fault=%q, want non-empty", sf.Fault)
+	}
+	if sf.RuleFault != "" {
+		t.Errorf("structural fault: RuleFault=%q, want \"\" (no rule was ever evaluated)", sf.RuleFault)
+	}
+
+	// clean allow: neither field set
+	ok := Eval(Recipe{
+		Ingredients: map[string]Slot{"x": {Value: "yes", Class: Untrusted}},
+		Steps: []Step{
+			{Id: "s", Kind: NodeSink, In: "x", Sensitivity: SinkAuthoritative,
+				Rule: &ReleaseRule{Kind: RuleSetMembership, Set: []string{"yes"}}, RuleID: "x.ok", Field: "f"},
+		},
+	}, "", rh)
+	if ok.Verdict != Allow || ok.Fault != "" || ok.RuleFault != "" {
+		t.Errorf("allow: verdict=%v fault=%q ruleFault=%q, want Allow,\"\",\"\"", ok.Verdict, ok.Fault, ok.RuleFault)
+	}
+}
+
 func FuzzRecipeEval(f *testing.F) {
 	f.Add("class:regional_fallback", []byte{0, 1, 2, 3, 0, 1})
 	f.Add("class:release_prewarm", []byte{2, 2, 1, 0})

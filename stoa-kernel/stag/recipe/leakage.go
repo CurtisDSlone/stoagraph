@@ -5,7 +5,10 @@ package recipe
 // Leakage computes the CHOICE-CHANNEL bound for a recipe: how much a fully prompt-injected model could
 // exfiltrate to an external observer through the *choices* it makes among what the gate ALLOWS. Even a
 // closed-set gate lets the model pick WHICH allowed value crosses; the gate does not remove that
-// channel, it makes it BOUNDED and STATICALLY COMPUTABLE — a signed number no competitor can produce.
+// channel, it makes it BOUNDED and STATICALLY COMPUTABLE — derived from the policy alone, with no model
+// in the computation. Runtime leakage-budget mediators exist in the literature; they accumulate over a
+// trajectory and typically put a model in the measurement path. This bound trades that finer semantic
+// tradeoff for a ceiling that is a pure function of what was authored.
 //
 // The model was DERIVED AND ADVERSARIALLY VERIFIED (2026-07-15): five independent lenses attacked a
 // naive Σ log2(K_i) bound and an adjudicator corrected it. The corrections that matter:

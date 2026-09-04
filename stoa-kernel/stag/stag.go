@@ -269,6 +269,12 @@ type SinkOutcome struct {
 	Sink     SinkSensitivity
 	Released bool
 	Verdict  Verdict
+	// Arg and RuleID name WHICH gated argument and WHICH rule decided this sink, so a denial can
+	// say what to retry differently without exposing the rule's permitted set (see
+	// EvalResult.Fault). Both are recipe-structural (declared by the operator, not chosen per
+	// call), the same bounded-disclosure basis proxy.redactedValue already relies on.
+	Arg    string
+	RuleID string
 }
 
 // kw: gate outcome checkpoint pass fail escalate
@@ -277,6 +283,9 @@ type GateOutcome struct {
 	Subject TrustClass
 	Passed  bool
 	Verdict Verdict
+	// Arg and RuleID: see SinkOutcome.
+	Arg    string
+	RuleID string
 }
 
 // kw: eval result verdict sinks gates events fault
@@ -294,6 +303,14 @@ type EvalResult struct {
 	// needs to know why, and a read cannot cause the refusal.
 	Reads []AuthorizedRead
 	Fault string // "" = none; else fail-closed structural halt (inv 8/10)
+	// RuleFault names the argument and rule that DENIED or ESCALATED a call whose recipe graph
+	// was itself fine — a legitimate outcome, not the author error Fault means. Distinct from
+	// Fault on purpose: a caller checking "was this a structural halt" must still see Fault==""
+	// for a clean rule denial (existing callers rely on that), while a caller that wants to
+	// RETRY with a different value has somewhere to look. "" whenever nothing denied, or when
+	// Fault is already set (a structural halt pre-empts rule evaluation, so there is no rule
+	// outcome to name).
+	RuleFault string
 }
 
 // kw: eval recipe path walk forward-only compose kernel invariant foreach single-arg
@@ -331,7 +348,51 @@ func evalWith(r Recipe, bind func(string) string, recipeHash string) EvalResult 
 	if res.Verdict != Allow || res.Fault != "" {
 		res.Authorized = nil
 	}
+	// A structural fault (malformed graph) already set res.Fault above and pre-empts rule
+	// evaluation entirely — RuleFault stays "" in that case. Otherwise, a RULE denial (a
+	// syntactically fine call whose argument just didn't clear its rule) sets RuleFault so a
+	// caller retrying blind can tell "this tool is off-limits" (Fault set) from "this value was
+	// wrong, try another" (RuleFault set). This discloses the same recipe-structural facts
+	// redactedValue already treats as boundedly disclosable (argument names, rule labels) —
+	// never the rule's permitted VALUES.
+	if res.Verdict != Allow && res.Fault == "" {
+		res.RuleFault = firstRuleFault(res)
+	}
 	return res
+}
+
+// firstRuleFault names the argument and rule that denied or escalated a recipe walk. A NodeGate
+// deny halts the walk immediately, but a NodeSink deny does not (a sink refuses the CROSSING,
+// never the movement — the walk continues past it), so several sinks may each deny in sequence
+// before a later gate finally halts it. This reports the FIRST sink deny, if any, else the one
+// gate deny that ended the walk — an approximation of "first in step order" that is exact
+// whenever a recipe's sinks all precede its gates (true of every recipe in this repo today) and
+// merely "a" rather than "the" first fault otherwise. Empty if nothing denied.
+func firstRuleFault(res EvalResult) string {
+	for _, s := range res.Sinks {
+		if s.Verdict != Allow {
+			return describeRuleFault(s.Arg, s.RuleID)
+		}
+	}
+	for _, g := range res.Gates {
+		if g.Verdict != Allow {
+			return describeRuleFault(g.Arg, g.RuleID)
+		}
+	}
+	return ""
+}
+
+func describeRuleFault(arg, ruleID string) string {
+	switch {
+	case arg != "" && ruleID != "":
+		return fmt.Sprintf("argument %q failed rule %q", arg, ruleID)
+	case ruleID != "":
+		return fmt.Sprintf("failed rule %q", ruleID)
+	case arg != "":
+		return fmt.Sprintf("argument %q was refused", arg)
+	default:
+		return ""
+	}
 }
 
 // sortedArgs orders an invoke's argument names so its crossings are recorded deterministically
@@ -406,7 +467,7 @@ walk:
 			}
 			released := ok && step.Rule != nil && step.Rule.Release(s.Value) // a missing slot never releases
 			v := gate.GateSink(s.Class, step.Sensitivity, released)
-			res.Sinks = append(res.Sinks, SinkOutcome{Field: step.Field, Subject: s.Class, Sink: step.Sensitivity, Released: released, Verdict: v})
+			res.Sinks = append(res.Sinks, SinkOutcome{Field: step.Field, Subject: s.Class, Sink: step.Sensitivity, Released: released, Verdict: v, Arg: step.In, RuleID: step.RuleID})
 			verdicts = append(verdicts, v)
 			// structural: the same step that clears the crossing records it (inv 2)
 			if step.Sensitivity == SinkAuthoritative && s.Class != Authoritative && released {
@@ -432,7 +493,7 @@ walk:
 				subj = TrustClass(-1) // severed
 			}
 			if present && step.Rule != nil && step.Rule.Release(s.Value) {
-				res.Gates = append(res.Gates, GateOutcome{Id: step.Id, Subject: subj, Passed: true, Verdict: Allow})
+				res.Gates = append(res.Gates, GateOutcome{Id: step.Id, Subject: subj, Passed: true, Verdict: Allow, Arg: step.In, RuleID: step.RuleID})
 				verdicts = append(verdicts, Allow)
 				n, ok := hop(i, step.Goto)
 				if !ok {
@@ -446,7 +507,7 @@ walk:
 			if present && step.Rule != nil && step.Escalate {
 				v = Escalate // declared on-fail, genuine predicate failure only
 			}
-			res.Gates = append(res.Gates, GateOutcome{Id: step.Id, Subject: subj, Passed: false, Verdict: v})
+			res.Gates = append(res.Gates, GateOutcome{Id: step.Id, Subject: subj, Passed: false, Verdict: v, Arg: step.In, RuleID: step.RuleID})
 			verdicts = append(verdicts, v)
 			break walk // halt
 		case NodeBranch:

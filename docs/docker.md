@@ -1,7 +1,7 @@
 # Docker
 
 ```bash
-stoagraph up      # mints the secrets, pulls the signed images, starts, prints your login link
+stoagraph up      # mints the secrets, pulls the signed images, starts, prints your control-plane tokens
 ```
 
 `compose.yml` is **pull-only** — it references published images and nothing on your disk, so it works
@@ -17,12 +17,12 @@ tools/gen-env.sh && docker compose up -d
 ## Why there is no `docker run` one-liner
 
 The control plane uses **per-role secrets**, and `approve` — the token that releases a held action —
-must never reach the orchestrator's environment. Something has to mint four distinct secrets and give
+must never reach the orchestrator's environment. Something has to mint three distinct secrets and give
 each service only what it is entitled to, *before anything starts*. That is the step a single
 `docker run` cannot do, and it is precisely the thing we made impossible to shortcut. `stoagraph up`
 does it and gets out of the way.
 
-Four containers by default (a fifth, `local-tools`, is opt-in), two Dockerfiles:
+Three containers by default (a fourth, `local-tools`, is opt-in), one Dockerfile:
 
 | Service | Port | Image |
 |---|---|---|
@@ -30,7 +30,6 @@ Four containers by default (a fifth, `local-tools`, is opt-in), two Dockerfiles:
 | `stag-proxy` | 8091 | the **gate's** MCP proxy — sessions bound to a recipe |
 | `harness-serve` | 8092 | the **orchestrator** — holds the model API keys (host `8092` → container `8090`) |
 | `local-tools` | 9300 | local tool server — declared commands, no shell. **Opt-in:** profile `tools` (see below) |
-| `console` | 3000 | one UI, two backends |
 
 The Go services all come from **one** `Dockerfile` (`--build-arg CMD=<binary>`), on
 `distroless/static` as `nonroot`: no shell, no package manager, ~25–43 MB. Nothing to pivot to if a
@@ -52,11 +51,11 @@ it would send whatever approve-capable secret it was holding. So it holds none.)
 
 | Secret | What it does | Held by |
 |---|---|---|
-| **console** | author policy **and** approve held actions | you (via the login link) + `stag-serve` |
-| **operator** | connect models, dispatch events | you (via the login link) + `harness-serve` |
+| **console** | author policy **and** approve held actions | you (via `stoagraph tokens`) + `stag-serve` |
+| **operator** | connect models, dispatch events | you (via `stoagraph tokens`) + `harness-serve` |
 | **dispatch** | bind sessions, poll approvals — **cannot approve** | `harness-serve` + `stag-proxy` (machine only) |
 
-Your login carries **console** + **operator** behind one link. **dispatch** is machine-only and never
+`stoagraph tokens` prints **console** + **operator**. **dispatch** is machine-only and never
 leaves a container. So no container mounts a tokens file, and — the line that matters — the orchestrator
 is injected `operator` + `dispatch` and **never** the console/approve secret. Verify it:
 

@@ -25,7 +25,7 @@ gate holds no model and no API keys.
 ### stdio — a single agent (e.g. Claude Desktop)
 
 The agent spawns `stag-proxy` and speaks MCP over its stdio. Tool→recipe bindings come from the config
-store (managed in the console).
+store, managed via the gate's `/api/routes` and `/api/recipes` endpoints.
 
 ```
 stag-proxy -downstream <your-mcp-server> -store <config.db>
@@ -46,7 +46,10 @@ endpoint; the agent cannot choose its own recipe.
 stag-proxy -http :8091          # fronts every enabled downstream; each route names which server serves it
 ```
 
-- `POST /sessions {routes:[{tool,server,recipe,gateArg}]}` → `{token, path}` — the control plane (trusted).
+- `POST /sessions {routes:[{tool,server,recipe,gateArg,sequenced}]}` → `{token, path}` — the control
+  plane (trusted). The daemon uses the routes as given and does not re-read them from `config.db`, so a
+  binder that omits `sequenced` silently unseals every sequenced route in that session — see
+  [routes.md](routes.md).
 - The agent connects to `/mcp/<token>` (streamable HTTP); every call is gated by that session's recipe,
   and the session's `tools/list` shows only the tools that recipe governs.
 - `DELETE /sessions/{token}` revokes a binding — also `dispatch`, and checked on every request, so it

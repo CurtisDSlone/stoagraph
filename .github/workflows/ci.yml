@@ -15,7 +15,7 @@ jobs:
   # There is deliberately no separate list of steps here — a CI file that drifts from the local
   # command is a CI file that lies.
   check:
-    name: check (fmt · vet · test · ARCHITECTURE · typecheck · hygiene)
+    name: check (fmt · vet · test · ARCHITECTURE · hygiene)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,17 +26,6 @@ jobs:
         with:
           go-version-file: stoa-kernel/go.mod
           cache-dependency-path: stoa-kernel/go.sum
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      # check.sh skips the frontend typecheck when node_modules is absent. In CI it must actually run.
-      - name: install console deps
-        working-directory: frontend
-        run: npm ci
 
       - name: check
         run: bash tools/check.sh
@@ -79,9 +68,6 @@ jobs:
       - name: build the local tool server (alpine on purpose — it runs real commands)
         run: docker build --target localtools --build-arg CMD=stag-tools -t stoagraph-local-tools:ci .
 
-      - name: build the console
-        run: docker build -t stoagraph-console:ci ./frontend
-
       # The distroless claim is the gate's security posture, so PROVE it rather than assert it: a shell
       # in a gate image means an attacker who pops a binary has somewhere to pivot to.
       - name: the gate images must have NO shell
@@ -106,8 +92,7 @@ jobs:
   # The SBOM is regenerated on every push and attached to the run. A stale SBOM is worse than none,
   # because it is believed. It also GATES on copyleft in our own dependency graph: this product is
   # Apache-2.0 and is meant to be embedded by people whose legal teams will not accept a GPL/LGPL
-  # obligation. (This check already caught 33MB of LGPL `sharp` being shipped in the console image for
-  # a feature the console does not use.)
+  # obligation.
   sbom:
     name: sbom + licence gate
     runs-on: ubuntu-latest
@@ -121,7 +106,6 @@ jobs:
             docker build --target runtime --build-arg CMD="$cmd" -t "stoagraph-$cmd:latest" .
           done
           docker build --target localtools --build-arg CMD=stag-tools -t stoagraph-local-tools:latest .
-          docker build -t stoagraph-console:latest ./frontend
 
       - name: generate the SBOM (fails on copyleft in our dependency graph)
         run: bash tools/sbom.sh

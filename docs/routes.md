@@ -59,8 +59,6 @@ auditable act; forgetting to add one fails safe.
 
 ## Creating a route
 
-Console → **Adapters** → route a tool. Or:
-
 ```bash
 curl -H "Authorization: Bearer $STAG_CONSOLE_TOKEN" -X POST localhost:8080/api/routes \
   -d '{"tool":"get_file_contents","server":"github","recipe":"github_repo_policy","gateArg":"owner,repo"}'
@@ -235,14 +233,21 @@ agent would call and the name the audit records — not the downstream's own `dr
 
 There are two ways routes reach the gate, and they are not the same thing:
 
-- **The global route table** (`/api/routes`, stored in `config.db`) — what the console manages, and what a
-  stdio gate uses.
+- **The global route table** (`/api/routes`, stored in `config.db`) — what a stdio gate uses.
 - **Session routes** — in daemon mode the trusted dispatcher binds a session with its own route set:
-  `POST /sessions {routes:[{tool,server,recipe,gateArg}]}`. The agent connects to `/mcp/<token>` and gets
-  **only** those routes. The agent cannot choose its own recipe, and a session with no routes binds
-  nothing. See [mcp-gating-proxy.md](mcp-gating-proxy.md).
+  `POST /sessions {routes:[{tool,server,recipe,gateArg,sequenced}]}`. The agent connects to
+  `/mcp/<token>` and gets **only** those routes. The agent cannot choose its own recipe, and a session
+  with no routes binds nothing. See [mcp-gating-proxy.md](mcp-gating-proxy.md).
+
+  **Carry `sequenced` on every bound route.** The daemon takes the session's routes from the request
+  body; it does not re-read them from `config.db`. A binder that omits the field gets Go's zero value,
+  `false`, so a route that is sequenced in the route table becomes an ordinary advertised route in the
+  bound session — the tool appears in `tools/list` and is directly callable, with no error anywhere to
+  say enforcement was dropped.
 
 ## See also
 
 - [recipe-authoring.md](recipe-authoring.md) — writing the policy a route points at
 - [mcp-gating-proxy.md](mcp-gating-proxy.md) — how a cleared call is forwarded, and the session model
+- [dispatch-internals.md](dispatch-internals.md) — what a sequenced route's grant is minted by, and the
+  invariants a route must satisfy against the recipe that invokes it

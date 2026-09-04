@@ -138,16 +138,28 @@ func (s *Server) dispatch(w http.ResponseWriter, r *http.Request) {
 // async webhook path).
 func (s *Server) governedRun(ctx context.Context, dec dispatch.Decision, event map[string]any, modelName, system string, maxTurns int, emit func(agent.Event)) {
 	stag := dispatch.StagClient{BaseURL: s.approvals, Token: s.stagToken}
+	// Union both route sources rather than picking one: an event-map entry naming BOTH a recipe and
+	// an explicit tools list wants both bound — the recipe's own trigger tool (whose invoke/await
+	// steps are the only place a multi-step arc is actually enforced) alongside any individually
+	// listed diagnostic tools. Picking only one, as this used to, meant a `tools:` list silently
+	// dropped dec.RecipeID and the recipe's trigger tool was never reachable — so its invoke/await
+	// enforcement never ran in the autonomous dispatch path, for any scenario that names `tools`.
 	var routes []dispatch.RouteSpec
 	var err error
-	if len(dec.Tools) > 0 {
-		routes, err = stag.RoutesForTools(dec.Tools)
-	} else {
+	if dec.RecipeID != "" {
 		routes, err = stag.RoutesForRecipe(dec.RecipeID)
+		if err != nil {
+			emit(agent.Event{Kind: "error", Text: "routes for session: " + err.Error()})
+			return
+		}
 	}
-	if err != nil {
-		emit(agent.Event{Kind: "error", Text: "routes for session: " + err.Error()})
-		return
+	if len(dec.Tools) > 0 {
+		extra, terr := stag.RoutesForTools(dec.Tools)
+		if terr != nil {
+			emit(agent.Event{Kind: "error", Text: "routes for session: " + terr.Error()})
+			return
+		}
+		routes = mergeRouteSpecs(routes, extra)
 	}
 	providers, perr := stag.ProvidersFor(dec.Context)
 	if perr != nil {
@@ -208,6 +220,31 @@ func (s *Server) governedRun(ctx context.Context, dec dispatch.Decision, event m
 		maxTurns = 6
 	}
 	agent.Run(ctx, proposer, sess, maxTurns, agent.NewApprovalConfig(s.approvals, s.stagToken), emit)
+}
+
+// mergeRouteSpecs unions two route sets, deduping by (server, tool) so the same downstream call is
+// never bound twice. base wins on conflict — it holds the recipe's own routes, which include its
+// sequenced/invoke-only tools; extra holds the explicitly-listed tools from the event map. Keeping
+// base first means a recipe's own binding for a tool is never silently overridden by a same-named
+// entry in an event map's `tools` list.
+func mergeRouteSpecs(base, extra []dispatch.RouteSpec) []dispatch.RouteSpec {
+	seen := make(map[string]bool, len(base)+len(extra))
+	out := make([]dispatch.RouteSpec, 0, len(base)+len(extra))
+	for _, r := range base {
+		key := r.Server + "\x00" + r.Tool
+		if !seen[key] {
+			seen[key] = true
+			out = append(out, r)
+		}
+	}
+	for _, r := range extra {
+		key := r.Server + "\x00" + r.Tool
+		if !seen[key] {
+			seen[key] = true
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // eventInput renders the event as compact-ish JSON — the untrusted "ticket". bind.Assemble adds the

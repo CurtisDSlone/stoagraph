@@ -437,8 +437,8 @@ clever YAML feature that makes them differ is a liability, not a convenience.
 
 ### Cautions (warn, do not block)
 
-Some things are legal but worth a reviewer's attention, so the console and CLI surface them
-without refusing the save:
+Some things are legal but worth a reviewer's attention, so `POST /api/recipes` surfaces them in its
+validation response without refusing the save:
 
 - a `passthrough` argument that **looks authoritative** (`amount`, `to`, `path`, `cmd`, …)
 - an `invoke` on a tool whose name **looks destructive** (`delete`, `purge`, `transfer`, …)
@@ -701,8 +701,8 @@ gated argument from one that was waved through. A route-side declaration would l
 policies producing the same audit trail.
 
 **Declaring an authoritative-looking argument (`amount`, `path`, `to`, `cmd`) raises a caution** in
-the console and the CLI. It does not block the save — you may have a reason — but the reviewer sees
-it, which is the entire point of writing it down.
+the `POST /api/recipes` validation response. It does not block the save — you may have a reason — but
+the reviewer sees it, which is the entire point of writing it down.
 
 **Honest scope:** this is an *integrity* control. It guarantees every argument that parameterizes an
 action was judged, or knowingly wasn't. It is not a confidentiality control: a gated argument can
@@ -773,5 +773,4 @@ steps:
 - YAML 1.1 gotcha: a bare slot named `n`, `y`, or `no` parses as a boolean — quote it or rename it
   (e.g. use `replicas`, not `n`).
 - Prefer explicit `exit` nodes per branch — it makes the graph (and the linter) unambiguous.
-- Validate a draft before routing it: `POST /api/recipes` returns `{valid, error}`; the console shows
-  the linter result live.
+- Validate a draft before routing it: `POST /api/recipes` returns `{valid, error}` from the linter.

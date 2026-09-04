@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tools/check.sh — the full verification gate. One command; exactly what CI runs.
 #
-#   gofmt · go vet · go test · ARCHITECTURE · frontend typecheck · code index · repo hygiene
+#   gofmt · go vet · go test · ARCHITECTURE · code index · repo hygiene
 #
 # Every check is judged by its EXIT CODE, and its output is shown only when it fails.
 #
@@ -44,13 +44,6 @@ if out=$( (cd stoa-kernel && go test -run TestGate .) 2>&1 ); then
   ok "stag/ imports zero harness/ code (and neither gate binary links it)"
 else
   no "ARCHITECTURE BREACH — the gate reaches orchestrator code:"; show "$out"
-fi
-
-step "frontend typecheck"
-if [ -d frontend/node_modules ]; then
-  if out=$( (cd frontend && npx tsc --noEmit) 2>&1 ); then ok "typecheck clean"; else no "typecheck failed:"; show "$out"; fi
-else
-  printf '  – skipped (run: cd frontend && npm ci)\n'
 fi
 
 step "code index"

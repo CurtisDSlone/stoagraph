@@ -12,9 +12,8 @@ an hour and can never be refreshed.
 
 ## How to use one
 
-Console → **Adapters** → add an MCP server with scheme **OAuth sign-in**, and paste the profile's JSON
-into the server's OAuth config (or `POST /api/mcp-servers` with `"oauthConfig": "<the json>"`). Then click
-**Sign in**.
+Register an MCP server with scheme **OAuth sign-in** via `POST /api/mcp-servers` with
+`"oauthConfig": "<the profile's JSON>"`, then start the auth-code flow with `GET /api/oauth/start`.
 
 Everything in a profile is an **override on top of discovery**. Set only what the provider gets wrong.
 

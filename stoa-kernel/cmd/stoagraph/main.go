@@ -1,9 +1,9 @@
 // Command stoagraph is the installer and launcher: one binary that gets you from nothing to a running,
 // authenticated gate.
 //
-//	stoagraph up       mint the secrets, pull the signed images, start, print the login link
-//	stoagraph console  print the one-click login link again
-//	stoagraph down     stop
+//	stoagraph up      mint the secrets, pull the signed images, start, print your tokens
+//	stoagraph tokens  print the control-plane tokens again
+//	stoagraph down    stop
 //
 // WHY THIS EXISTS AND NOT A `docker run` ONE-LINER: the control plane uses role-scoped secrets, and the
 // approve-capable one must never reach the orchestrator's environment — otherwise a compromised
@@ -13,7 +13,7 @@
 // It holds no secrets itself: it writes .env (0600) and never transmits it anywhere.
 package main
 
-// file-kw: cli installer launcher up down console login-link compose ghcr role-secrets mint one-click
+// file-kw: cli installer launcher up down tokens compose ghcr role-secrets mint
 
 import (
 	"crypto/rand"
@@ -45,8 +45,8 @@ func main() {
 		err = up()
 	case "down":
 		err = compose("down")
-	case "console", "login", "url":
-		err = loginLink()
+	case "tokens":
+		err = printTokens()
 	case "version":
 		fmt.Println("stoagraph", Version)
 	default:
@@ -61,9 +61,9 @@ func main() {
 func usage() {
 	fmt.Print(`stoagraph — verifiable control for AI agents
 
-  stoagraph up       mint secrets, pull the images, start, print your one-click login link
-  stoagraph console  print the login link again
-  stoagraph down     stop everything
+  stoagraph up      mint secrets, pull the images, start, print your control-plane tokens
+  stoagraph tokens  print the tokens again
+  stoagraph down    stop everything
   stoagraph version
 
 Docs: https://github.com/CurtisDSlone/stoagraph
@@ -121,13 +121,13 @@ func up() error {
 	}
 	fmt.Println(" ready ==")
 
-	return loginLink()
+	return printTokens()
 }
 
-// loginLink prints the one-click console login. The two role-scoped keys the browser needs ride in the
-// URL fragment (#...), which browsers never send to a server and which the console strips from the bar
-// after reading. No copy-pasting a raw token.
-func loginLink() error {
+// printTokens prints the control-plane tokens a client needs to call the API: the console/approve
+// secret (author policy + release a held action) and the operator secret (connect models, dispatch
+// events). Pass either as `Authorization: Bearer <token>` against stag-serve / harness-serve.
+func printTokens() error {
 	console, err := envToken("STAG_CONSOLE_TOKEN")
 	if err != nil {
 		return err
@@ -137,9 +137,10 @@ func loginLink() error {
 		return err
 	}
 	fmt.Printf(`
-  Log in — open this once (the keys are in the # fragment; the console stores them and strips them):
+  control-plane tokens (Authorization: Bearer <token>):
 
-    http://localhost:3000/#c=%s&o=%s
+    gate token         (admin + approve)  %s
+    orchestrator token (operator)         %s
 `, console, operator)
 	return nil
 }

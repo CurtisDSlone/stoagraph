@@ -14,15 +14,14 @@ Open source, Apache-2.0. No held-back edition. New here? Start with the [doctrin
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/CurtisDSlone/stoagraph/v0.3.1/install.sh | sh
-stoagraph up        # mint secrets, pull the signed images, start, print a one-click login link
+stoagraph up        # mint secrets, pull the signed images, start, print your control-plane tokens
 ```
 
-Open the console at **http://localhost:3000**. The login link from `stoagraph up` carries your keys in
-the URL fragment, so there is nothing to paste; reprint it any time with `stoagraph console`.
+Use the printed tokens as `Authorization: Bearer <token>` against the gate (`:8080`) and the
+orchestrator (`:8092`). Reprint them any time with `stoagraph tokens`.
 
 A fresh gate is **empty** — it permits nothing until you author a policy. That is the correct starting
-point for a security control: it never arrives already allowing something you did not write. The console
-walks you from the empty state through wiring your first tool.
+point for a security control: it never arrives already allowing something you did not write.
 
 The fastest path is [`examples/custom-tool/`](examples/custom-tool/): a copy-paste MCP server and a short
 recipe, about five minutes. You write one function and gate one argument, and the agent can then call
@@ -39,8 +38,8 @@ before running anything, and prints `cosign verify` for the images. Prefer to re
 - **Connect a model.** Copy `config/models.example.json` to `config/models.json` and add a key. **The
   gate never sees it** — only the orchestrator does.
 - **Add a tool.** Register an MCP server (yours, or one of the examples), write a recipe that says which
-  arguments may take which values, and route the tool to it. All four steps are in the console from the
-  empty state.
+  arguments may take which values, and route the tool to it. All four steps are just calls against the
+  gate's API — see [docs/routes.md](docs/routes.md) and [docs/recipe-authoring.md](docs/recipe-authoring.md).
 - **Author policy.** [`docs/recipe-authoring.md`](docs/recipe-authoring.md) is the policy language;
   [`docs/routes.md`](docs/routes.md) covers binding a tool to a policy.
 
@@ -82,6 +81,7 @@ guarantees — see [SECURITY.md](SECURITY.md).
 - [docs/routes.md](docs/routes.md) — binding a tool to a policy: why an unrouted tool is denied, and which arguments a route must gate.
 - [docs/mcp-gating-proxy.md](docs/mcp-gating-proxy.md) — how the gate speaks MCP.
 - [docs/sessions.md](docs/sessions.md) — what a session is: a grant, not a connection. The crossing budget, revoking, and why a policy edit does not reach an agent that is already bound.
+- [docs/dispatch-internals.md](docs/dispatch-internals.md) — how a recipe's sequence actually executes, and the wiring invariants recipes, routes and the event map must jointly satisfy.
 - [docs/docker.md](docs/docker.md) — the containers, and why the secrets are split across them.
 - [docs/development.md](docs/development.md) — layout, ports, and running from source.
 - [examples/custom-tool/](examples/custom-tool/) — bring your own tool in about five minutes.

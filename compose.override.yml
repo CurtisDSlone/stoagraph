@@ -25,14 +25,6 @@ services:
     build:
       <<: *gate-build
       args: [CMD=harness-serve]
-  console:
-    build:
-      context: ./frontend
-      args:
-        # Baked in at build time (Next inlines NEXT_PUBLIC_*). These are the addresses the BROWSER
-        # will call — not the compose service names, which a browser cannot resolve.
-        NEXT_PUBLIC_API_BASE: ${PUBLIC_GATE_URL:-http://localhost:8080}
-        NEXT_PUBLIC_HARNESS_API: ${PUBLIC_HARNESS_URL:-http://localhost:8092}
   # The tool server is behind the `tools` profile in compose.yml, so a released install never starts it
   # (and never mounts an examples/ path that only exists in a clone). A CLONE turns it back on with
   # COMPOSE_PROFILES=tools in .env — written by tools/gen-env.sh — so `docker compose up` here is

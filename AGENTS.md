@@ -84,7 +84,6 @@ stoa-kernel/   one Go module, the whole backend
   harness/     the ORCHESTRATOR (dispatch, agent loop, models)
   cmd/         stag-serve, stag-proxy, harness-serve, stag-tools, stoagraph, harness, healthcheck
   architecture_test.go   the one-way-dependency guard
-frontend/      the console (a modified Next.js), talking to both backends
 config/        event map + model config        data/  runtime state (gitignored)
 docs/          doctrine, context-binding, recipe authoring, routes, the MCP proxy, docker, development
 examples/      custom-tool (start here), local-tools, oauth-profiles
@@ -110,6 +109,7 @@ the code that does X" rather than "where does this string appear".
 | how untrusted context is positioned | [docs/context-binding.md](docs/context-binding.md) |
 | what a session is (a grant, not a connection) | [docs/sessions.md](docs/sessions.md) |
 | how the gate speaks MCP | [docs/mcp-gating-proxy.md](docs/mcp-gating-proxy.md) |
+| how a sequence executes, and why a wired-up scenario still halts | [docs/dispatch-internals.md](docs/dispatch-internals.md) |
 | layout, ports, running from source | [docs/development.md](docs/development.md) |
 
 ## Working here
@@ -124,7 +124,6 @@ tools/find.sh <kw>  # keyword code index, not grep
 - Run Go commands from `stoa-kernel/` (`go build ./...`, `go test ./...`, `go vet ./...`).
 - Every source file carries a `// file-kw:` marker that feeds `tools/find.sh` and `INDEX.md`; add one to
   any new file or `tools/check.sh` fails. `INDEX.md` is generated: do not hand-edit it, run `tools/index.sh`.
-- The frontend is a modified Next.js. Read [frontend/AGENTS.md](frontend/AGENTS.md) before touching it.
 
 ## Changing the gate
 

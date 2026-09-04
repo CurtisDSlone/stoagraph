@@ -1,24 +1,24 @@
 # Development
 
-Everything runs from the repo root. There is one Go module (`stoa-kernel`) and one frontend
-(`frontend`); each binary boots with **zero flags** because every default path is relative to this root.
+Everything runs from the repo root. There is one Go module (`stoa-kernel`); each binary boots with
+**zero flags** because every default path is relative to this root.
 
 ## The tools
 
 | | |
 |---|---|
 | `tools/build.sh` | Build all binaries into `stoa-kernel/bin/`. |
-| `tools/up.sh` | Bring up the gate, the orchestrator, and the console. Prints your control-plane tokens. |
+| `tools/up.sh` | Bring up the gate and the orchestrator. Prints your control-plane tokens. |
 | `tools/down.sh` | Stop everything. Leaves `data/` intact. |
-| `tools/check.sh` | **The gate for a change:** gofmt · vet · test · architecture · typecheck · hygiene. |
+| `tools/check.sh` | **The gate for a change:** gofmt · vet · test · architecture · hygiene. |
 | `tools/hygiene.sh` | Repo invariants that fail silently if nobody looks. |
 | **`tools/find.sh <words>`** | **Find the code that does a thing.** Searches the keyword markers, not identifiers. Start here. |
 | `tools/index.sh` | Rebuild `INDEX.md` + `.index/code.json` from the `// file-kw:` / `// kw:` markers. |
 | `tools/sbom.sh` | SBOM of the shipped images (CycloneDX) + a copyleft gate. |
-| `tools/gen-env.sh` | Mint the four control-plane role secrets into `.env` (Docker). |
+| `tools/gen-env.sh` | Mint the control-plane role secrets into `.env` (Docker). |
 
 ```bash
-tools/build.sh && tools/up.sh      # http://localhost:3000
+tools/build.sh && tools/up.sh      # http://localhost:8080
 tools/check.sh                     # before you commit
 tools/down.sh
 ```
@@ -42,7 +42,7 @@ Its `/authorize` auto-approves a hardcoded test user, so the whole authorization
 |---|---|
 | `stag/oauth` · `TestAgainstRealIdP` | discovery → dynamic client registration → PKCE → auth-code redirect → token exchange → refresh **rotation** → the proxy's connect-time resolver |
 | `stag/oauth` · `TestConcurrentRefreshDoesNotLockOut` | two gate processes refreshing at once must not both spend the same single-use refresh token |
-| `stag/serve` · `TestOAuthSignInAgainstRealIdP` | the real HTTP endpoints: `/api/oauth/start` → the provider's redirect → `/api/oauth/callback` → `/api/oauth/status`. This is the console's **Sign in** button, minus the popup. |
+| `stag/serve` · `TestOAuthSignInAgainstRealIdP` | the real HTTP endpoints: `/api/oauth/start` → the provider's redirect → `/api/oauth/callback` → `/api/oauth/status`. This is the **Sign in** flow, minus the popup. |
 
 **Refresh-token rotation is the trap.** Providers issue a new refresh token on each refresh and revoke the
 old one. The gate must persist each rotated token, and — because `stag-proxy` (at connect) and
@@ -78,7 +78,6 @@ If that test goes red, it is not a style violation. The claim is false and the b
 | `stag-serve` | 8080 | The gate's control plane: policy, approvals, audit. No model, no keys. |
 | `stag-proxy` | 8091 | The gate's MCP proxy. Sessions are bound to a recipe here. |
 | `harness-serve` | 8090 (host) / 8092 under Docker | The orchestrator's API. **Holds the model keys.** |
-| console | 3000 | One UI, talking to both backends. |
 
 `harness-serve`'s default is `-addr :8090`, so that is the port on the host. Under Docker, `compose.yml`
 remaps it to host **8092** → container **8090** — because `:8090` is also what the OAuth test server
@@ -87,8 +86,8 @@ see depends on whether you are on the host or in the container.
 
 Three secrets (`stoagraph up` mints them, `.env`): **console** (author policy + approve),
 **operator** (models + dispatch), **dispatch** (machine-only — the orchestrator binds sessions, and
-**cannot approve**). Your login link carries console + operator; you never handle dispatch. The one rule
-that makes the whole thing safe: the orchestrator is never given an approve-capable secret. Do not
+**cannot approve**). `stoagraph tokens` prints console + operator; you never handle dispatch. The one
+rule that makes the whole thing safe: the orchestrator is never given an approve-capable secret. Do not
 "fix" a 401 by handing it a stronger token — that 401 is the human-in-the-loop working.
 
 ## Paths

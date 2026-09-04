@@ -15,7 +15,6 @@ body:
       options:
         - gate — stag/ (policy, MCP proxy, audit, approvals)
         - orchestrator — harness/ (dispatch, agent loop, models)
-        - console (frontend)
         - docker / compose
         - docs
         - not sure
@@ -38,7 +37,7 @@ body:
       description: The smaller the better. A failing test is ideal.
       placeholder: |
         1. tools/gen-env.sh && docker compose up -d
-        2. register an MCP server + recipe + route (console, or POST /api/routes)
+        2. register an MCP server + recipe + route (POST /api/routes)
         3. curl ... -> expected DENY, got ALLOW
     validations: {required: true}
   - type: input

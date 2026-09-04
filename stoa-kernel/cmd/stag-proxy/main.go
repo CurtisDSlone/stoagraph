@@ -200,7 +200,10 @@ func main() {
 	die(err)
 	specs := make([]router.Spec, 0, len(routes))
 	for _, rt := range routes {
-		specs = append(specs, router.Spec{Tool: rt.Tool, Server: rt.Server, Recipe: rt.Recipe, GateArg: rt.GateArg})
+		// Sequenced MUST be carried. It is the flag that makes a route unadvertised and reachable
+		// only via a one-shot grant; dropping it here silently turns every sequenced route in the
+		// store into an ordinary advertised one, with no error anywhere to say enforcement is gone.
+		specs = append(specs, router.Spec{Tool: rt.Tool, Server: rt.Server, Recipe: rt.Recipe, GateArg: rt.GateArg, Sequenced: rt.Sequenced})
 	}
 	resolved := router.BuildStrict(specs, recipes.Get, *requireBounded)
 	for _, re := range resolved.Errors {

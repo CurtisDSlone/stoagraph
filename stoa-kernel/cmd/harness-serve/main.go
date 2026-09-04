@@ -6,7 +6,7 @@
 // product's central claim, and it is enforced, not merely intended: see architecture_test.go, which
 // fails the build if any gate package so much as imports orchestrator code.
 //
-// API only. The console is the Next.js app in frontend/, which unifies BOTH backends' surfaces.
+// API only. Call it directly, or through your own client.
 package main
 
 // file-kw: cmd orchestrator api models keys dispatch event-map sse operator-role never-approve cors
@@ -130,9 +130,7 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	// API-ONLY. The console is the Next.js app (frontend/), which serves BOTH backends' surfaces —
-	// the embedded index.html that used to live here is retired (Planning/26: one console, two
-	// backends). Liveness stays open for container probes.
+	// API-ONLY — no bundled UI. Liveness stays open for container probes.
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})

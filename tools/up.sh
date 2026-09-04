@@ -4,7 +4,6 @@
 #   stag-serve  :8080   the GATE — policy, approvals, audit. No model. No keys.
 #   stag-proxy  :8091   the GATE — MCP gating proxy; sessions bound to a recipe.
 #   harness-serve :8092 the ORCHESTRATOR — models (KEYS live here), dispatch.
-#   console     :3000   the one console, talking to both backends.
 #
 # Order matters: stag-serve GENERATES data/control.tokens on first start, and everything else only
 # READS them (a consumer must never invent a secret nobody else knows). So the gate boots first.
@@ -26,7 +25,7 @@ wait_for http://localhost:8080/api/health "stag-serve :8080"
 
 "$BIN/stag-proxy" ${DOWNSTREAM:+-downstream "$DOWNSTREAM"} -http :8091 >logs/stag-proxy.log 2>&1 &
 wait_for http://localhost:8091/health "stag-proxy :8091 (daemon)" || \
-  echo "    (no MCP server registered yet? add one in the console, then bind a route)"
+  echo "    (no MCP server registered yet? register one via POST /api/servers, then bind a route)"
 
 echo "== the ORCHESTRATOR =="
 if [ ! -f config/models.json ]; then
@@ -36,16 +35,8 @@ fi
 "$BIN/harness-serve" -addr :8092 >logs/harness-serve.log 2>&1 &
 wait_for http://localhost:8092/health "harness-serve :8092"
 
-echo "== the CONSOLE =="
-if [ -d frontend/node_modules ]; then
-  (cd frontend && npx next dev -p 3000 >../logs/console.log 2>&1 &)
-  wait_for http://localhost:3000 "console :3000"
-else
-  echo "  – skipped (cd frontend && npm ci)"
-fi
-
 echo
-echo "control-plane tokens (data/control.tokens) — paste these into the console sidebar:"
+echo "control-plane tokens (data/control.tokens) — pass these as bearer tokens against the API:"
 if [ -f data/control.tokens ]; then
   python3 - <<'PY'
 import json
@@ -57,4 +48,5 @@ print(f"  dispatch                      (held by the orchestrator process; it ca
 PY
 fi
 echo
-echo "  console  http://localhost:3000     stop with: tools/down.sh"
+echo "  stag-serve      http://localhost:8080     stop with: tools/down.sh"
+echo "  harness-serve   http://localhost:8092"

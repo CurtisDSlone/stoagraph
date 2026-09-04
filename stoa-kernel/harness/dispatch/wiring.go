@@ -27,6 +27,11 @@ type RouteSpec struct {
 	Server  string `json:"server"`
 	Recipe  string `json:"recipe"`
 	GateArg string `json:"gateArg"`
+	// Sequenced: bound only for a recipe's `invoke` to authorize — not advertised to the agent,
+	// and unreachable without a one-shot grant. MUST be carried through from routeRow: dropping it
+	// here means every session-bound route looks unsequenced to stag-proxy regardless of what
+	// config.db says, silently disabling grant-only enforcement for every dispatched session.
+	Sequenced bool `json:"sequenced"`
 }
 
 // ProviderSpec is one resolved context provider — the READ-channel half of a session binding
@@ -90,7 +95,7 @@ func (c StagClient) RoutesForRecipe(recipe string) ([]RouteSpec, error) {
 	out := make([]RouteSpec, 0, 1)
 	for _, r := range routes {
 		if r.Recipe == recipe && r.Valid {
-			out = append(out, RouteSpec{Tool: r.Tool, Server: r.Server, Recipe: r.Recipe, GateArg: r.GateArg})
+			out = append(out, RouteSpec{Tool: r.Tool, Server: r.Server, Recipe: r.Recipe, GateArg: r.GateArg, Sequenced: r.Sequenced})
 		}
 	}
 	return out, nil
@@ -123,7 +128,7 @@ func (c StagClient) RoutesForTools(tools []string) ([]RouteSpec, error) {
 			continue
 		}
 		if want[r.Tool] || want[proxy.AdvertisedName(r.Server, r.Tool)] {
-			out = append(out, RouteSpec{Tool: r.Tool, Server: r.Server, Recipe: r.Recipe, GateArg: r.GateArg})
+			out = append(out, RouteSpec{Tool: r.Tool, Server: r.Server, Recipe: r.Recipe, GateArg: r.GateArg, Sequenced: r.Sequenced})
 		}
 	}
 	return out, nil
@@ -132,11 +137,12 @@ func (c StagClient) RoutesForTools(tools []string) ([]RouteSpec, error) {
 // routeRow is one row of GET /api/routes. `server` is part of the binding and must be carried through
 // to the session — the daemon refuses a route that does not name one.
 type routeRow struct {
-	Tool    string `json:"tool"`
-	Server  string `json:"server"`
-	Recipe  string `json:"recipe"`
-	GateArg string `json:"gateArg"`
-	Valid   bool   `json:"valid"`
+	Tool      string `json:"tool"`
+	Server    string `json:"server"`
+	Recipe    string `json:"recipe"`
+	GateArg   string `json:"gateArg"`
+	Sequenced bool   `json:"sequenced"`
+	Valid     bool   `json:"valid"`
 }
 
 func (c StagClient) routes() ([]routeRow, error) {

@@ -26,7 +26,7 @@ jobs:
   check:
     uses: ./.github/workflows/ci.yml
 
-  # Five multi-arch images, signed, with an SBOM attached as an attestation. Five, not four: compose.yml
+  # Four multi-arch images, signed, with an SBOM attached as an attestation. Four, not three: compose.yml
   # pulls local-tools too, and it was missing here — so a tagged release still could not be run.
   #
   # Signing matters more than usual here: the whole product asks people to move trust from "the model
@@ -54,7 +54,6 @@ jobs:
           # compose.yml pulls local-tools, so it MUST be published — it was missing from this matrix, so
           # `docker compose up` would have 404'd on it even after a tagged release.
           - { service: local-tools, cmd: stag-tools, target: localtools, context: ".", file: Dockerfile }
-          - { service: console, cmd: "", target: "", context: ./frontend, file: ./frontend/Dockerfile }
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3

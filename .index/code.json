@@ -185,7 +185,7 @@
       "symbols": []
     },
     {
-      "doc": "Command stag-verify replays a hash-chained stag audit log and reports whether the chain is INTACT \u2014 the \"verify the audit yourself\" half of verifiable control. It recomputes every leaf hash and the prev-hash links (egres",
+      "doc": "Command stag-verify replays a hash-chained stag audit log and reports whether the chain is INTACT \u2014 the \"verify the audit yourself\" half of verifiable control. It recomputes every leaf hash and the prev-hash links; tampe",
       "keywords": [
         "cli",
         "verify",
@@ -203,7 +203,12 @@
         "policy-column",
         "interleaved-runs",
         "which-agent",
-        "which-policy-version"
+        "which-policy-version",
+        "generic-chain",
+        "reads-log",
+        "ingress-log",
+        "three-shapes",
+        "sniff"
       ],
       "layer": "binary",
       "package": "main",
@@ -211,20 +216,18 @@
       "symbols": []
     },
     {
-      "doc": "Command stoagraph is the installer and launcher: one binary that gets you from nothing to a running, authenticated gate.  stoagraph up       mint the secrets, pull the signed images, start, print the login link stoagraph",
+      "doc": "Command stoagraph is the installer and launcher: one binary that gets you from nothing to a running, authenticated gate.  stoagraph up      mint the secrets, pull the signed images, start, print your tokens stoagraph tok",
       "keywords": [
         "cli",
         "installer",
         "launcher",
         "up",
         "down",
-        "console",
-        "login-link",
+        "tokens",
         "compose",
         "ghcr",
         "role-secrets",
-        "mint",
-        "one-click"
+        "mint"
       ],
       "layer": "binary",
       "package": "main",
@@ -2463,7 +2466,7 @@
             "hash",
             "record"
           ],
-          "line": 322,
+          "line": 335,
           "name": "doRead"
         },
         {
@@ -2474,7 +2477,7 @@
             "namespace",
             "no-collision"
           ],
-          "line": 361,
+          "line": 374,
           "name": "ContextToolName"
         },
         {
@@ -2485,7 +2488,7 @@
             "schema",
             "query"
           ],
-          "line": 369,
+          "line": 382,
           "name": "contextTool"
         },
         {
@@ -2497,7 +2500,7 @@
             "untrusted",
             "never-denied"
           ],
-          "line": 382,
+          "line": 395,
           "name": "contextToolHandler"
         },
         {
@@ -2510,7 +2513,7 @@
             "untrusted",
             "every-decision"
           ],
-          "line": 499,
+          "line": 512,
           "name": "withReads"
         },
         {
@@ -2524,7 +2527,7 @@
             "report",
             "agent"
           ],
-          "line": 539,
+          "line": 552,
           "name": "executeAuthorized"
         },
         {
@@ -2535,7 +2538,7 @@
             "tool-error",
             "render"
           ],
-          "line": 656,
+          "line": 669,
           "name": "callErr"
         },
         {
@@ -2546,7 +2549,7 @@
             "content",
             "concat"
           ],
-          "line": 665,
+          "line": 678,
           "name": "textOf"
         },
         {
@@ -2559,7 +2562,7 @@
             "whitespace",
             "visible"
           ],
-          "line": 682,
+          "line": 695,
           "name": "quotedForCompare"
         },
         {
@@ -2570,7 +2573,7 @@
             "poll",
             "interval"
           ],
-          "line": 692,
+          "line": 705,
           "name": "sleepCtx"
         },
         {
@@ -2584,7 +2587,7 @@
             "sweep",
             "scope"
           ],
-          "line": 710,
+          "line": 723,
           "name": "newRunID"
         },
         {
@@ -2596,7 +2599,7 @@
             "authorized",
             "call"
           ],
-          "line": 724,
+          "line": 737,
           "name": "rawArgs"
         },
         {
@@ -2611,7 +2614,7 @@
             "agent-visible",
             "summary"
           ],
-          "line": 737,
+          "line": 750,
           "name": "firstLine"
         }
       ]
@@ -2793,7 +2796,7 @@
             "burned",
             "provenance"
           ],
-          "line": 149,
+          "line": 152,
           "name": "Grant"
         },
         {
@@ -2806,7 +2809,7 @@
             "concurrent-runs",
             "no-collision"
           ],
-          "line": 179,
+          "line": 182,
           "name": "GrantKey"
         },
         {
@@ -2820,7 +2823,7 @@
             "one-shot",
             "atomic"
           ],
-          "line": 188,
+          "line": 191,
           "name": "Authorizations"
         },
         {
@@ -2834,7 +2837,7 @@
             "notify",
             "crossing-budget"
           ],
-          "line": 216,
+          "line": 219,
           "name": "Gate"
         },
         {
@@ -2847,7 +2850,7 @@
             "evict",
             "already-connected"
           ],
-          "line": 253,
+          "line": 256,
           "name": "Revoked"
         },
         {
@@ -2860,7 +2863,7 @@
             "bearer-credential",
             "attribution"
           ],
-          "line": 260,
+          "line": 263,
           "name": "SessionID"
         },
         {
@@ -2873,7 +2876,7 @@
             "fail-closed",
             "approval-loop"
           ],
-          "line": 309,
+          "line": 312,
           "name": "Decide"
         },
         {
@@ -2885,7 +2888,7 @@
             "top-level",
             "heads"
           ],
-          "line": 509,
+          "line": 512,
           "name": "Covered"
         },
         {
@@ -2896,7 +2899,7 @@
             "properties",
             "unaccounted"
           ],
-          "line": 553,
+          "line": 556,
           "name": "CoverageGaps"
         },
         {
@@ -2907,7 +2910,7 @@
             "placeholder",
             "scan"
           ],
-          "line": 926,
+          "line": 929,
           "name": "hasApprovedArg"
         }
       ]
@@ -4064,7 +4067,7 @@
             "fail",
             "escalate"
           ],
-          "line": 275,
+          "line": 281,
           "name": "GateOutcome"
         },
         {
@@ -4077,7 +4080,7 @@
             "events",
             "fault"
           ],
-          "line": 283,
+          "line": 292,
           "name": "EvalResult"
         },
         {
@@ -4093,7 +4096,7 @@
             "foreach",
             "single-arg"
           ],
-          "line": 300,
+          "line": 317,
           "name": "Eval"
         },
         {
@@ -4104,7 +4107,7 @@
             "inputs",
             "propose-by-name"
           ],
-          "line": 309,
+          "line": 326,
           "name": "EvalArgs"
         },
         {
@@ -4116,7 +4119,7 @@
             "audit",
             "invoke"
           ],
-          "line": 340,
+          "line": 401,
           "name": "sortedArgs"
         },
         {
@@ -4128,7 +4131,7 @@
             "iteration",
             "audit"
           ],
-          "line": 352,
+          "line": 413,
           "name": "sortedKeys"
         }
       ]
