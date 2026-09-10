@@ -62,14 +62,36 @@ see a partial execution will retry one, and a retry of a half-done sequence is w
 ## Where a session's routes come from
 
 In daemon mode the agent gets **only** the routes bound into its session (`POST /sessions`). For
-event-driven dispatch, `governedRun` (`cmd/harness-serve/dispatch.go`) builds that set from the
-matching `event_map.json` entry as the **union** of two lookups (`harness/dispatch/wiring.go`):
+event-driven dispatch, `governedRun` (`cmd/harness-serve/dispatch.go`) builds that set entirely
+from the **recipe** the event map named — the event map itself carries nothing beyond `id`,
+`match`, and `recipe` (or `route: "model"` to defer the choice). There is no separate per-event
+tool or context list to keep in sync with what the recipe actually does.
 
-- `RoutesForRecipe(entry.recipe)` — every route whose `recipe` field equals that name.
-- `RoutesForTools(entry.tools)` — every route matching a listed tool, by bare name or by the
-  qualified `server__tool` form.
+`RoutesForSession(recipeName)` (`harness/dispatch/wiring.go`) resolves the full set a session
+needs, as the union of two lookups:
 
-Deduplicated by `(server, tool)`; recipe-sourced routes take precedence on conflict.
+- `RoutesForRecipe(recipeName)` — every route whose `recipe` field equals that name (the trigger
+  recipe's own route, typically one row).
+- `RoutesForTools(invokedTools)` — every route matching one of the recipe's **own invoke/await
+  steps' tool names**, regardless of which recipe *that* route is bound to.
+
+`invokedTools` comes from the recipe itself — `ValidateResult.InvokedTools`
+(`stag/recipestore/recipestore.go`), the advertised name of every tool an `invoke`/`await` step in
+that recipe authorizes, computed once at validate/save time from the recipe's own `Steps`. This
+replaces an earlier design where an event-map entry carried a hand-maintained `tools[]` list: that
+field is gone, and deriving the list from the recipe's own steps instead means it cannot drift out
+of sync with what the recipe actually invokes — there is no second place to remember to update.
+
+Deduplicated by advertised name (`<server>__<tool>`); `RoutesForRecipe`'s rows take precedence on
+conflict with `RoutesForTools`' (an edge case: a route both bound directly to the trigger recipe
+and separately invoked by name, which is unusual but not forbidden).
+
+**`RoutesForTools` matches on the route's `(server, tool)` binding, not on which recipe governs
+it — by design.** That's exactly what lets a sub-tool be routed to its own separate recipe (see
+invariant 1) and still be reached by the trigger recipe's session: `RoutesForRecipe` alone could
+never do this (a sub-tool's route by definition names a *different* recipe than the trigger), so
+`RoutesForTools` is not an optional extra, it is the only path a sequence's sub-tools are ever
+reachable by.
 
 **Both lookups silently drop invalid routes.** `valid` is not stored — it is recomputed per request
 as whether the bound recipe resolves (loads, parses, and passes the linter). A broken recipe
@@ -78,10 +100,12 @@ the bind succeeds and the sequence halts later at the first missing tool; if *no
 fails outright with `no routes to bind`. Check `GET /api/routes` for `valid:false` before debugging
 either.
 
-`RoutesForRecipe` matches on the route's `recipe` field — **not** on which tools a recipe invokes. A
-tool invoked by recipe `R` but routed to a different recipe is *not* returned by
-`RoutesForRecipe(R)`, and must therefore be listed in `tools[]`. This is the most common wiring
-defect, and it interacts directly with the next section.
+**The READ channel is resolved the same way.** `ProviderNamesForSession(recipeName, routes)`
+unions the trigger recipe's own `providers:` allowlist with the `providers:` declared by every
+*distinct* recipe named in the resolved route set (i.e. every sub-recipe a sequence's tools are
+routed to). A trigger recipe that is entirely `invoke`/`await` — no `read` step of its own, hence
+no `providers:` of its own — still gets whatever context its sub-recipes declared, rather than
+binding a session with no READ channel at all.
 
 > **Warning.** Every struct that copies a route must carry `Sequenced`, and the compiler will not
 > tell you when one does not. It is a `bool` whose zero value *disables* the control: drop it, and a
@@ -111,15 +135,16 @@ Advertisement is filtered on `!rt.Sequenced` (`mcpgate.go`). Reachability is che
 recipe is consulted (`proxy.go`): a sequenced route with no live grant is denied outright, so an
 agent that guesses the name is refused and recorded.
 
-The distinction that matters: **listing a tool in an event map's `tools[]` makes it reachable by the
-executor, not by the model** — provided it is sequenced. Binding widens what the sequence can reach
-downstream; it does not widen what the agent can call.
+The distinction that matters: **a route reaching the session via `RoutesForTools` (because a
+sequence invokes it) makes it reachable by the executor, not by the model** — provided it is
+sequenced. Binding widens what the sequence can reach downstream; it does not widen what the agent
+can call.
 
-> **Warning.** That guarantee holds *only* for `sequenced: true`. A mutating tool listed in
-> `tools[]` with `sequenced: false` is advertised and directly callable by the model, in any order,
-> with no obligation to complete the arc. Sequence every tool that changes state; the exceptions
-> should be deliberate and few (trigger tools, which must be advertised, and genuinely agent-driven
-> edit surfaces gated per-argument instead).
+> **Warning.** That guarantee holds *only* for `sequenced: true`. A mutating sub-tool bound into
+> the session with `sequenced: false` is advertised and directly callable by the model, in any
+> order, with no obligation to complete the arc. Sequence every tool that changes state; the
+> exceptions should be deliberate and few (trigger tools, which must be advertised, and genuinely
+> agent-driven edit surfaces gated per-argument instead).
 
 ---
 
@@ -181,8 +206,11 @@ Wrong: routing `k8s__set_config` back at `k8s_config_change`.
 ### 2. Every tool a recipe invokes must be bound in the session
 
 `executeAuthorized` resolves the downstream server via `gate.Routes[c.Tool]`, which contains only
-the session's routes. A tool named by an `invoke`/`await` that is neither routed to the recipe nor
-listed in `tools[]` halts the sequence at that step.
+the session's routes. `RoutesForSession` (above) is what populates that set for event-driven
+dispatch — its `RoutesForTools` half exists specifically so a tool an `invoke`/`await` step names
+gets bound even though (per invariant 1) it's routed to a *different* recipe than the one doing the
+inviting. A tool an `invoke`/`await` names that has no route at all — bound to any recipe — halts
+the sequence at that step; there's nothing left to fall back to once both lookups have run.
 
 Note where the diagnostic goes. `Gate.Decide` sets `Fault` to `no recipe for tool <X>` and
 `g.record` sends it to the **audit sink**; the gate-decision line of the sequence report prints only
@@ -197,8 +225,11 @@ renders `stag gate: deny — "<tool>" not forwarded`, appends `(<ruleFault>)` wh
 cause, and carries `verdict`/`tool`/`ruleFault` in `_meta.stag`.
 
 Note the interaction with invariant 1: satisfying it means sub-tools are routed to *other* recipes,
-which means `RoutesForRecipe` will not return them, which means they **must** appear in `tools[]`.
-The two invariants together determine the wiring — neither alone is sufficient.
+which means `RoutesForRecipe` alone will never return them — `RoutesForTools` is what closes that
+gap, by tool name instead of recipe name. The two invariants together determine the wiring: get
+invariant 1 right (a self-contained recipe per sub-tool) and `RoutesForSession` reaches it
+automatically, because it reads the tool names straight off the trigger recipe's own `invoke`/
+`await` steps — there is no separate list an author has to remember to update.
 
 ### 3. One `invoke`/`await` per tool per recipe
 

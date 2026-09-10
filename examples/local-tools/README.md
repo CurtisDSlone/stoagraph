@@ -21,7 +21,7 @@ handed to the OS **directly** — never through a shell. So a `pattern` of `root
 searched for, literally: it is one argument to `grep`, not two commands. There is no escaping to get
 right, because **nothing is ever parsed**.
 
-Then the gate bounds the values:
+Then the gate bounds the values. `recipes/read_file_policy.yaml` in this folder already does:
 
 ```yaml
 rules:
@@ -29,8 +29,19 @@ rules:
     kind: set_membership
     set: ["README.md", "go.mod", "docs/routes.md"]
 ```
+
+Recipes are plain files — copy it where `stag-serve` is told to look (`-recipes-dir`, i.e.
+`$STOA_HOME/recipes` under `tools/stoa`) and it's live, no API call needed:
+
 ```bash
-curl -H "Authorization: Bearer $STAG_CONSOLE_TOKEN" -X POST localhost:8080/api/routes \
+cp recipes/read_file_policy.yaml "$(stoa home)/recipes/"
+```
+
+Routes are relational, not files, so binding the tool to that recipe still goes through the API:
+
+```bash
+ADMIN=$(stoa token admin)   # reads $STOA_HOME/data/control.tokens; see docs/development.md
+curl -H "Authorization: Bearer $ADMIN" -X POST localhost:8080/api/routes \
   -d '{"tool":"read_file","server":"local-tools","recipe":"local_read_policy","gateArg":"path"}'
 ```
 

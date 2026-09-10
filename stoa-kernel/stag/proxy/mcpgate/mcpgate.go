@@ -306,6 +306,49 @@ func refusal(dec proxy.Decision) *mcp.CallToolResult {
 	}
 }
 
+// withSinks adds emit sink information to the MCP result metadata when the decision forwarded
+// and collected sinks. Sinks are recipe evaluation side effects used for autonomous orchestration
+// (emit-as-sink pattern). The harness reads them after the agent completes to detect and process
+// emitted events.
+func withSinks(res *mcp.CallToolResult, dec proxy.Decision) *mcp.CallToolResult {
+	if res == nil || len(dec.Sinks) == 0 {
+		return res
+	}
+	// Attach sinks to the metadata so they survive the tool result without interfering with content
+	if res.Meta == nil {
+		res.Meta = make(mcp.Meta)
+	}
+	stagMeta, ok := res.Meta["stag"].(map[string]any)
+	if !ok {
+		stagMeta = make(map[string]any)
+		res.Meta["stag"] = stagMeta
+	}
+	sinkData := make([]map[string]any, len(dec.Sinks))
+	for i, sink := range dec.Sinks {
+		sinkData[i] = map[string]any{
+			"field":   sink.Field,
+			"verdict": sink.Verdict.String(),
+		}
+		if sink.Arg != "" {
+			sinkData[i]["arg"] = sink.Arg
+		}
+		// The VALUE rides only for an emit sink. It is the emitted event's payload and the
+		// harness cannot orchestrate without it — but an ordinary sink's value is nobody's
+		// business out here, so the disclosure is scoped to the one field prefix that needs
+		// it rather than granted to every sink a recipe happens to declare.
+		if sink.Value != "" && strings.HasPrefix(sink.Field, emitFieldPrefix) {
+			sinkData[i]["value"] = sink.Value
+		}
+	}
+	stagMeta["sinks"] = sinkData
+	return res
+}
+
+// emitFieldPrefix marks a sink whose purpose is to EMIT an event for the harness to
+// re-route (the emit-as-sink orchestration pattern). Only these sinks carry their value
+// out through _meta; see withSinks.
+const emitFieldPrefix = "lifecycle.emit."
+
 // contextURIScheme is the READ-channel namespace: each provider is one resource template
 // stag://context/<name>{?q}. A resources/read on it Gathers that provider with the ?q query.
 const contextURIScheme = "stag://context/"
@@ -487,7 +530,7 @@ func gatingHandler(gate proxy.Gate, fleet Fleet, read ReadChannel, downstream *m
 		// never the target's clearance and a policy cannot launder an action by naming it.
 		if len(dec.Authorized) > 0 {
 			gate.Budget.Release() // the plan itself does not cross; each executed step reserves its own
-			return withReads(ctx, executeAuthorized(ctx, gate, fleet, dec), dec, read), nil
+			return withReads(ctx, withSinks(executeAuthorized(ctx, gate, fleet, dec), dec), dec, read), nil
 		}
 		// cleared: forward under the DOWNSTREAM's own tool name, with the ORIGINAL raw arguments to
 		// preserve fidelity, minus the gate-only approval_token meta arg (Stage 5) — it authorizes the
@@ -496,7 +539,7 @@ func gatingHandler(gate proxy.Gate, fleet Fleet, read ReadChannel, downstream *m
 		if err != nil {
 			return nil, err
 		}
-		return withReads(ctx, out, dec, read), nil
+		return withReads(ctx, withSinks(out, dec), dec, read), nil
 	}
 }
 

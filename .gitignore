@@ -25,6 +25,10 @@ approval.key
 secret.env
 
 # --- 2. runtime state (regenerated; belongs in a volume, not in git) ---
+# The tools/stoa local-binary instance: bin, data (incl. control.tokens), recipes, config, logs, run.
+# Repo-local by default (STOA_HOME=./.stoagraph, next to the checkout) so the whole instance is
+# visible beside the code it gates — see tools/stoa. Never commit it; it holds your role secrets.
+/.stoagraph/
 /data/
 # testing/ demo harness runtime state: minted keys/tokens, the blast-radius log, python caches.
 testing/data/
@@ -52,3 +56,10 @@ out/
 
 # Claude Code local settings (contains user preferences, not source)
 .claude/*.local.json
+
+# Working notes (reviews, audits, scratch analysis) — not source, not shipped
+/notes/
+
+# The StoaGraph Guide — in-progress tutorial content, not yet ready to ship
+/docs/stoagraph-guide/
+/scratch/

@@ -1,9 +1,11 @@
-package dispatch
+package dispatch_test
 
 import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/dispatch"
 )
 
 func TestStagClientCatalogAndRoutes(t *testing.T) {
@@ -21,18 +23,18 @@ func TestStagClientCatalogAndRoutes(t *testing.T) {
 	})
 	ts := httptest.NewServer(mux)
 	defer ts.Close()
-	c := StagClient{BaseURL: ts.URL}
+	c := dispatch.StagClient{BaseURL: ts.URL}
 
 	// catalog = distinct ACTIONABLE recipes (routed + valid); deduped; broken/unrouted excluded
 	cat, err := c.Catalog()
 	if err != nil {
 		t.Fatalf("catalog: %v", err)
 	}
-	ids := recipeIDs(cat)
-	if !contains(ids, "k8s_scale_approval_policy") || !contains(ids, "k8s_read_policy") {
+	ids := dispatch.RecipeIDs(cat)
+	if !dispatch.Contains(ids, "k8s_scale_approval_policy") || !dispatch.Contains(ids, "k8s_read_policy") {
 		t.Fatalf("catalog: got %v, want the routed recipes", ids)
 	}
-	if contains(ids, "broken") || contains(ids, "zt_refund_policy") {
+	if dispatch.Contains(ids, "broken") || dispatch.Contains(ids, "zt_refund_policy") {
 		t.Fatalf("catalog: got %v, must exclude invalid/unrouted recipes", ids)
 	}
 	if len(ids) != 2 {
@@ -58,67 +60,6 @@ func TestStagClientCatalogAndRoutes(t *testing.T) {
 	if r, _ := c.RoutesForRecipe("zt_refund_policy"); len(r) != 0 {
 		t.Errorf("unrouted recipe should have no routes, got %+v", r)
 	}
-
-	// a multi-tool session: RoutesForTools returns a route per requested+valid tool (each keeps its
-	// own recipe); unknown/invalid tools are skipped.
-	tr, err := c.RoutesForTools([]string{"scale_deployment", "get_pods", "get_events", "not_a_tool"})
-	if err != nil {
-		t.Fatalf("routes for tools: %v", err)
-	}
-	if len(tr) != 3 {
-		t.Fatalf("RoutesForTools: want 3 (scale + 2 reads), got %d: %+v", len(tr), tr)
-	}
-	byTool := map[string]string{}
-	for _, r := range tr {
-		byTool[r.Tool] = r.Recipe
-		if r.Server != "k8s" {
-			t.Errorf("every bound route must carry its server: %+v", r)
-		}
-	}
-	if byTool["scale_deployment"] != "k8s_scale_approval_policy" || byTool["get_pods"] != "k8s_read_policy" {
-		t.Errorf("each tool must keep its own recipe: %+v", byTool)
-	}
-}
-
-// TestRoutesForToolsQualifiedNames covers the case that made namespacing necessary: two servers expose
-// the SAME tool name. A bare name in a toolset binds BOTH (each keeping its own recipe); the qualified
-// `server__tool` form binds exactly one, which is how an operator says which they meant.
-func TestRoutesForToolsQualifiedNames(t *testing.T) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/routes", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`[
-			{"tool":"search_code","server":"GH","recipe":"github_repo_policy","gateArg":"query","valid":true},
-			{"tool":"search_code","server":"local-tools","recipe":"local_read_policy","gateArg":"path","valid":true}
-		]`))
-	})
-	ts := httptest.NewServer(mux)
-	defer ts.Close()
-	c := StagClient{BaseURL: ts.URL}
-
-	// QUALIFIED: exactly the one server's binding, with that server's recipe
-	only, err := c.RoutesForTools([]string{"local-tools__search_code"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(only) != 1 || only[0].Server != "local-tools" || only[0].Recipe != "local_read_policy" {
-		t.Fatalf("a qualified name must bind exactly that server's route: %+v", only)
-	}
-
-	// BARE: every server exposing that tool, each still gated by its OWN recipe
-	both, err := c.RoutesForTools([]string{"search_code"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(both) != 2 {
-		t.Fatalf("a bare name binds every routed server exposing it: got %d, %+v", len(both), both)
-	}
-	byServer := map[string]string{}
-	for _, r := range both {
-		byServer[r.Server] = r.Recipe
-	}
-	if byServer["GH"] != "github_repo_policy" || byServer["local-tools"] != "local_read_policy" {
-		t.Errorf("each server's route must keep its own recipe: %+v", byServer)
-	}
 }
 
 // TestProvidersFor asserts the READ-channel resolution (Planning/30): only REQUESTED and ENABLED
@@ -134,7 +75,7 @@ func TestProvidersFor(t *testing.T) {
 	})
 	ts := httptest.NewServer(mux)
 	defer ts.Close()
-	c := StagClient{BaseURL: ts.URL}
+	c := dispatch.StagClient{BaseURL: ts.URL}
 
 	// empty names -> no READ channel, no HTTP call needed
 	if got, err := c.ProvidersFor(nil); err != nil || got != nil {
@@ -151,5 +92,82 @@ func TestProvidersFor(t *testing.T) {
 	}
 	if got[0].Config == "" {
 		t.Errorf("config must be passed through for the daemon to build the provider: %+v", got[0])
+	}
+}
+
+// TestRoutesForSessionReachesSequenceSubTools is the regression test for the invoke-only-recipe
+// gap: a TRIGGER recipe (cordon_seq) is bound to its own route (the trigger tool), but its
+// invoke/await steps authorize calls on cordon_node/drain_node — tools routed to a SEPARATE
+// recipe (maint_policy), as the invoke/await wiring invariants require. RoutesForRecipe alone
+// would return only the trigger route; RoutesForSession must also reach the sub-tool routes.
+func TestRoutesForSessionReachesSequenceSubTools(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/routes", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`[
+			{"tool":"start_maintenance","server":"ops","recipe":"cordon_seq","gateArg":"node","valid":true},
+			{"tool":"cordon_node","server":"k8s","recipe":"maint_policy","gateArg":"node","sequenced":true,"valid":true},
+			{"tool":"drain_node","server":"k8s","recipe":"maint_policy","gateArg":"node","sequenced":true,"valid":true},
+			{"tool":"unrelated","server":"k8s","recipe":"other_policy","gateArg":"x","valid":true}
+		]`))
+	})
+	mux.HandleFunc("/api/recipes/cordon_seq", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"result":{"invokedTools":["k8s__cordon_node","k8s__drain_node"]}}`))
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+	c := dispatch.StagClient{BaseURL: ts.URL}
+
+	routes, err := c.RoutesForSession("cordon_seq")
+	if err != nil {
+		t.Fatalf("RoutesForSession: %v", err)
+	}
+	byTool := map[string]dispatch.RouteSpec{}
+	for _, r := range routes {
+		byTool[r.Tool] = r
+	}
+	if len(routes) != 3 {
+		t.Fatalf("expected trigger route + 2 sub-tool routes, got %d: %+v", len(routes), routes)
+	}
+	if _, ok := byTool["start_maintenance"]; !ok {
+		t.Errorf("must include the trigger recipe's own route: %+v", routes)
+	}
+	if r, ok := byTool["cordon_node"]; !ok || r.Recipe != "maint_policy" || !r.Sequenced {
+		t.Errorf("must include the sequenced sub-tool route, bound to ITS OWN recipe: %+v", byTool["cordon_node"])
+	}
+	if r, ok := byTool["drain_node"]; !ok || r.Recipe != "maint_policy" || !r.Sequenced {
+		t.Errorf("must include the second sequenced sub-tool route: %+v", byTool["drain_node"])
+	}
+	if _, ok := byTool["unrelated"]; ok {
+		t.Errorf("must NOT include a route this recipe never invokes: %+v", routes)
+	}
+}
+
+// TestProviderNamesForSessionUnionsSubRecipes is the READ-channel half of the same regression: an
+// invoke-only trigger recipe declares no providers: of its own, but the sub-recipe its sequence
+// invokes does — without the union, a session for this trigger gets NO read channel at all, even
+// though the sequence clearly needs the briefing its sub-recipe names.
+func TestProviderNamesForSessionUnionsSubRecipes(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/recipes/cordon_seq", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"result":{"providers":[]}}`))
+	})
+	mux.HandleFunc("/api/recipes/maint_policy", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"result":{"providers":["runbooks"]}}`))
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+	c := dispatch.StagClient{BaseURL: ts.URL}
+
+	routes := []dispatch.RouteSpec{
+		{Tool: "start_maintenance", Server: "ops", Recipe: "cordon_seq"},
+		{Tool: "cordon_node", Server: "k8s", Recipe: "maint_policy", Sequenced: true},
+		{Tool: "drain_node", Server: "k8s", Recipe: "maint_policy", Sequenced: true}, // same sub-recipe twice: must not double-fetch/duplicate
+	}
+	names, err := c.ProviderNamesForSession("cordon_seq", routes)
+	if err != nil {
+		t.Fatalf("ProviderNamesForSession: %v", err)
+	}
+	if len(names) != 1 || names[0] != "runbooks" {
+		t.Fatalf("expected the sub-recipe's own providers unioned in, got %v", names)
 	}
 }

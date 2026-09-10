@@ -35,7 +35,7 @@ type Server struct {
 	Pub      ed25519.PublicKey
 	Priv     ed25519.PrivateKey // approval signing key: mints the signed release on approve (Stage 5)
 	Policies []PolicyView
-	Recipes  recipestore.Store // the recipe-authoring store (admin console)
+	Recipes  recipestore.Store // the recipe-authoring store (validate + persist recipe YAML)
 	Store    *store.Store      // the config store; when set, the gate is driven by its route table
 	// Auth guards the control plane (Planning/31). A NIL Auth fails CLOSED — every guarded route
 	// 401s — so a misconfigured deploy is locked, never wide open.
@@ -171,7 +171,7 @@ func (s *Server) Handler() http.Handler {
 	// kept because the console already calls it.
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/api/health", s.handleHealth)
-	// recipe authoring (admin console) — method+path patterns (Go 1.22+)
+	// recipe authoring — method+path patterns (Go 1.22+)
 	mux.HandleFunc("POST /api/recipes/validate", admin(s.handleRecipeValidate))
 	mux.HandleFunc("GET /api/recipes", read(s.handleRecipeList))
 	mux.HandleFunc("POST /api/recipes", admin(s.handleRecipeSave))

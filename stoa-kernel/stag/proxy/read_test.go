@@ -1,13 +1,14 @@
-package proxy
+package proxy_test
 
 import (
 	"context"
 	"testing"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
 )
 
-func readGate(t *testing.T) Gate {
+func readGate(t *testing.T) proxy.Gate {
 	t.Helper()
 	topic := stag.ReleaseRule{Kind: stag.RuleSetMembership, Set: []string{"drain"}}
 	node := stag.ReleaseRule{Kind: stag.RuleSetMembership, Set: []string{"kind-worker"}}
@@ -19,13 +20,13 @@ func readGate(t *testing.T) Gate {
 		{Id: "act", Kind: stag.NodeSink, In: "node", Field: "k8s.act",
 			Sensitivity: stag.SinkAuthoritative, Rule: &node, RuleID: "node.worker", Actor: "a"},
 	}}
-	return Gate{Routes: Router{"t": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "topic,node"}}}
+	return proxy.Gate{Routes: proxy.Router{"t": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "topic,node"}}}
 }
 
 // An allowed decision carries the reads the recipe authorized.
 func TestDecisionCarriesAuthorizedReads(t *testing.T) {
 	g := readGate(t)
-	d := g.Decide(context.Background(), ToolCall{Tool: "t",
+	d := g.Decide(context.Background(), proxy.ToolCall{Tool: "t",
 		Args: map[string]string{"topic": "drain", "node": "kind-worker"}})
 	if !d.Forward {
 		t.Fatalf("must forward: %+v", d)
@@ -40,7 +41,7 @@ func TestDecisionCarriesAuthorizedReads(t *testing.T) {
 // when the action was refused.
 func TestRefusedDecisionStillCarriesReads(t *testing.T) {
 	g := readGate(t)
-	d := g.Decide(context.Background(), ToolCall{Tool: "t",
+	d := g.Decide(context.Background(), proxy.ToolCall{Tool: "t",
 		Args: map[string]string{"topic": "drain", "node": "kind-control-plane"}})
 	if d.Forward {
 		t.Fatal("the action must be refused")
@@ -56,7 +57,7 @@ func TestRefusedDecisionStillCarriesReads(t *testing.T) {
 // A query outside its rule authorizes no read, and still does not deny the action.
 func TestUngatedQueryYieldsNoReadButAllowsTheAction(t *testing.T) {
 	g := readGate(t)
-	d := g.Decide(context.Background(), ToolCall{Tool: "t",
+	d := g.Decide(context.Background(), proxy.ToolCall{Tool: "t",
 		Args: map[string]string{"topic": "secrets", "node": "kind-worker"}})
 	if !d.Forward {
 		t.Errorf("a refused read query must not deny the action: %+v", d)

@@ -1,4 +1,4 @@
-package dispatch
+package dispatch_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/dispatch"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
 )
 
@@ -56,7 +57,7 @@ func plan() []stag.AuthorizedCall {
 func TestEveryCallReCrossesTheGate(t *testing.T) {
 	g := &stubGate{decide: allowAll}
 	tr := &stubTransport{}
-	res := Execute(context.Background(), g, tr, plan())
+	res := dispatch.Execute(context.Background(), g, tr, plan())
 	if len(g.seen) != 3 {
 		t.Fatalf("every authorized call must re-cross the gate: %d of 3", len(g.seen))
 	}
@@ -80,7 +81,7 @@ func TestTargetPolicyDeniesDespiteAuthorization(t *testing.T) {
 		return allowAll(c)
 	}}
 	tr := &stubTransport{}
-	res := Execute(context.Background(), g, tr, plan())
+	res := dispatch.Execute(context.Background(), g, tr, plan())
 	for _, m := range tr.made {
 		if m == "k8s.status" {
 			t.Fatal("a call the gate refused must never reach the transport")
@@ -102,7 +103,7 @@ func TestHaltNoRollback(t *testing.T) {
 		return allowAll(c)
 	}}
 	tr := &stubTransport{}
-	res := Execute(context.Background(), g, tr, plan())
+	res := dispatch.Execute(context.Background(), g, tr, plan())
 
 	if len(tr.made) != 1 || tr.made[0] != "k8s.drain" {
 		t.Errorf("steps before the halt must have run: %v", tr.made)
@@ -130,7 +131,7 @@ func TestEscalationHalts(t *testing.T) {
 		return allowAll(c)
 	}}
 	tr := &stubTransport{}
-	res := Execute(context.Background(), g, tr, plan())
+	res := dispatch.Execute(context.Background(), g, tr, plan())
 	if len(tr.made) != 0 {
 		t.Error("nothing may be made when the first step escalates")
 	}
@@ -147,7 +148,7 @@ func TestEscalationHalts(t *testing.T) {
 func TestTransportFailureHaltsAndIsDistinct(t *testing.T) {
 	g := &stubGate{decide: allowAll}
 	tr := &stubTransport{err: map[string]error{"k8s.status": errors.New("downstream refused")}}
-	res := Execute(context.Background(), g, tr, plan())
+	res := dispatch.Execute(context.Background(), g, tr, plan())
 	if res.Complete || res.HaltedAt != "check" {
 		t.Errorf("a transport failure must halt: %+v", res)
 	}
@@ -169,7 +170,7 @@ func TestTransportFailureHaltsAndIsDistinct(t *testing.T) {
 // and the executor has nothing to do.
 func TestEmptyPlanCompletes(t *testing.T) {
 	g := &stubGate{decide: allowAll}
-	res := Execute(context.Background(), g, nil, nil)
+	res := dispatch.Execute(context.Background(), g, nil, nil)
 	if !res.Complete || len(res.Steps) != 0 || len(g.seen) != 0 {
 		t.Errorf("empty plan: %+v", res)
 	}
@@ -179,7 +180,7 @@ func TestEmptyPlanCompletes(t *testing.T) {
 func TestMalformedCallRefused(t *testing.T) {
 	g := &stubGate{decide: allowAll}
 	tr := &stubTransport{}
-	res := Execute(context.Background(), g, tr, []stag.AuthorizedCall{{StepID: "bad", Tool: ""}})
+	res := dispatch.Execute(context.Background(), g, tr, []stag.AuthorizedCall{{StepID: "bad", Tool: ""}})
 	if len(tr.made) != 0 || res.Complete {
 		t.Errorf("a call with no tool must be refused: %+v", res)
 	}
@@ -193,7 +194,7 @@ func TestContextCancellationHalts(t *testing.T) {
 		return allowAll(c)
 	}}
 	tr := &stubTransport{}
-	res := Execute(ctx, g, tr, plan())
+	res := dispatch.Execute(ctx, g, tr, plan())
 	if res.Complete {
 		t.Error("a cancelled sequence is not complete")
 	}
@@ -207,7 +208,7 @@ func TestContextCancellationHalts(t *testing.T) {
 func TestArgumentsForwardedVerbatim(t *testing.T) {
 	g := &stubGate{decide: allowAll}
 	tr := &stubTransport{}
-	Execute(context.Background(), g, tr, plan())
+	dispatch.Execute(context.Background(), g, tr, plan())
 	got := g.seen[0].Args
 	if len(got) != 1 || got["node"] != "dev" {
 		t.Errorf("authorized args must reach the gate verbatim: %+v", got)

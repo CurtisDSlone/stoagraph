@@ -81,21 +81,29 @@ const (
 	NodeExit
 )
 
-// foreachCap is the fixed max number of elements a foreach may iterate — an
+// ForeachCap is the fixed max number of elements a foreach may iterate — an
 // author-unraisable kernel bound (inv 13); a longer list fails closed.
-const foreachCap = 64
+//
+// Exported for Go-level test access from an external (_test) test package; this does not weaken
+// the author-unraisable property, since recipe authors write YAML, not Go, and nothing about the
+// recipe-authoring boundary changes.
+const ForeachCap = 64
 
-// The await bounds are author-unraisable (inv 13), like foreachCap. attempts x delay is
+// The await bounds are author-unraisable (inv 13), like ForeachCap. attempts x delay is
 // wall-clock an agent can spend by triggering a sequence, so both ends and their product are
 // capped by the kernel — a step that can wait indefinitely is a step that never fails closed.
 //
 // A recipe that asks for more is a FAULT, not a clamped value: an author who writes 1000
 // attempts believes they will get 1000, and silently substituting 32 is a policy that does not
 // do what it says.
+//
+// Exported for Go-level test access from an external (_test) test package; this does not weaken
+// the author-unraisable property, since recipe authors write YAML, not Go, and nothing about the
+// recipe-authoring boundary changes.
 const (
-	awaitAttemptCap = 32            // at most this many polls per await step
-	awaitDelayCapMS = 30000         // at most 30s between polls
-	awaitTotalCapMS = 5 * 60 * 1000 // and at most 5 minutes of waiting in one step
+	AwaitAttemptCap = 32            // at most this many polls per await step
+	AwaitDelayCapMS = 30000         // at most 30s between polls
+	AwaitTotalCapMS = 5 * 60 * 1000 // and at most 5 minutes of waiting in one step
 )
 
 // kw: node kind string canonical register
@@ -180,8 +188,8 @@ type Step struct {
 	// Until is nil on an invoke — one call, no condition.
 	Until    *ReleaseRule
 	UntilID  string
-	Attempts int // number of polls permitted; 1..awaitAttemptCap
-	DelayMS  int // milliseconds between polls; 0..awaitDelayCapMS
+	Attempts int // number of polls permitted; 1..AwaitAttemptCap
+	DelayMS  int // milliseconds between polls; 0..AwaitDelayCapMS
 	// read: WHICH context source, and the gated slot supplying the query.
 	//
 	// The query is gated so the POLICY bounds what may be asked, not merely what may be read
@@ -225,19 +233,41 @@ type ArgRule struct {
 	RuleID string       // the rule's label, recorded on the crossing
 }
 
-// kw: recipe ingredients steps
+// ToolCaps is what a recipe declares about ONE tool it names in Recipe.Tools: which of its
+// arguments are knowingly forwarded ungated. A field, not a bare []string, so it can grow (a
+// future per-tool capability) without reshaping Recipe.Tools's value type again.
+// kw: tool caps passthrough per-tool
+type ToolCaps struct {
+	// PassThrough names the arguments of THIS tool the policy KNOWINGLY forwards ungated. Same
+	// coverage-contract meaning the old recipe-level PassThrough had: an argument is either gated
+	// (a propose slot fed by a GateArg path) or listed here. An argument that is neither is
+	// unaccounted for, and the gate denies the call.
+	PassThrough []string
+}
+
+// kw: recipe ingredients steps tools
 type Recipe struct {
 	Ingredients map[string]Slot
 	Steps       []Step
-	// PassThrough names the tool arguments this policy KNOWINGLY forwards ungated. It is the
-	// coverage contract: an argument is either gated (a propose slot fed by a GateArg path) or
-	// listed here. An argument that is neither is unaccounted for, and the gate denies the call.
+	// Tools declares, per (server, tool) the recipe names, what it knowingly forwards ungated —
+	// server -> tool -> ToolCaps. It lives in the recipe (not the route) because it is a security
+	// decision and must ride in the SemanticHash: widening coverage has to change the policy
+	// identity the audit records. A route-side declaration would leave the signed record unable
+	// to tell a gated argument from one silently waved through.
 	//
-	// It lives in the recipe (not the route) because it is a security decision and must ride in
-	// the SemanticHash: widening coverage has to change the policy identity the audit records.
-	// A route-side declaration would leave the signed record unable to tell a gated argument from
-	// one silently waved through.
-	PassThrough []string
+	// Keyed by server first (not the advertised "server__tool" string) so a coverage lookup at
+	// enforcement time is two plain map reads against a route's own Server/Tool fields, not a
+	// string split — and so an entry is legible on its own, without reconstructing the namespace
+	// separator to read it.
+	Tools map[string]map[string]ToolCaps
+	// Providers is the flat allowlist of context-provider names this recipe's `read` steps may
+	// name. Flat, not nested like Tools: a provider has no per-provider capability comparable to
+	// passthrough today — the declaration is purely "this recipe may read from X," nothing more —
+	// so a plain list matches what's actually being said, with no shape to grow into yet.
+	//
+	// It lives in the recipe (not bound/session config) for the same reason Tools does: which
+	// sources a policy may read is part of the policy's identity, and rides in the SemanticHash.
+	Providers []string
 }
 
 // AuthorizedCall is one tool call a recipe has AUTHORIZED. The kernel performs no I/O:
@@ -269,12 +299,41 @@ type SinkOutcome struct {
 	Sink     SinkSensitivity
 	Released bool
 	Verdict  Verdict
+	// Arg, RuleID, and Actor are recipe-structural (declared by the operator, not chosen per
+	// call), the same bounded-disclosure basis proxy.redactedValue already relies on.
+	//
 	// Arg and RuleID name WHICH gated argument and WHICH rule decided this sink, so a denial can
 	// say what to retry differently without exposing the rule's permitted set (see
-	// EvalResult.Fault). Both are recipe-structural (declared by the operator, not chosen per
-	// call), the same bounded-disclosure basis proxy.redactedValue already relies on.
+	// EvalResult.Fault).
 	Arg    string
 	RuleID string
+	// Actor is the step's declared actor. Empty for a benign sink (parseStep rejects actor: on
+	// one — "actor without a rule"); present whenever the sink has a rule, since parseStep
+	// requires the two together. Carried on every sink kind, not gated on release the way
+	// ReleaseEvent.Actor is: a benign sink's Field already reaches the log unconditionally on any
+	// call that happened, and Actor should follow the same rule, not a stricter one.
+	Actor string
+	// Value is the slot value this sink carried, and it is populated ONLY for a sink that
+	// cleared (Verdict Allow). It exists so the harness can read what a `lifecycle.emit.*`
+	// sink emitted — the sink says WHICH field was sunk; without the value it says nothing
+	// about what.
+	//
+	// Restricting it to Allow is the same bounded-disclosure line proxy.redactedValue draws:
+	// a cleared value is a released closed-set member and therefore bounded, while a denied
+	// or escalated one is attacker-chosen free text that must not be echoed. A benign sink
+	// (gate.GateSink) always clears, which is exactly the emit case.
+	Value string
+}
+
+// Record converts a SinkOutcome to its audit-facing shape (record.SinkOutcome, DecisionRecord's
+// Sinks element). Deliberately drops Value: it is an in-process convenience for harness/emit's
+// emit-as-sink detection, not an audit fact — DecisionRecord.Value (redacted per verdict, see
+// proxy.redactedValue) is the log's one sanctioned place for a gated value to appear.
+func (s SinkOutcome) Record() record.SinkOutcome {
+	return record.SinkOutcome{
+		Field: s.Field, Subject: s.Subject, Sink: s.Sink, Released: s.Released,
+		Verdict: s.Verdict, Arg: s.Arg, RuleID: s.RuleID, Actor: s.Actor,
+	}
 }
 
 // kw: gate outcome checkpoint pass fail escalate
@@ -467,7 +526,11 @@ walk:
 			}
 			released := ok && step.Rule != nil && step.Rule.Release(s.Value) // a missing slot never releases
 			v := gate.GateSink(s.Class, step.Sensitivity, released)
-			res.Sinks = append(res.Sinks, SinkOutcome{Field: step.Field, Subject: s.Class, Sink: step.Sensitivity, Released: released, Verdict: v, Arg: step.In, RuleID: step.RuleID})
+			so := SinkOutcome{Field: step.Field, Subject: s.Class, Sink: step.Sensitivity, Released: released, Verdict: v, Arg: step.In, RuleID: step.RuleID, Actor: step.Actor}
+			if v == Allow {
+				so.Value = s.Value // cleared: bounded, and the emit payload the harness needs
+			}
+			res.Sinks = append(res.Sinks, so)
 			verdicts = append(verdicts, v)
 			// structural: the same step that clears the crossing records it (inv 2)
 			if step.Sensitivity == SinkAuthoritative && s.Class != Authoritative && released {
@@ -546,7 +609,7 @@ walk:
 				fault("foreach: not a JSON string array " + step.Id)
 				break walk
 			}
-			if len(elems) > foreachCap {
+			if len(elems) > ForeachCap {
 				fault("foreach: over cap " + step.Id) // author-unraisable bound
 				break walk
 			}
@@ -603,9 +666,9 @@ walk:
 				}
 				// The bounds are the KERNEL's. Over the cap is a fault, never a clamp: an author
 				// who asked for more must be told, not quietly given less.
-				if step.Attempts < 1 || step.Attempts > awaitAttemptCap ||
-					step.DelayMS < 0 || step.DelayMS > awaitDelayCapMS ||
-					step.Attempts*step.DelayMS > awaitTotalCapMS {
+				if step.Attempts < 1 || step.Attempts > AwaitAttemptCap ||
+					step.DelayMS < 0 || step.DelayMS > AwaitDelayCapMS ||
+					step.Attempts*step.DelayMS > AwaitTotalCapMS {
 					fault("await bounds " + step.Id)
 					break walk
 				}
@@ -626,7 +689,7 @@ walk:
 				// an argument nobody wrote a rule for is not thereby permitted.
 				released := present && ar.Rule != nil && ar.Rule.Release(s.Value)
 				v := gate.GateSink(subj, SinkAuthoritative, released)
-				res.Sinks = append(res.Sinks, SinkOutcome{Field: step.Tool + "." + arg, Subject: subj, Sink: SinkAuthoritative, Released: released, Verdict: v})
+				res.Sinks = append(res.Sinks, SinkOutcome{Field: step.Tool + "." + arg, Subject: subj, Sink: SinkAuthoritative, Released: released, Verdict: v, Actor: step.Actor})
 				verdicts = append(verdicts, v)
 				if !released {
 					ok = false

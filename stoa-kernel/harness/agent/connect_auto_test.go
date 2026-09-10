@@ -1,6 +1,10 @@
-package agent
+package agent_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/agent"
+)
 
 // A bound session URL must take the HTTP transport. Routing it to the stdio path makes the harness
 // fork/exec the URL as a program, which fails as "no such file or directory" — a transport mismatch
@@ -18,7 +22,7 @@ func TestIsHTTPEndpoint(t *testing.T) {
 		{"/usr/local/bin/stag-proxy", false},
 		{"", false},
 	} {
-		if got := isHTTPEndpoint(tc.target); got != tc.want {
+		if got := agent.IsHTTPEndpoint(tc.target); got != tc.want {
 			t.Errorf("isHTTPEndpoint(%q) = %v, want %v", tc.target, got, tc.want)
 		}
 	}

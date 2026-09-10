@@ -24,6 +24,7 @@
 set -eu
 
 REPO="CurtisDSlone/stoagraph"
+REPO_LC=$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]') # GHCR refs must be lowercase; GitHub URLs need not be
 VERSION="${STOAGRAPH_VERSION:-v0.3.1}"
 BINDIR="${STOAGRAPH_BINDIR:-$HOME/.local/bin}"
 
@@ -92,8 +93,9 @@ cat <<EOF
 
     stoagraph up      mint your control-plane role secrets, pull the signed images, start
 
-  Then open the console at http://localhost:3000 (the login link is printed by 'up') and wire your
-  first tool from the empty state, or start from examples/custom-tool.
+  'up' prints two bearer tokens when the gate is ready (reprint them any time with
+  'stoagraph tokens'). Pass one as 'Authorization: Bearer <token>' against the gate's API
+  (http://localhost:8080) to author your first policy — start from examples/custom-tool.
 
   Verify what you just installed (we would):
 
@@ -101,7 +103,7 @@ cat <<EOF
       --certificate-identity-regexp 'https://github.com/$REPO/.*' \\
       --certificate-oidc-issuer https://token.actions.githubusercontent.com checksums.txt
 
-    cosign verify ghcr.io/$REPO/stag-serve:$VERSION \\
+    cosign verify ghcr.io/$REPO_LC/stag-serve:$VERSION \\
       --certificate-identity-regexp 'https://github.com/$REPO/.*' \\
       --certificate-oidc-issuer https://token.actions.githubusercontent.com
 

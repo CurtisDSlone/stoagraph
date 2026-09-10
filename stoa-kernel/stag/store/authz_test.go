@@ -1,4 +1,4 @@
-package store
+package store_test
 
 import (
 	"context"
@@ -7,11 +7,12 @@ import (
 	"testing"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/store"
 )
 
-func authzStore(t *testing.T) *Store {
+func authzStore(t *testing.T) *store.Store {
 	t.Helper()
-	s, err := Open(filepath.Join(t.TempDir(), "t.db"))
+	s, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
 		t.Fatal(err)
 	}

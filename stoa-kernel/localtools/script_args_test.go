@@ -1,4 +1,4 @@
-package localtools
+package localtools_test
 
 // kw-test: script args are NAMED flags, never positional — a rename must not silently transpose values
 
@@ -6,6 +6,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/localtools"
 )
 
 // A script's declared args arrive as `--name value`, so the script reads them BY NAME.
@@ -22,18 +24,18 @@ func TestScriptArgsArePassedAsNamedFlags(t *testing.T) {
 	// --name lines the assertions look for. Never loops on argv, so a wrong contract fails fast.
 	script := write(t, dir, "echo_args.sh", "#!/bin/sh\nfor a in \"$@\"; do echo \"$a\"; done\n")
 
-	tool := Tool{
+	tool := localtools.Tool{
 		Name:   "edit",
 		Script: script,
 		// Declared in an order that is NOT alphabetical: under the old positional contract the
 		// script would have received find, path, replace and mis-read every one.
-		Args: map[string]Arg{
+		Args: map[string]localtools.Arg{
 			"path":    {Description: "the file"},
 			"find":    {Description: "text to find"},
 			"replace": {Description: "text to write"},
 		},
 	}
-	cfg := Config{Root: dir, Tools: []Tool{tool}}
+	cfg := localtools.Config{Root: dir, Tools: []localtools.Tool{tool}}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("validate: %v", err)
 	}
@@ -58,9 +60,9 @@ func TestScriptArgsArePassedAsNamedFlags(t *testing.T) {
 func TestScriptArgvIsDeterministic(t *testing.T) {
 	dir := t.TempDir()
 	script := write(t, dir, "echo_args.sh", "#!/bin/sh\necho \"$@\"\n")
-	tool := Tool{Name: "t", Script: script,
-		Args: map[string]Arg{"zeta": {}, "alpha": {}, "mid": {}}}
-	cfg := Config{Root: dir, Tools: []Tool{tool}}
+	tool := localtools.Tool{Name: "t", Script: script,
+		Args: map[string]localtools.Arg{"zeta": {}, "alpha": {}, "mid": {}}}
+	cfg := localtools.Config{Root: dir, Tools: []localtools.Tool{tool}}
 	args := map[string]string{"zeta": "z", "alpha": "a", "mid": "m"}
 
 	first, err := cfg.Run(context.Background(), tool, args)

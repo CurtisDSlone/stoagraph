@@ -54,7 +54,7 @@ func Gate(recipeID, confidence string, validIDs []string) GateDecision {
 	if recipeID == "" || recipeID == "none" {
 		return GateFallback
 	}
-	if !contains(validIDs, recipeID) {
+	if !Contains(validIDs, recipeID) {
 		return GateFallback
 	}
 	if strings.ToLower(strings.TrimSpace(confidence)) == "low" {
@@ -65,13 +65,11 @@ func Gate(recipeID, confidence string, validIDs []string) GateDecision {
 
 // Decision is the dispatcher's resolution of an event.
 type Decision struct {
-	RecipeID   string   // the recipe to govern the dispatched session ("" when Mode == "none")
-	Tools      []string // multi-tool session: the toolset to bind (deterministic defs with `tools`); else nil
-	Context    []string // READ channel: the context providers to bind (deterministic defs with `context`); else nil
-	Confidence string   // "high" for a deterministic match; the model's rating otherwise
-	Mode       string   // "deterministic" | "model" | "none"
-	Definition string   // the event-map definition id that matched (deterministic mode)
-	Router     string   // which dispatch model decided (model mode)
+	RecipeID   string // the recipe to govern the dispatched session ("" when Mode == "none")
+	Confidence string // "high" for a deterministic match; the model's rating otherwise
+	Mode       string // "deterministic" | "model" | "none"
+	Definition string // the event-map definition id that matched (deterministic mode)
+	Router     string // which dispatch model decided (model mode)
 }
 
 // Dispatched reports whether a recipe was selected.
@@ -89,9 +87,9 @@ type Dispatcher struct {
 // Dispatch resolves one event: try the deterministic event map first (no model), then the dispatch
 // model + Gate. Returns Mode "none" when nothing routes (fail closed — the caller dispatches nothing).
 func (d Dispatcher) Dispatch(ctx context.Context, event Event) (Decision, error) {
-	// 1. deterministic: a user-authored definition matches the payload -> its recipe/toolset, no model.
+	// 1. deterministic: a user-authored definition matches the payload -> its recipe, no model.
 	if def, ok := d.Map.Match(event); ok && def.Route != routeModel {
-		return Decision{RecipeID: def.Recipe, Tools: def.Tools, Context: def.Context, Confidence: "high", Mode: "deterministic", Definition: def.ID}, nil
+		return Decision{RecipeID: def.Recipe, Confidence: "high", Mode: "deterministic", Definition: def.ID}, nil
 	}
 
 	// 2. model route: narrow (future) -> propose recipe_id -> Gate. A misroute is contained by the gate.
@@ -106,7 +104,7 @@ func (d Dispatcher) Dispatch(ctx context.Context, event Event) (Decision, error)
 	if err != nil {
 		return Decision{}, err
 	}
-	if Gate(rr.RecipeID, rr.Confidence, recipeIDs(cands)) == GateFallback {
+	if Gate(rr.RecipeID, rr.Confidence, RecipeIDs(cands)) == GateFallback {
 		return Decision{Mode: "none", Confidence: rr.Confidence, Router: d.Router.Name()}, nil
 	}
 	return Decision{RecipeID: rr.RecipeID, Confidence: rr.Confidence, Mode: "model", Router: d.Router.Name()}, nil
@@ -119,7 +117,8 @@ func catalog(f func() ([]Recipe, error)) ([]Recipe, error) {
 	return f()
 }
 
-func recipeIDs(rs []Recipe) []string {
+// RecipeIDs returns the IDs of rs, in order.
+func RecipeIDs(rs []Recipe) []string {
 	out := make([]string, len(rs))
 	for i, r := range rs {
 		out[i] = r.ID
@@ -127,7 +126,8 @@ func recipeIDs(rs []Recipe) []string {
 	return out
 }
 
-func contains(ss []string, target string) bool {
+// Contains reports whether target appears in ss.
+func Contains(ss []string, target string) bool {
 	for _, s := range ss {
 		if s == target {
 			return true

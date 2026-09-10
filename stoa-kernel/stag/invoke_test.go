@@ -1,8 +1,10 @@
-package stag
+package stag_test
 
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
 )
 
 // An `invoke` step AUTHORIZES a call; the executor carries it. Eval performs NO I/O:
@@ -11,23 +13,23 @@ import (
 // hash) — replayable offline — while the product gains deterministic multi-tool
 // sequencing with no model anywhere in the path.
 
-func nsSafe() *ReleaseRule {
-	return &ReleaseRule{Kind: RuleSetMembership, Set: []string{"dev", "staging"}}
+func nsSafe() *stag.ReleaseRule {
+	return &stag.ReleaseRule{Kind: stag.RuleSetMembership, Set: []string{"dev", "staging"}}
 }
 
 // propose(ns) -> invoke(k8s.drain) -> invoke(k8s.status): two tools, one proposal.
-func invokeRecipe() Recipe {
-	return Recipe{Steps: []Step{
-		{Id: "p", Kind: NodePropose, Out: "ns"},
-		{Id: "drain", Kind: NodeInvoke, Tool: "k8s.drain", ArgRules: map[string]ArgRule{"node": {Slot: "ns", Rule: nsSafe(), RuleID: "ns.safe"}}, Actor: "policy:platform"},
-		{Id: "check", Kind: NodeInvoke, Tool: "k8s.status", ArgRules: map[string]ArgRule{"node": {Slot: "ns", Rule: nsSafe(), RuleID: "ns.safe"}}, Actor: "policy:platform"},
+func invokeRecipe() stag.Recipe {
+	return stag.Recipe{Steps: []stag.Step{
+		{Id: "p", Kind: stag.NodePropose, Out: "ns"},
+		{Id: "drain", Kind: stag.NodeInvoke, Tool: "k8s.drain", ArgRules: map[string]stag.ArgRule{"node": {Slot: "ns", Rule: nsSafe(), RuleID: "ns.safe"}}, Actor: "policy:platform"},
+		{Id: "check", Kind: stag.NodeInvoke, Tool: "k8s.status", ArgRules: map[string]stag.ArgRule{"node": {Slot: "ns", Rule: nsSafe(), RuleID: "ns.safe"}}, Actor: "policy:platform"},
 	}}
 }
 
 // The happy path: both calls are authorized, in source order, with args resolved from slots.
 func TestInvokeAuthorizesInSourceOrder(t *testing.T) {
-	res := Eval(invokeRecipe(), "dev", "h")
-	if res.Verdict != Allow || res.Fault != "" {
+	res := stag.Eval(invokeRecipe(), "dev", "h")
+	if res.Verdict != stag.Allow || res.Fault != "" {
 		t.Fatalf("allowed sequence: %+v", res)
 	}
 	if len(res.Authorized) != 2 {
@@ -49,8 +51,8 @@ func TestInvokeAuthorizesInSourceOrder(t *testing.T) {
 // The load-bearing property: an argument that does not release authorizes NOTHING.
 // A recipe cannot emit a call whose arguments were not cleared by a rule.
 func TestInvokeDeniedArgAuthorizesNothing(t *testing.T) {
-	res := Eval(invokeRecipe(), "prod", "h")
-	if res.Verdict != Deny {
+	res := stag.Eval(invokeRecipe(), "prod", "h")
+	if res.Verdict != stag.Deny {
 		t.Errorf("unreleased arg must deny: %v", res.Verdict)
 	}
 	if len(res.Authorized) != 0 {
@@ -64,13 +66,13 @@ func TestInvokeDeniedArgAuthorizesNothing(t *testing.T) {
 // An invoke is a sink that names a tool instead of a field: the step that clears the
 // crossing is the step that records it (inv 2). One ReleaseEvent per gated argument.
 func TestInvokeRecordsCrossingPerArgument(t *testing.T) {
-	res := Eval(invokeRecipe(), "staging", "h")
+	res := stag.Eval(invokeRecipe(), "staging", "h")
 	if len(res.Events) != 2 {
 		t.Fatalf("want one crossing per authorized argument, got %d", len(res.Events))
 	}
 	seen := map[int64]bool{}
 	for _, e := range res.Events {
-		if e.SubjectClass != Untrusted || e.TargetClass != Authoritative {
+		if e.SubjectClass != stag.Untrusted || e.TargetClass != stag.Authoritative {
 			t.Errorf("crossing must be untrusted -> authoritative: %+v", e)
 		}
 		if e.RecipeHash != "h" || e.AuthorizingRule != "ns.safe" {
@@ -86,9 +88,9 @@ func TestInvokeRecordsCrossingPerArgument(t *testing.T) {
 // Purity: the same inputs authorize the same calls, every time. This is what makes an
 // invoke recipe replayable offline by an auditor.
 func TestInvokeIsDeterministic(t *testing.T) {
-	first := Eval(invokeRecipe(), "dev", "h")
+	first := stag.Eval(invokeRecipe(), "dev", "h")
 	for i := 0; i < 32; i++ {
-		got := Eval(invokeRecipe(), "dev", "h")
+		got := stag.Eval(invokeRecipe(), "dev", "h")
 		if got.Verdict != first.Verdict || len(got.Authorized) != len(first.Authorized) {
 			t.Fatalf("eval %d diverged: %+v vs %+v", i, got, first)
 		}
@@ -109,22 +111,22 @@ func TestInvokeIsDeterministic(t *testing.T) {
 // A branch may select WHICH sequence is authorized — branching is not lost by keeping
 // the plan static, only branching on a RESULT is (that is the flagged v2 feature).
 func TestInvokeBranchSelectsSequence(t *testing.T) {
-	prod := ReleaseRule{Kind: RuleSetMembership, Set: []string{"prod"}}
-	r := Recipe{Steps: []Step{
-		{Id: "p", Kind: NodePropose, Out: "ns"},
-		{Id: "route", Kind: NodeBranch, In: "ns",
-			Cases:   []Case{{Rule: &prod, Goto: "careful"}},
+	prod := stag.ReleaseRule{Kind: stag.RuleSetMembership, Set: []string{"prod"}}
+	r := stag.Recipe{Steps: []stag.Step{
+		{Id: "p", Kind: stag.NodePropose, Out: "ns"},
+		{Id: "route", Kind: stag.NodeBranch, In: "ns",
+			Cases:   []stag.Case{{Rule: &prod, Goto: "careful"}},
 			Default: "quick"},
-		{Id: "quick", Kind: NodeInvoke, Tool: "k8s.drain", ArgRules: map[string]ArgRule{"node": {Slot: "ns", Rule: nsSafe(), RuleID: "ns.safe"}}, Actor: "a", Goto: "done"},
-		{Id: "done", Kind: NodeExit},
-		{Id: "careful", Kind: NodeInvoke, Tool: "k8s.snapshot", ArgRules: map[string]ArgRule{"node": {Slot: "ns", Rule: &prod, RuleID: "ns.prod"}}, Actor: "a"},
+		{Id: "quick", Kind: stag.NodeInvoke, Tool: "k8s.drain", ArgRules: map[string]stag.ArgRule{"node": {Slot: "ns", Rule: nsSafe(), RuleID: "ns.safe"}}, Actor: "a", Goto: "done"},
+		{Id: "done", Kind: stag.NodeExit},
+		{Id: "careful", Kind: stag.NodeInvoke, Tool: "k8s.snapshot", ArgRules: map[string]stag.ArgRule{"node": {Slot: "ns", Rule: &prod, RuleID: "ns.prod"}}, Actor: "a"},
 	}}
-	dev := Eval(r, "dev", "h")
-	if dev.Verdict != Allow || len(dev.Authorized) != 1 || dev.Authorized[0].Tool != "k8s.drain" {
+	dev := stag.Eval(r, "dev", "h")
+	if dev.Verdict != stag.Allow || len(dev.Authorized) != 1 || dev.Authorized[0].Tool != "k8s.drain" {
 		t.Errorf("dev must authorize the quick path: %+v", dev.Authorized)
 	}
-	pd := Eval(r, "prod", "h")
-	if pd.Verdict != Allow || len(pd.Authorized) != 1 || pd.Authorized[0].Tool != "k8s.snapshot" {
+	pd := stag.Eval(r, "prod", "h")
+	if pd.Verdict != stag.Allow || len(pd.Authorized) != 1 || pd.Authorized[0].Tool != "k8s.snapshot" {
 		t.Errorf("prod must authorize the careful path: %+v", pd.Authorized)
 	}
 }
@@ -137,16 +139,16 @@ func TestInvokeBranchSelectsSequence(t *testing.T) {
 func TestInvokeFailsClosed(t *testing.T) {
 	cases := []struct {
 		name string
-		step Step
+		step stag.Step
 	}{
-		{"severed slot", Step{Id: "i", Kind: NodeInvoke, Tool: "t", ArgRules: map[string]ArgRule{"a": {Slot: "nope", Rule: nsSafe(), RuleID: "r"}}, Actor: "a"}},
-		{"absent rule", Step{Id: "i", Kind: NodeInvoke, Tool: "t", ArgRules: map[string]ArgRule{"a": {Slot: "ns", RuleID: "r"}}, Actor: "a"}},
-		{"empty tool", Step{Id: "i", Kind: NodeInvoke, ArgRules: map[string]ArgRule{"a": {Slot: "ns", Rule: nsSafe(), RuleID: "r"}}, Actor: "a"}},
+		{"severed slot", stag.Step{Id: "i", Kind: stag.NodeInvoke, Tool: "t", ArgRules: map[string]stag.ArgRule{"a": {Slot: "nope", Rule: nsSafe(), RuleID: "r"}}, Actor: "a"}},
+		{"absent rule", stag.Step{Id: "i", Kind: stag.NodeInvoke, Tool: "t", ArgRules: map[string]stag.ArgRule{"a": {Slot: "ns", RuleID: "r"}}, Actor: "a"}},
+		{"empty tool", stag.Step{Id: "i", Kind: stag.NodeInvoke, ArgRules: map[string]stag.ArgRule{"a": {Slot: "ns", Rule: nsSafe(), RuleID: "r"}}, Actor: "a"}},
 	}
 	for _, c := range cases {
-		r := Recipe{Steps: []Step{{Id: "p", Kind: NodePropose, Out: "ns"}, c.step}}
-		res := Eval(r, "dev", "h")
-		if res.Verdict != Deny {
+		r := stag.Recipe{Steps: []stag.Step{{Id: "p", Kind: stag.NodePropose, Out: "ns"}, c.step}}
+		res := stag.Eval(r, "dev", "h")
+		if res.Verdict != stag.Deny {
 			t.Errorf("%s: must deny, got %v", c.name, res.Verdict)
 		}
 		if len(res.Authorized) != 0 {
@@ -159,13 +161,13 @@ func TestInvokeFailsClosed(t *testing.T) {
 // author-written calls (64 elements x 3 invokes = 192 actions from one proposal).
 // Everywhere else the count is fixed by the recipe source. Refused structurally.
 func TestInvokeInsideForeachIsRefused(t *testing.T) {
-	r := Recipe{Steps: []Step{
-		{Id: "p", Kind: NodePropose, Out: "list"},
-		{Id: "fe", Kind: NodeForeach, In: "list", As: "item"},
-		{Id: "i", Kind: NodeInvoke, Tool: "k8s.drain", ArgRules: map[string]ArgRule{"node": {Slot: "item", Rule: nsSafe(), RuleID: "ns.safe"}}, Actor: "a"},
+	r := stag.Recipe{Steps: []stag.Step{
+		{Id: "p", Kind: stag.NodePropose, Out: "list"},
+		{Id: "fe", Kind: stag.NodeForeach, In: "list", As: "item"},
+		{Id: "i", Kind: stag.NodeInvoke, Tool: "k8s.drain", ArgRules: map[string]stag.ArgRule{"node": {Slot: "item", Rule: nsSafe(), RuleID: "ns.safe"}}, Actor: "a"},
 	}}
-	res := Eval(r, `["dev","staging"]`, "h")
-	if res.Fault == "" || res.Verdict != Deny {
+	res := stag.Eval(r, `["dev","staging"]`, "h")
+	if res.Fault == "" || res.Verdict != stag.Deny {
 		t.Errorf("invoke inside foreach must fault: %+v", res)
 	}
 	if len(res.Authorized) != 0 {
@@ -174,20 +176,20 @@ func TestInvokeInsideForeachIsRefused(t *testing.T) {
 }
 
 func TestNodeKindInvokeParse(t *testing.T) {
-	k, err := ParseNodeKind("invoke")
-	if err != nil || k != NodeInvoke || k.String() != "invoke" {
+	k, err := stag.ParseNodeKind("invoke")
+	if err != nil || k != stag.NodeInvoke || k.String() != "invoke" {
 		t.Errorf("invoke node kind: k=%v err=%v str=%q", k, err, k.String())
 	}
 }
 
 // A recipe with no invoke steps authorizes nothing and is byte-identical to before.
 func TestNoInvokeNoAuthorized(t *testing.T) {
-	r := Recipe{Steps: []Step{
-		{Id: "p", Kind: NodePropose, Out: "v"},
-		{Id: "s", Kind: NodeSink, In: "v", Field: "exec", Sensitivity: SinkAuthoritative, Rule: allowedRule(), RuleID: "r", Actor: "a"},
+	r := stag.Recipe{Steps: []stag.Step{
+		{Id: "p", Kind: stag.NodePropose, Out: "v"},
+		{Id: "s", Kind: stag.NodeSink, In: "v", Field: "exec", Sensitivity: stag.SinkAuthoritative, Rule: allowedRule(), RuleID: "r", Actor: "a"},
 	}}
-	res := Eval(r, "restart", "h")
-	if res.Verdict != Allow || len(res.Authorized) != 0 || len(res.Events) != 1 {
+	res := stag.Eval(r, "restart", "h")
+	if res.Verdict != stag.Allow || len(res.Authorized) != 0 || len(res.Events) != 1 {
 		t.Errorf("non-invoke recipe changed: %+v", res)
 	}
 }
@@ -202,7 +204,7 @@ func FuzzInvokeAuthorization(f *testing.F) {
 	r := invokeRecipe()
 	rule := nsSafe()
 	f.Fuzz(func(t *testing.T, ns string) {
-		res := Eval(r, ns, "h")
+		res := stag.Eval(r, ns, "h")
 		released := rule.Release(ns)
 		if !released && len(res.Authorized) != 0 {
 			t.Fatalf("ns=%q did not release but authorized %d calls", ns, len(res.Authorized))
@@ -217,11 +219,11 @@ func FuzzInvokeAuthorization(f *testing.F) {
 				}
 			}
 		}
-		if res.Verdict == Deny && len(res.Authorized) != 0 {
+		if res.Verdict == stag.Deny && len(res.Authorized) != 0 {
 			t.Fatalf("denied verdict must authorize nothing: %+v", res.Authorized)
 		}
 		// determinism under fuzz
-		again := Eval(r, ns, "h")
+		again := stag.Eval(r, ns, "h")
 		if len(again.Authorized) != len(res.Authorized) || again.Verdict != res.Verdict {
 			t.Fatalf("ns=%q not deterministic", ns)
 		}
@@ -231,7 +233,7 @@ func FuzzInvokeAuthorization(f *testing.F) {
 // Guard: AuthorizedCall must stay JSON-canonical, since the plan is shown to a human
 // for review before execution and rides in the audit record.
 func TestAuthorizedCallIsCanonical(t *testing.T) {
-	res := Eval(invokeRecipe(), "dev", "h")
+	res := stag.Eval(invokeRecipe(), "dev", "h")
 	b, err := json.Marshal(res.Authorized)
 	if err != nil {
 		t.Fatalf("authorized plan must marshal: %v", err)
@@ -249,12 +251,12 @@ func TestAuthorizedCallIsCanonical(t *testing.T) {
 // GateArg means "no arguments to judge; the route is the authorization". There is nothing to
 // gate, so nothing is gated — and that is stated, not smuggled in behind a decorative rule.
 func TestInvokeWithNoArgumentsIsAuthorizedByTheStep(t *testing.T) {
-	r := Recipe{Steps: []Step{
-		{Id: "p", Kind: NodePropose, Out: "v"},
-		{Id: "restart", Kind: NodeInvoke, Tool: "k8s__restart_workload", Actor: "policy:x"},
+	r := stag.Recipe{Steps: []stag.Step{
+		{Id: "p", Kind: stag.NodePropose, Out: "v"},
+		{Id: "restart", Kind: stag.NodeInvoke, Tool: "k8s__restart_workload", Actor: "policy:x"},
 	}}
-	res := EvalArgs(r, map[string]string{"v": "anything"}, "h")
-	if res.Verdict != Allow || res.Fault != "" {
+	res := stag.EvalArgs(r, map[string]string{"v": "anything"}, "h")
+	if res.Verdict != stag.Allow || res.Fault != "" {
 		t.Fatalf("an argumentless invoke must authorize: %+v", res)
 	}
 	if len(res.Authorized) != 1 {
@@ -272,11 +274,11 @@ func TestInvokeWithNoArgumentsIsAuthorizedByTheStep(t *testing.T) {
 // It still records a crossing: the call happens, and the audit must say so. There is simply no
 // per-argument release to attach.
 func TestArgumentlessInvokeStillRecordsTheCall(t *testing.T) {
-	r := Recipe{Steps: []Step{
-		{Id: "p", Kind: NodePropose, Out: "v"},
-		{Id: "restart", Kind: NodeInvoke, Tool: "t", Actor: "policy:x"},
+	r := stag.Recipe{Steps: []stag.Step{
+		{Id: "p", Kind: stag.NodePropose, Out: "v"},
+		{Id: "restart", Kind: stag.NodeInvoke, Tool: "t", Actor: "policy:x"},
 	}}
-	res := EvalArgs(r, map[string]string{"v": "x"}, "h")
+	res := stag.EvalArgs(r, map[string]string{"v": "x"}, "h")
 	if len(res.Authorized) != 1 {
 		t.Fatal("must authorize")
 	}
@@ -288,11 +290,11 @@ func TestArgumentlessInvokeStillRecordsTheCall(t *testing.T) {
 
 // A tool name is still required: an invoke naming nothing is a fault, not an argumentless call.
 func TestInvokeStillNeedsATool(t *testing.T) {
-	r := Recipe{Steps: []Step{
-		{Id: "p", Kind: NodePropose, Out: "v"},
-		{Id: "i", Kind: NodeInvoke, Actor: "a"},
+	r := stag.Recipe{Steps: []stag.Step{
+		{Id: "p", Kind: stag.NodePropose, Out: "v"},
+		{Id: "i", Kind: stag.NodeInvoke, Actor: "a"},
 	}}
-	res := EvalArgs(r, map[string]string{"v": "x"}, "h")
+	res := stag.EvalArgs(r, map[string]string{"v": "x"}, "h")
 	if res.Fault == "" || len(res.Authorized) != 0 {
 		t.Errorf("an invoke with no tool must fault: %+v", res)
 	}
@@ -301,19 +303,19 @@ func TestInvokeStillNeedsATool(t *testing.T) {
 // An AWAIT with no arguments is the common case for a status poll, and it still needs its
 // condition — that is what makes it an await rather than a call in a loop.
 func TestArgumentlessAwaitStillNeedsItsCondition(t *testing.T) {
-	done := ReleaseRule{Kind: RuleSetMembership, Set: []string{"complete"}}
-	ok := Recipe{Steps: []Step{
-		{Id: "p", Kind: NodePropose, Out: "v"},
-		{Id: "settle", Kind: NodeAwait, Tool: "k8s__rollout_status", Actor: "a",
+	done := stag.ReleaseRule{Kind: stag.RuleSetMembership, Set: []string{"complete"}}
+	ok := stag.Recipe{Steps: []stag.Step{
+		{Id: "p", Kind: stag.NodePropose, Out: "v"},
+		{Id: "settle", Kind: stag.NodeAwait, Tool: "k8s__rollout_status", Actor: "a",
 			Until: &done, UntilID: "rollout.done", Attempts: 4, DelayMS: 1000},
 	}}
-	if res := EvalArgs(ok, map[string]string{"v": "x"}, "h"); len(res.Authorized) != 1 {
+	if res := stag.EvalArgs(ok, map[string]string{"v": "x"}, "h"); len(res.Authorized) != 1 {
 		t.Fatalf("an argumentless await must authorize: %+v", res)
 	}
 	bad := ok
-	bad.Steps = append([]Step{}, ok.Steps...)
+	bad.Steps = append([]stag.Step{}, ok.Steps...)
 	bad.Steps[1].Until = nil
-	if res := EvalArgs(bad, map[string]string{"v": "x"}, "h"); res.Fault == "" {
+	if res := stag.EvalArgs(bad, map[string]string{"v": "x"}, "h"); res.Fault == "" {
 		t.Error("an await with no condition must still fault, arguments or not")
 	}
 }

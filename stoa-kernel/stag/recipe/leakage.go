@@ -35,10 +35,29 @@ package recipe
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 
 	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
 )
+
+// anyPassThrough flattens a recipe's server->tool->ToolCaps map to a sorted "server.tool.arg" list
+// of every declared passthrough argument, for the Leakage unbounded-reason message. ANY declared
+// passthrough — on the recipe's own routed tool or an invoke/await tool it names — voids the bound:
+// the theorem this enforces (every output-reaching argument must be closed-set) does not care which
+// tool the free-text argument belongs to.
+func anyPassThrough(tools map[string]map[string]stag.ToolCaps) []string {
+	var out []string
+	for server, byTool := range tools {
+		for tool, caps := range byTool {
+			for _, a := range caps.PassThrough {
+				out = append(out, server+"."+tool+"."+a)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
 
 // metaApprovalToken mirrors proxy.MetaApprovalToken (recipe cannot import proxy — cycle). It is the
 // gate-only approval slot, STRIPPED before forwarding, so it is never a free-text egress.
@@ -122,8 +141,8 @@ const foreachCap = 64
 
 // Leakage analyzes one compiled recipe. Pure function of the recipe graph + its gated set sizes.
 func Leakage(r stag.Recipe) LeakageReport {
-	if len(r.PassThrough) > 0 {
-		return LeakageReport{Unbounded: true, UnboundedReason: fmt.Sprintf("free-text passthrough argument(s): %v", r.PassThrough)}
+	if pt := anyPassThrough(r.Tools); len(pt) > 0 {
+		return LeakageReport{Unbounded: true, UnboundedReason: fmt.Sprintf("free-text passthrough argument(s): %v", pt)}
 	}
 	idx := map[string]int{}
 	for i, st := range r.Steps {

@@ -1,10 +1,11 @@
-package recipe
+package recipe_test
 
 import (
 	"strings"
 	"testing"
 
 	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipe"
 )
 
 const foreachSrc = `recipe: batch_policy
@@ -31,7 +32,7 @@ steps:
 `
 
 func TestForeachRecipeParsesAndEvals(t *testing.T) {
-	p, err := Parse([]byte(foreachSrc))
+	p, err := recipe.Parse([]byte(foreachSrc))
 	if err != nil {
 		t.Fatalf("foreach recipe must parse: %v", err)
 	}
@@ -39,7 +40,7 @@ func TestForeachRecipeParsesAndEvals(t *testing.T) {
 	if fe.Kind != stag.NodeForeach || fe.In != "plan" || fe.As != "item" {
 		t.Fatalf("foreach step: %+v", fe)
 	}
-	if _, w, derr := ParseDraft([]byte(foreachSrc)); derr != nil || len(w) != 0 {
+	if _, w, derr := recipe.ParseDraft([]byte(foreachSrc)); derr != nil || len(w) != 0 {
 		t.Fatalf("draft: warnings=%v err=%v", w, derr)
 	}
 
@@ -65,7 +66,7 @@ func TestForeachLintRejects(t *testing.T) {
 			"  - id: each2\n    kind: foreach\n    in: item\n    as: sub\n  - id: apply\n", 1),
 	}
 	for name, src := range cases {
-		if _, err := Parse([]byte(src)); err == nil {
+		if _, err := recipe.Parse([]byte(src)); err == nil {
 			t.Errorf("%s must be rejected", name)
 		}
 	}
@@ -75,7 +76,7 @@ func TestExitParsesAsTerminal(t *testing.T) {
 	// exit is now a real terminal kind (implemented for composition). A recipe ending in
 	// exit parses, and the compiled step is NodeExit.
 	src := "recipe: r\nversion: 1\nsteps:\n  - id: s0\n    kind: propose\n    out: p\n  - id: done\n    kind: exit\n"
-	p, err := Parse([]byte(src))
+	p, err := recipe.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("exit terminal must parse: %v", err)
 	}

@@ -33,9 +33,12 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-# Everything about an instance lives under $STOA_HOME — never relative to this script, so the
-# source checkout can move or be deleted without stranding the tool that authorizes your actions.
-HOME_DIR = Path(os.environ.get("STOA_HOME", Path.home() / ".stoagraph"))
+# Everything about an instance lives under $STOA_HOME, default ./.stoagraph NEXT TO THE CHECKOUT —
+# not $PWD, since this script is normally reached through a symlink on PATH and run from anywhere.
+# Path.resolve() follows the symlink back to the real file first, the same way `stoa` does in shell,
+# so ./.stoagraph means "beside this checkout" no matter which directory you invoked this from.
+CHECKOUT = Path(__file__).resolve().parent.parent
+HOME_DIR = Path(os.environ.get("STOA_HOME", CHECKOUT / ".stoagraph"))
 TOKENS = Path(os.environ.get("STOA_TOKENS", HOME_DIR / "data" / "control.tokens"))
 GATE = os.environ.get("STOA_GATE_URL", "http://localhost:8080")
 PROXY = os.environ.get("STOA_PROXY_URL", "http://localhost:8091")

@@ -1,0 +1,28 @@
+# The same notify_policy as recipe.yaml, with one more channel allowed: eng-standup.
+#
+# This file exists to demonstrate hot-reload (docs/stoagraph-guide, Chapter 4): copy it over the
+# original as notify_policy.yaml and the gate picks up the change on the very next call, no
+# restart. The `recipe:` name below MUST stay `notify_policy` — that name, not the filename, is
+# what a route resolves against, so this is a genuine drop-in replacement of the same policy, not
+# a new one.
+recipe: notify_policy
+version: 1
+
+# Same coverage contract as recipe.yaml — see that file for why `text` is knowingly ungated.
+passthrough: ["text"]
+
+rules:
+  channel.allowed:
+    kind: set_membership
+    set: ["support", "general", "incidents", "eng-standup"]
+steps:
+  - id: propose_channel
+    kind: propose
+    out: channel
+  - id: post
+    kind: sink
+    in: channel
+    field: notify.channel
+    sensitivity: authoritative
+    rule: channel.allowed
+    actor: "policy:notify"

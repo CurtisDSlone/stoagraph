@@ -2,8 +2,6 @@
   {
     "id": "code-question",
     "match": { "source": "github" },
-    "recipe": "github_repo_policy",
-    "tools": ["GH__get_file_contents", "local-tools__read_file", "local-tools__search_code"],
-    "context": []
+    "recipe": "github_repo_policy"
   }
 ]

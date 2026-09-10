@@ -1,4 +1,4 @@
-package model
+package model_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/model"
 	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
 )
 
@@ -22,21 +23,21 @@ func sampleRecipe() stag.Recipe {
 }
 
 func TestLocalStub(t *testing.T) {
-	s := LocalStub{Name: "n", Responses: map[string]string{"a": "x"}, Default: "d"}
-	if p, err := s.Propose(context.Background(), Request{Input: "a"}); err != nil || p.Value != "x" || p.Model != "localstub:n" {
+	s := model.LocalStub{Name: "n", Responses: map[string]string{"a": "x"}, Default: "d"}
+	if p, err := s.Propose(context.Background(), model.Request{Input: "a"}); err != nil || p.Value != "x" || p.Model != "localstub:n" {
 		t.Errorf("hit: %+v %v", p, err)
 	}
-	if p, err := s.Propose(context.Background(), Request{Input: "miss"}); err != nil || p.Value != "d" || p.Model != "localstub:n" {
+	if p, err := s.Propose(context.Background(), model.Request{Input: "miss"}); err != nil || p.Value != "d" || p.Model != "localstub:n" {
 		t.Errorf("miss: %+v %v", p, err)
 	}
-	p1, _ := s.Propose(context.Background(), Request{Input: "a"})
-	p2, _ := s.Propose(context.Background(), Request{Input: "a"})
+	p1, _ := s.Propose(context.Background(), model.Request{Input: "a"})
+	p2, _ := s.Propose(context.Background(), model.Request{Input: "a"})
 	if p1 != p2 {
 		t.Errorf("determinism: %+v != %+v", p1, p2)
 	}
 
-	fail := LocalStub{Name: "n", Responses: map[string]string{"a": "x"}, Err: errors.New("boom")}
-	if p, err := fail.Propose(context.Background(), Request{Input: "a"}); err == nil || p != (Proposal{}) {
+	fail := model.LocalStub{Name: "n", Responses: map[string]string{"a": "x"}, Err: errors.New("boom")}
+	if p, err := fail.Propose(context.Background(), model.Request{Input: "a"}); err == nil || p != (model.Proposal{}) {
 		t.Errorf("fail path: %+v %v", p, err)
 	}
 }
@@ -45,8 +46,8 @@ func TestDecide(t *testing.T) {
 	r := sampleRecipe()
 	ctx := context.Background()
 
-	stub := LocalStub{Name: "m1", Default: "restart"}
-	d, err := Decide(ctx, r, rh, stub, Request{})
+	stub := model.LocalStub{Name: "m1", Default: "restart"}
+	d, err := model.Decide(ctx, r, rh, stub, model.Request{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,16 +61,16 @@ func TestDecide(t *testing.T) {
 		t.Errorf("expected allow+event: %+v", d.Result)
 	}
 
-	deny := LocalStub{Name: "m1", Default: "rm -rf /"}
-	dd, _ := Decide(ctx, r, rh, deny, Request{})
+	deny := model.LocalStub{Name: "m1", Default: "rm -rf /"}
+	dd, _ := model.Decide(ctx, r, rh, deny, model.Request{})
 	if dd.Result.Verdict != stag.Deny || len(dd.Result.Events) != 0 ||
 		!reflect.DeepEqual(dd.Result, stag.Eval(r, "rm -rf /", rh)) {
 		t.Errorf("deny: %+v", dd.Result)
 	}
 
 	// fail closed
-	fail := LocalStub{Name: "m1", Default: "restart", Err: errors.New("timeout")}
-	df, ferr := Decide(ctx, r, rh, fail, Request{})
+	fail := model.LocalStub{Name: "m1", Default: "restart", Err: errors.New("timeout")}
+	df, ferr := model.Decide(ctx, r, rh, fail, model.Request{})
 	if ferr == nil {
 		t.Errorf("expected error")
 	}
@@ -78,10 +79,10 @@ func TestDecide(t *testing.T) {
 	}
 
 	// model-independence spot check: different provenance, same value, same verdict
-	a := LocalStub{Name: "alpha", Default: "restart"}
-	b := LocalStub{Name: "beta", Default: "restart"}
-	da, _ := Decide(ctx, r, rh, a, Request{})
-	db, _ := Decide(ctx, r, rh, b, Request{})
+	a := model.LocalStub{Name: "alpha", Default: "restart"}
+	b := model.LocalStub{Name: "beta", Default: "restart"}
+	da, _ := model.Decide(ctx, r, rh, a, model.Request{})
+	db, _ := model.Decide(ctx, r, rh, b, model.Request{})
 	if !reflect.DeepEqual(da.Result, db.Result) {
 		t.Errorf("model-independence: verdict changed with the model")
 	}
@@ -97,11 +98,11 @@ func FuzzDecideModelIndependence(f *testing.F) {
 	f.Fuzz(func(t *testing.T, value, ma, mb string) {
 		r := sampleRecipe()
 		ctx := context.Background()
-		a := LocalStub{Name: ma, Default: value}
-		b := LocalStub{Name: mb, Default: value}
+		a := model.LocalStub{Name: ma, Default: value}
+		b := model.LocalStub{Name: mb, Default: value}
 
-		da, erra := Decide(ctx, r, rh, a, Request{})
-		db, errb := Decide(ctx, r, rh, b, Request{})
+		da, erra := model.Decide(ctx, r, rh, a, model.Request{})
+		db, errb := model.Decide(ctx, r, rh, b, model.Request{})
 		if erra != nil || errb != nil {
 			t.Fatalf("unexpected error: %v %v", erra, errb)
 		}

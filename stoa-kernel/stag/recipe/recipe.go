@@ -42,10 +42,10 @@ const (
 	maxDepth       = 32
 	maxNodes       = 10000
 	maxPassThrough = 64
-	// invokeCap bounds how many calls ONE policy may authorize. It is not a runtime
+	// InvokeCap bounds how many calls ONE policy may authorize. It is not a runtime
 	// bound (the count is fixed by the recipe source) but a reviewability bound: a
 	// sequence a human cannot read in one sitting is not a reviewed sequence.
-	invokeCap = 16
+	InvokeCap = 16
 	// mirrored from the kernel (stag.awaitAttemptCap et al) so the LINTER can refuse an
 	// unrunnable recipe at author time instead of leaving it to a runtime fault.
 	awaitAttemptCap = 32
@@ -88,6 +88,15 @@ func ParseDraft(src []byte) (Parsed, []string, error) {
 	return p, warns, nil
 }
 
+// teaching gives a specific "that's not StAG" message for an illegal key that happens to be a
+// keyword from a more familiar automation idiom (Ansible playbooks, etc). Checked in exactly two
+// places, both CLOSED schemas where an operator never chooses the key name: the top-level dispatch
+// (parse's `default` case) and a step mapping (parseStep, after the per-kind legal set). Never
+// checked inside tools:/providers:/rules:, which are OPEN schemas — a server, tool, provider, or
+// rule id is a name the operator chose, and "notify" is a completely legitimate tool name there
+// with nothing to do with the step keyword "notify" this map warns about. Checked only after a key
+// has already failed its scope's own legal-key check, so it can never mask a real key.
+//
 // kw: teaching rejections ansible reflexes by name
 var teaching = map[string]string{
 	"when":       `key "when" is not StAG: guarded transitions are the branch kind`,
@@ -178,9 +187,9 @@ type rawStep struct {
 // kw: resolver composition sub-recipe source by name
 type Resolver func(name string) ([]byte, error)
 
-// rejectResolver refuses composition — recipe.Parse/ParseDraft use it, so a recipe
+// RejectResolver refuses composition — recipe.Parse/ParseDraft use it, so a recipe
 // that references a sub-recipe errors clearly unless a store-backed resolver is supplied.
-func rejectResolver(name string) ([]byte, error) {
+func RejectResolver(name string) ([]byte, error) {
 	return nil, fmt.Errorf("sub-recipe %q referenced but composition has no recipe store/resolver", name)
 }
 
@@ -195,11 +204,12 @@ type front struct {
 	ruleOrder   []string
 	registry    map[string]stag.ReleaseRule
 	steps       []rawStep
-	passthrough []string // tool args knowingly forwarded ungated (the coverage contract)
+	tools       map[string]map[string]stag.ToolCaps // server -> tool -> caps (the coverage contract)
+	providers   []string                            // context-provider names this recipe's read steps may name
 }
 
 // Parse is Compose with no resolver (composition disabled). kw: parse strict
-func parse(src []byte) (Parsed, []string, error) { return Compose(src, rejectResolver) }
+func parse(src []byte) (Parsed, []string, error) { return Compose(src, RejectResolver) }
 
 // Compose front-parses the parent, inlines every goto_recipe/default_recipe sub-recipe
 // (namespaced, spliced), then lints+hashes+compiles the composed whole. The parent's
@@ -309,10 +319,15 @@ func (fr *front) splice(name string, site int, resolve Resolver, at *yaml.Node) 
 	for k, v := range cf.ingredients {
 		fr.ingredients[k] = v
 	}
-	// PassThrough is NOT namespaced: it names real tool arguments, not slots. A child's coverage
-	// contract is unioned into the parent's — the composed whole is what the gate enforces, and the
-	// parent's SemanticHash binds it.
-	fr.passthrough = unionSorted(fr.passthrough, cf.passthrough)
+	// Tools is NOT namespaced: server/tool names are real identifiers, not slots. A child's
+	// coverage contract is unioned into the parent's, per (server, tool) — the composed whole is
+	// what the gate enforces, and the parent's SemanticHash binds it. If both parent and child
+	// name the SAME tool, their passthrough lists union rather than one silently replacing the
+	// other — a child cannot narrow (or widen, unnoticed) what the parent already declared.
+	fr.tools = unionTools(fr.tools, cf.tools)
+	// Providers is likewise NOT namespaced (a real registered name, not a slot) and unions the same
+	// way — a child's readable providers become readable in the composed whole.
+	fr.providers = unionSorted(fr.providers, cf.providers)
 	fr.ruleOrder = append(fr.ruleOrder, cf.ruleOrder...)
 	for k, v := range cf.registry {
 		fr.registry[k] = v
@@ -417,36 +432,24 @@ func frontParse(src []byte) (fr front, warns []string, err error) {
 	ruleOrder := []string{}
 	registry := map[string]stag.ReleaseRule{}
 	var steps []rawStep
-	var passthrough []string
+	tools := map[string]map[string]stag.ToolCaps{}
+	var providers []string
 
 	for i := 0; i < len(root.Content); i += 2 {
 		k, v := root.Content[i], root.Content[i+1]
 		switch k.Value {
-		case "passthrough":
-			// The coverage contract: tool arguments this policy knowingly forwards UNGATED.
-			// Everything else the tool takes must be gated, or the call is denied (unaccounted).
-			if v.Kind != yaml.SequenceNode || len(v.Content) == 0 {
-				return front{}, nil, errf(v, "passthrough must be a non-empty sequence (omit the key to gate every argument)")
+		case "tools":
+			t, terr := parseTools(v)
+			if terr != nil {
+				return front{}, nil, terr
 			}
-			if len(v.Content) > maxPassThrough {
-				return front{}, nil, errf(v, "too many passthrough args: %d (max %d)", len(v.Content), maxPassThrough)
+			tools = t
+		case "providers":
+			p, perr := parseProviders(v)
+			if perr != nil {
+				return front{}, nil, perr
 			}
-			seen := map[string]bool{}
-			for _, an := range v.Content {
-				s, serr := quotedStr(an, "passthrough arg")
-				if serr != nil {
-					return front{}, nil, serr
-				}
-				if !nameOK(s) {
-					return front{}, nil, errf(an, "invalid passthrough arg %q (grammar: lowercase ascii, digits, _, max 64)", s)
-				}
-				if seen[s] {
-					return front{}, nil, errf(an, "duplicate passthrough arg %q", s)
-				}
-				seen[s] = true
-				passthrough = append(passthrough, s)
-			}
-			sort.Strings(passthrough) // canonical order: the hash must not depend on authoring order
+			providers = p
 		case "recipe":
 			s, serr := strVal(v, "recipe name")
 			if serr != nil {
@@ -511,6 +514,9 @@ func frontParse(src []byte) (fr front, warns []string, err error) {
 			}
 			haveSteps = true
 		default:
+			if msg, hit := teaching[k.Value]; hit {
+				return front{}, nil, errf(k, "%s", msg)
+			}
 			return front{}, nil, errf(k, "unknown key %q at top level", k.Value)
 		}
 	}
@@ -521,8 +527,174 @@ func frontParse(src []byte) (fr front, warns []string, err error) {
 		name: name, version: version,
 		ingOrder: ingOrder, ingredients: ingredients,
 		ruleOrder: ruleOrder, registry: registry, steps: steps,
-		passthrough: passthrough,
+		tools: tools, providers: providers,
 	}, warns, nil
+}
+
+// kw: caps tools server-tool-pairs providers
+const (
+	maxToolServers = 64 // servers a recipe may name
+	maxToolsPerSvr = 64 // tools per server
+	maxProviders   = 64 // context providers a recipe may name
+)
+
+// parseTools decodes the top-level `tools:` mapping: server -> tool -> {passthrough: [...]}. Each
+// level is validated on its own grammar — a server name against the SAME charset the gate's own
+// MCP-server registration enforces (ValidServerName, stag/proxy/naming.go), duplicated here rather
+// than imported: stag/recipe cannot import stag/proxy without a cycle (proxy already imports stag,
+// and recipe.Leakage's own doc comment notes the same constraint for the reverse direction). A tool
+// name uses the recipe's ordinary identifier grammar (nameOK) — every real tool name in this
+// codebase (this repo's own tools.yaml fixtures, and GitHub's documented MCP surface in
+// docs/routes.md) is already lowercase/underscore, so nameOK's narrower charset is not a real
+// restriction, only a stricter one than the gate needs to accept.
+func parseTools(v *yaml.Node) (map[string]map[string]stag.ToolCaps, error) {
+	if v.Kind != yaml.MappingNode {
+		return nil, errf(v, "tools must be a mapping (server -> tool -> {passthrough: [...]})")
+	}
+	if len(v.Content)/2 > maxToolServers {
+		return nil, errf(v, "too many servers under tools: %d (max %d)", len(v.Content)/2, maxToolServers)
+	}
+	out := map[string]map[string]stag.ToolCaps{}
+	for i := 0; i < len(v.Content); i += 2 {
+		sk, sv := v.Content[i], v.Content[i+1]
+		server := sk.Value
+		if !validServerName(server) {
+			return nil, errf(sk, "invalid server name %q (grammar: ^[a-zA-Z0-9_-]+$, no \"__\")", server)
+		}
+		if sv.Kind != yaml.MappingNode {
+			return nil, errf(sv, "tools.%s must be a mapping (tool -> {passthrough: [...]})", server)
+		}
+		if len(sv.Content)/2 > maxToolsPerSvr {
+			return nil, errf(sv, "too many tools under server %q: %d (max %d)", server, len(sv.Content)/2, maxToolsPerSvr)
+		}
+		byTool := map[string]stag.ToolCaps{}
+		for j := 0; j < len(sv.Content); j += 2 {
+			tk, tv := sv.Content[j], sv.Content[j+1]
+			tool := tk.Value
+			if !nameOK(tool) {
+				return nil, errf(tk, "invalid tool name %q (grammar: lowercase ascii, digits, _, max 64)", tool)
+			}
+			caps, cerr := parseToolCaps(tv)
+			if cerr != nil {
+				return nil, cerr
+			}
+			byTool[tool] = caps
+		}
+		out[server] = byTool
+	}
+	return out, nil
+}
+
+// parseToolCaps decodes one tools.<server>.<tool> entry: today, only `passthrough:`. An empty
+// mapping ({}) is legal — a zero-argument tool, or a tool this recipe names purely so `Covered`
+// has an entry for it, with nothing forwarded ungated.
+func parseToolCaps(v *yaml.Node) (stag.ToolCaps, error) {
+	if v.Kind != yaml.MappingNode {
+		return stag.ToolCaps{}, errf(v, "a tools entry must be a mapping (use {} for no capabilities)")
+	}
+	var caps stag.ToolCaps
+	for i := 0; i < len(v.Content); i += 2 {
+		ck, cv := v.Content[i], v.Content[i+1]
+		switch ck.Value {
+		case "passthrough":
+			// The coverage contract: arguments of THIS tool the policy knowingly forwards UNGATED.
+			// Everything else the tool takes must be gated, or the call is denied (unaccounted).
+			if cv.Kind != yaml.SequenceNode || len(cv.Content) == 0 {
+				return stag.ToolCaps{}, errf(cv, "passthrough must be a non-empty sequence (omit the key to gate every argument)")
+			}
+			if len(cv.Content) > maxPassThrough {
+				return stag.ToolCaps{}, errf(cv, "too many passthrough args: %d (max %d)", len(cv.Content), maxPassThrough)
+			}
+			seen := map[string]bool{}
+			var pt []string
+			for _, an := range cv.Content {
+				s, serr := quotedStr(an, "passthrough arg")
+				if serr != nil {
+					return stag.ToolCaps{}, serr
+				}
+				if !nameOK(s) {
+					return stag.ToolCaps{}, errf(an, "invalid passthrough arg %q (grammar: lowercase ascii, digits, _, max 64)", s)
+				}
+				if seen[s] {
+					return stag.ToolCaps{}, errf(an, "duplicate passthrough arg %q", s)
+				}
+				seen[s] = true
+				pt = append(pt, s)
+			}
+			sort.Strings(pt) // canonical order: the hash must not depend on authoring order
+			caps.PassThrough = pt
+		default:
+			return stag.ToolCaps{}, errf(ck, "unknown key %q under a tools entry", ck.Value)
+		}
+	}
+	return caps, nil
+}
+
+// validServerName duplicates stag/proxy.ValidServerName's exact rule (see parseTools's comment for
+// why this cannot be a direct import). Keep in sync with stag/proxy/naming.go if that ever changes.
+func validServerName(s string) bool {
+	if s == "" || strings.Contains(s, "__") {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_', r == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// parseProviders decodes the top-level `providers:` sequence: a flat allowlist of context-provider
+// names this recipe's `read` steps may name (checked against it in lint — see lintProviders). No
+// per-provider capability exists today (unlike tools:'s passthrough), so a plain list of names is
+// the whole shape.
+func parseProviders(v *yaml.Node) ([]string, error) {
+	if v.Kind != yaml.SequenceNode || len(v.Content) == 0 {
+		return nil, errf(v, "providers must be a non-empty sequence (omit the key to name no providers)")
+	}
+	if len(v.Content) > maxProviders {
+		return nil, errf(v, "too many providers: %d (max %d)", len(v.Content), maxProviders)
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, pn := range v.Content {
+		s, serr := quotedStr(pn, "provider name")
+		if serr != nil {
+			return nil, serr
+		}
+		if !validProviderName(s) {
+			return nil, errf(pn, "invalid provider name %q (grammar: ^[a-zA-Z0-9_-]+$)", s)
+		}
+		if seen[s] {
+			return nil, errf(pn, "duplicate provider %q", s)
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	sort.Strings(out) // canonical order: the hash must not depend on authoring order
+	return out, nil
+}
+
+// validProviderName is deliberately wider than nameOK: real provider registrations accept any
+// non-empty name (stag/serve/providers.go has no charset check at all) and this repo's own
+// fixtures use hyphens (e.g. "k8s-kb", harness/dispatch/wiring_test.go) — nameOK's lowercase-only
+// grammar would make an already-legal, already-registered provider name unreferenceable from a
+// recipe. Same charset as validServerName (no __ restriction needed here — that separator is
+// specific to the tool-advertising namespace, not providers).
+func validProviderName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_', r == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // finish runs the cross-step lint, canonical hash, and compile over a (possibly composed)
@@ -539,19 +711,56 @@ func finish(fr front, warns []string, src []byte) (Parsed, []string, error) {
 		return Parsed{}, nil, lerr
 	}
 	warns = append(warns, lintWarns...)
-	warns = append(warns, lintPassThrough(fr.passthrough, steps)...)
+	warns = append(warns, lintTools(fr.tools, steps)...)
+	if perr := lintProviders(fr.providers, steps); perr != nil {
+		return Parsed{}, nil, perr
+	}
 
 	// canonical form + the two hashes (decision 2): built from validated raw
 	// text, never from yaml-decoded values; rejected files never reach here.
 	form := map[string]any{"recipe": name, "version": version}
-	// The coverage contract is part of the policy IDENTITY: adding an argument to passthrough
-	// widens what crosses ungated, so it must move the SemanticHash the audit records.
-	if len(fr.passthrough) > 0 {
-		pt := make([]any, len(fr.passthrough))
-		for i, a := range fr.passthrough {
-			pt[i] = a
+	// The coverage contract is part of the policy IDENTITY: naming a tool (or widening what it
+	// forwards ungated) has to move the SemanticHash the audit records. Sorted server/tool keys:
+	// the hash must not depend on the map's (or the author's) iteration/authoring order.
+	if len(fr.tools) > 0 {
+		servers := make([]string, 0, len(fr.tools))
+		for s := range fr.tools {
+			servers = append(servers, s)
 		}
-		form["passthrough"] = pt
+		sort.Strings(servers)
+		tm := map[string]any{}
+		for _, s := range servers {
+			byTool := fr.tools[s]
+			toolNames := make([]string, 0, len(byTool))
+			for t := range byTool {
+				toolNames = append(toolNames, t)
+			}
+			sort.Strings(toolNames)
+			te := map[string]any{}
+			for _, t := range toolNames {
+				caps := byTool[t]
+				e := map[string]any{}
+				if len(caps.PassThrough) > 0 {
+					pt := make([]any, len(caps.PassThrough))
+					for i, a := range caps.PassThrough {
+						pt[i] = a
+					}
+					e["passthrough"] = pt
+				}
+				te[t] = e
+			}
+			tm[s] = te
+		}
+		form["tools"] = tm
+	}
+	// Which sources a policy may read is part of the policy's identity: naming a new provider
+	// widens what an agent's session can be given to read, so it moves the SemanticHash too.
+	if len(fr.providers) > 0 {
+		pv := make([]any, len(fr.providers))
+		for i, p := range fr.providers {
+			pv[i] = p
+		}
+		form["providers"] = pv
 	}
 	if len(ingOrder) > 0 {
 		im := map[string]any{}
@@ -666,8 +875,11 @@ func finish(fr front, warns []string, src []byte) (Parsed, []string, error) {
 	if len(ingredients) > 0 {
 		compiled.Ingredients = ingredients
 	}
-	if len(fr.passthrough) > 0 {
-		compiled.PassThrough = fr.passthrough
+	if len(fr.tools) > 0 {
+		compiled.Tools = fr.tools
+	}
+	if len(fr.providers) > 0 {
+		compiled.Providers = fr.providers
 	}
 	for i, st := range steps {
 		out := stag.Step{
@@ -712,8 +924,8 @@ func finish(fr front, warns []string, src []byte) (Parsed, []string, error) {
 	}, warns, nil
 }
 
-// unionSorted merges two arg-name lists into one sorted, deduplicated list (composition unions the
-// children's coverage contracts into the parent's). kw: passthrough union compose canonical
+// unionSorted merges two arg-name lists into one sorted, deduplicated list — the leaf-level merge
+// unionTools uses for two ToolCaps.PassThrough lists naming the SAME tool. kw: passthrough union compose canonical
 func unionSorted(a, b []string) []string {
 	if len(b) == 0 {
 		return a
@@ -730,31 +942,131 @@ func unionSorted(a, b []string) []string {
 	return out
 }
 
+// unionTools merges two server->tool->ToolCaps maps (composition unions a child's tools: into the
+// parent's). A (server, tool) present in only one side is copied through unchanged; present in
+// BOTH, their PassThrough lists union via unionSorted rather than one replacing the other — a
+// child's declaration for a tool the parent ALSO names can only add to what's accounted for, never
+// silently narrow or replace it. kw: tools union compose canonical nested
+func unionTools(a, b map[string]map[string]stag.ToolCaps) map[string]map[string]stag.ToolCaps {
+	if len(b) == 0 {
+		return a
+	}
+	if a == nil {
+		a = map[string]map[string]stag.ToolCaps{}
+	}
+	for server, bTools := range b {
+		aTools, ok := a[server]
+		if !ok {
+			aTools = map[string]stag.ToolCaps{}
+			a[server] = aTools
+		}
+		for tool, bCaps := range bTools {
+			aCaps, ok := aTools[tool]
+			if !ok {
+				aTools[tool] = bCaps
+				continue
+			}
+			aTools[tool] = stag.ToolCaps{PassThrough: unionSorted(aCaps.PassThrough, bCaps.PassThrough)}
+		}
+	}
+	return a
+}
+
 // lintPassThrough reports a coverage contract that is WRONG (not merely bold): an argument that is
-// both gated and declared passthrough. The gate wins, so the declaration is dead policy — the same
-// class as a rule on a benign sink. Sign-time strict turns this into an error, which is right: it
-// means the author believes something about their own policy that is not true.
+// both gated and declared passthrough for the SAME tool. The gate wins, so the declaration is dead
+// policy — the same class as a rule on a benign sink. Sign-time strict turns this into an error,
+// which is right: it means the author believes something about their own policy that is not true.
+//
+// Two different checks, because a step only carries a tool identity for invoke/await — a
+// propose/sink chain (the recipe's own routed tool) does not:
+//
+//   - A tools: entry that matches an invoke/await step's Tool is checked EXACTLY: its passthrough
+//     against that one step's own ArgRules (per-argument rules, keyed by argument name).
+//   - Every other tools: entry — the recipe's own primary tool, never an invoke/await target — is
+//     checked against the WHOLE propose/sink chain's gated slots, same scope today's single global
+//     check had. There is no per-tool identity on those steps to narrow it further.
 //
 // Whether a passthrough is *unwise* is a judgment, not an error — see Cautions.
-// kw: passthrough lint contradiction dead-declaration
-func lintPassThrough(passthrough []string, steps []rawStep) []string {
-	if len(passthrough) == 0 {
+// kw: passthrough lint contradiction dead-declaration per-tool
+func lintTools(tools map[string]map[string]stag.ToolCaps, steps []rawStep) []string {
+	if len(tools) == 0 {
 		return nil
 	}
-	gated := map[string]bool{}
+	// invoke/await tool -> its own gated argument names (ArgRules is keyed by arg name directly).
+	invokeGated := map[string]map[string]bool{}
+	for _, st := range steps {
+		if st.kind != stag.NodeInvoke && st.kind != stag.NodeAwait {
+			continue
+		}
+		g := invokeGated[st.tool]
+		if g == nil {
+			g = map[string]bool{}
+			invokeGated[st.tool] = g
+		}
+		for arg := range st.argRules {
+			g[arg] = true
+		}
+	}
+	// the propose/sink chain's gated slots — the recipe's own routed tool has no narrower scope.
+	chainGated := map[string]bool{}
 	for _, st := range steps {
 		if st.kind == stag.NodePropose {
-			gated[st.out] = true
+			chainGated[st.out] = true
 		}
 	}
+	servers := make([]string, 0, len(tools))
+	for s := range tools {
+		servers = append(servers, s)
+	}
+	sort.Strings(servers)
 	var warns []string
-	for _, a := range passthrough {
-		if gated[a] {
-			warns = append(warns, fmt.Sprintf("argument %q is both gated and declared passthrough (the gate wins; the declaration is dead)", a))
+	for _, server := range servers {
+		byTool := tools[server]
+		toolNames := make([]string, 0, len(byTool))
+		for t := range byTool {
+			toolNames = append(toolNames, t)
+		}
+		sort.Strings(toolNames)
+		for _, tool := range toolNames {
+			gated, exact := invokeGated[tool]
+			if !exact {
+				gated = chainGated
+			}
+			for _, a := range byTool[tool].PassThrough {
+				if gated[a] {
+					warns = append(warns, fmt.Sprintf(
+						"tools.%s.%s: argument %q is both gated and declared passthrough (the gate wins; the declaration is dead)",
+						server, tool, a))
+				}
+			}
 		}
 	}
-	sort.Strings(warns)
 	return warns
+}
+
+// lintProviders enforces the providers: allowlist: every `read` step's provider must be named in
+// the recipe's own providers: declaration. An error (not a warning, unlike lintTools' contradiction
+// check) — an undeclared provider is not a bold-but-legal choice, it is a step referencing a
+// capability the recipe never claimed, and fails closed the same way an unknown rule reference does.
+//
+// This does NOT check the provider is actually REGISTERED (that requires the config store —
+// deferred, same follow-up as tools:'s server/tool registration check). It only checks internal
+// consistency: does this recipe's own read step stay within what this recipe's own providers:
+// block says it may read.
+func lintProviders(providers []string, steps []rawStep) error {
+	declared := make(map[string]bool, len(providers))
+	for _, p := range providers {
+		declared[p] = true
+	}
+	for _, st := range steps {
+		if st.kind != stag.NodeRead {
+			continue
+		}
+		if !declared[st.provider] {
+			return errf(st.node, "read %q names provider %q, which is not in this recipe's providers: list", st.id, st.provider)
+		}
+	}
+	return nil
 }
 
 // Cautions reports passthrough declarations a human should look at twice: an argument whose NAME
@@ -767,9 +1079,26 @@ func lintPassThrough(passthrough []string, steps []rawStep) []string {
 // kw: passthrough caution advisory non-blocking authoritative-looking
 func Cautions(p Parsed) []string {
 	var out []string
-	for _, a := range p.Recipe.PassThrough {
-		if authoritativeLooking[a] {
-			out = append(out, fmt.Sprintf("passthrough %q looks authoritative: this policy forwards it UNGATED, so nothing bounds its value", a))
+	servers := make([]string, 0, len(p.Recipe.Tools))
+	for s := range p.Recipe.Tools {
+		servers = append(servers, s)
+	}
+	sort.Strings(servers)
+	for _, server := range servers {
+		byTool := p.Recipe.Tools[server]
+		toolNames := make([]string, 0, len(byTool))
+		for t := range byTool {
+			toolNames = append(toolNames, t)
+		}
+		sort.Strings(toolNames)
+		for _, tool := range toolNames {
+			for _, a := range byTool[tool].PassThrough {
+				if authoritativeLooking[a] {
+					out = append(out, fmt.Sprintf(
+						"tools.%s.%s: passthrough %q looks authoritative: this policy forwards it UNGATED, so nothing bounds its value",
+						server, tool, a))
+				}
+			}
 		}
 	}
 	for _, st := range p.Recipe.Steps {
@@ -788,7 +1117,7 @@ func Cautions(p Parsed) []string {
 	return out
 }
 
-// kw: hygiene walk iterative caps anchors aliases merge duplicate keys teaching
+// kw: hygiene walk iterative caps anchors aliases merge duplicate keys
 func hygiene(root *yaml.Node) error {
 	type frame struct {
 		n     *yaml.Node
@@ -826,9 +1155,6 @@ func hygiene(root *yaml.Node) error {
 				}
 				if k.Anchor != "" {
 					return errf(k, "anchor not allowed")
-				}
-				if msg, hit := teaching[k.Value]; hit && k.Kind == yaml.ScalarNode {
-					return errf(k, "%s", msg)
 				}
 				if k.Value == "<<" || k.Tag == "!!merge" {
 					return errf(k, "merge key not allowed")
@@ -1084,7 +1410,11 @@ func parseStep(idx int, n *yaml.Node) (rawStep, error) {
 		stag.NodeExit:    {"id": true, "kind": true},
 	}[kind]
 	for i := 0; i < len(n.Content); i += 2 {
-		if k := n.Content[i]; !legal[k.Value] {
+		k := n.Content[i]
+		if !legal[k.Value] {
+			if msg, hit := teaching[k.Value]; hit {
+				return rawStep{}, errf(k, "%s", msg)
+			}
 			return rawStep{}, errf(k, "key %q not legal for %s", k.Value, kind)
 		}
 	}
@@ -1448,8 +1778,8 @@ func lint(ingredients map[string]stag.Slot, registry map[string]stag.ReleaseRule
 		if st.kind == stag.NodeInvoke || st.kind == stag.NodeAwait {
 			// an invoke/await consumes its slots through args, not `in`
 			invokeCount++
-			if invokeCount > invokeCap {
-				return nil, errf(st.node, "at most %d invoke steps per recipe: a sequence longer than a reviewer can read in one sitting is not a reviewed sequence", invokeCap)
+			if invokeCount > InvokeCap {
+				return nil, errf(st.node, "at most %d invoke steps per recipe: a sequence longer than a reviewer can read in one sitting is not a reviewed sequence", InvokeCap)
 			}
 			if foreachCount > 0 {
 				// the ONE construct where an attacker-chosen list length multiplies

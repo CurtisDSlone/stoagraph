@@ -1,0 +1,29 @@
+# Gates greet's `mood` argument: the agent may say calm or urgent, and provably nothing else.
+# Also reads the "runbooks" provider, bounded to the same question: only calm or urgent, ever.
+recipe: greet_policy
+version: 1
+
+providers: ["runbooks"]
+
+rules:
+  mood.allowed:
+    kind: set_membership
+    set: ["calm", "urgent"]
+
+steps:
+  - id: propose_mood
+    kind: propose
+    out: mood
+  - id: brief
+    kind: read
+    provider: runbooks
+    query:
+      slot: mood
+      rule: mood.allowed
+  - id: run
+    kind: sink
+    in: mood
+    field: greet.mood
+    sensitivity: authoritative
+    rule: mood.allowed
+    actor: "policy:greet"

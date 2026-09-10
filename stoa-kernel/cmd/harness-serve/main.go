@@ -19,6 +19,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"sync"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/agent"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/dispatch"
@@ -50,6 +52,20 @@ type Server struct {
 	// ingressSecret is the shared HMAC secret the generic webhook adapter verifies deliveries against.
 	// Empty => the endpoint accepts events but can never ATTRIBUTE them (all unattributed).
 	ingressSecret []byte
+	// allowUnattributed lets a webhook event whose HMAC did not verify be dispatched anyway.
+	// Default (false) DROPS it, recorded as dropped:unattributed.
+	//
+	// The field is phrased as the DANGEROUS direction on purpose, so the Go zero value is the safe
+	// one. A `requireAttribution bool` would default to false in every `&Server{...}` literal —
+	// tests, embedders, a future constructor that forgets it — which is exactly the trap being
+	// removed: the safe state must not depend on someone remembering to set a field.
+	//
+	// It is server-wide, not per-definition, because "may an unverified sender trigger work here"
+	// is a property of the DEPLOYMENT — who can reach the port — not of any one route. As a
+	// per-route opt-in it was omitted on 12 of 17 live definitions, so an unsigned POST could start
+	// a CI triage run. One switch, defaulting closed, and a route cannot open itself.
+	allowUnattributed bool
+
 	// ingressModel is the proposer model a webhook-dispatched event runs its governed agent loop with.
 	// Empty => the webhook front door resolves + records but does not run the loop (resolve-only).
 	ingressModel string
@@ -57,6 +73,65 @@ type Server struct {
 	// an ingress model is configured; nil => resolve-only. A seam so tests can observe the trigger
 	// without a live daemon.
 	runEvent func(dispatch.Decision, dispatch.Event, ingress.Envelope)
+
+	// inFlight is the SINGLE-FLIGHT set: which recipes currently have a governed run working.
+	//
+	// The run cap bounds how MUCH work happens at once; this bounds whether the SAME work happens
+	// twice. They are different problems and neither substitutes for the other — measured on this
+	// instance, the kube watcher and the cilium deny aggregator both dispatched k8s_network_fix
+	// for one incident (one saw the symptom, the other the cause). Two senders, two processes, two
+	// debounce keys; neither can see the other, because a sender holds no shared state and should
+	// not. Collapsing that is the harness's job, because the harness is the only thing that sees
+	// every door.
+	//
+	// Keyed by RECIPE, not by event: what makes two events duplicate work is that they would put
+	// the same policy to work on the same system. Two different events routing to one recipe is
+	// exactly the correlated-storm case; the same event arriving twice is a special case of it.
+	//
+	// A suppressed event is still RECORDED (dropped:already-running), so the audit shows both
+	// senders reported and the operator can see which one was collapsed.
+	inFlight   map[string]bool
+	inFlightMu sync.Mutex
+
+	// runSem bounds how many governed runs may be in flight at once. The webhook front door
+	// launches each accepted event in its own goroutine, so without this one burst of events is
+	// one burst of concurrent model sessions — each spending budget and acting on the world.
+	//
+	// The bound belongs HERE and not only in senders. A sender's debounce is an optimization the
+	// harness cannot rely on: watch.py debounces kube events, but the github and docker doors have
+	// no sender-side control at all, and two senders reporting one incident do not collapse (separate
+	// processes, separate keys). A cap that depends on every present and future sender behaving is
+	// not a cap.
+	//
+	// Acquire is NON-BLOCKING and a full semaphore SHEDS the run (recorded as dropped:at-capacity).
+	// Blocking would park an unbounded number of goroutines on the channel, which is the problem
+	// restated rather than solved — and it would make the ingress response time depend on how busy
+	// the harness is. Shedding is visible in the ingress chain; silent queueing is not.
+	//
+	// nil => unbounded (the zero value keeps existing tests and any embedder that builds a Server
+	// literal working unchanged).
+	runSem chan struct{}
+}
+
+// Default and ceiling for the in-flight run cap. Same fail-safe discipline as provider.Bounds()
+// and emit.maxPayloadBytes(): garbage or out-of-range falls back to the DEFAULT, never to
+// unbounded. A typo must not silently remove a bound.
+const (
+	defaultMaxConcurrentRuns = 4
+	maxMaxConcurrentRuns     = 64
+)
+
+// maxConcurrentRuns resolves the in-flight run cap from STOA_MAX_CONCURRENT_RUNS.
+func maxConcurrentRuns() int {
+	raw := os.Getenv("STOA_MAX_CONCURRENT_RUNS")
+	if raw == "" {
+		return defaultMaxConcurrentRuns
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 || n > maxMaxConcurrentRuns {
+		return defaultMaxConcurrentRuns
+	}
+	return n
 }
 
 func main() {
@@ -68,6 +143,7 @@ func main() {
 	tokensPath := flag.String("tokens", "data/control.tokens", "control-plane role tokens (generated by stag-serve): this orchestrator PRESENTS `dispatch` and REQUIRES `operator` on its own API")
 	ingressLog := flag.String("ingress-log", "", "hash-chained ingress log for the webhook front door (empty disables POST /api/ingress/{source})")
 	ingressModel := flag.String("ingress-model", "", "proposer model a webhook-dispatched event runs its governed agent loop with (empty = resolve+record only)")
+	allowUnattributed := flag.Bool("ingress-allow-unattributed", false, "DANGER: dispatch webhook events whose HMAC did not verify. Default (off) drops them, recorded as dropped:unattributed")
 	devNoAuth := flag.Bool("dev-no-auth", false, "DANGER: disable auth on this API and send no token to stag (local dev only)")
 	flag.Parse()
 
@@ -121,9 +197,24 @@ func main() {
 		defer f.Close()
 		s.ingressChain = egress.ResumeChain[ingress.Record](f, iprev.Head, iprev.Count)
 		s.ingressSecret = []byte(os.Getenv("STAG_INGRESS_SECRET"))
+		s.allowUnattributed = *allowUnattributed
+		// A secret is what MAKES an event attributable (ingress.GenericHMAC: no secret => nothing is
+		// ever Attributed). Requiring attribution without one silently drops every event and looks
+		// exactly like a broken sender. Refuse to start instead: this is a misconfiguration that would
+		// otherwise be discovered during an incident nobody got paged for.
+		if !s.allowUnattributed && len(s.ingressSecret) == 0 {
+			log.Fatalf("harness-serve: ingress requires attribution but STAG_INGRESS_SECRET is empty — " +
+				"every event would drop as unattributed. Set the secret, or pass -ingress-allow-unattributed to accept unverified events.")
+		}
+		if s.allowUnattributed {
+			log.Printf("ingress: WARNING -ingress-allow-unattributed — events with an invalid or absent signature WILL be dispatched")
+		}
 		s.ingressModel = *ingressModel
 		if s.ingressModel != "" {
 			s.runEvent = s.runIngressEvent // a model is configured -> webhook events RUN the governed loop
+			s.runSem = make(chan struct{}, maxConcurrentRuns())
+			s.inFlight = make(map[string]bool)
+			log.Printf("ingress run cap: %d concurrent governed run(s); single-flight per recipe", cap(s.runSem))
 		}
 		log.Printf("ingress front door: POST /api/ingress/{source} -> %s (HMAC %s)", *ingressLog,
 			map[bool]string{true: "on", false: "OFF — set STAG_INGRESS_SECRET to attribute"}[len(s.ingressSecret) > 0])

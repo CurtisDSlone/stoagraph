@@ -4,7 +4,9 @@
 # The host is free-text passthrough — the control is the approval gate, not an allow-list of hosts.
 recipe: isolate_policy
 version: 1
-passthrough: ["host"]
+tools:
+  ops:
+    isolate_host: {passthrough: ["host"]}
 rules:
   approved: {kind: signed_equality, signed: "$approved"}
 steps:

@@ -1,6 +1,10 @@
-package stag
+package stag_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+)
 
 // PER-ARGUMENT RULES. An invoke's arguments are usually different KINDS of value — a target
 // name, an operation, a payload. One rule checked against all of them cannot say which
@@ -8,18 +12,18 @@ import "testing"
 // a payload in the target's slot. Each argument therefore carries its own rule, and the rule
 // states what that argument actually is.
 
-func setRule(vals ...string) *ReleaseRule {
-	return &ReleaseRule{Kind: RuleSetMembership, Set: vals}
+func setRule(vals ...string) *stag.ReleaseRule {
+	return &stag.ReleaseRule{Kind: stag.RuleSetMembership, Set: vals}
 }
 
 // the shape the lab needs: three arguments, three different kinds of thing.
-func perArgRecipe() Recipe {
-	return Recipe{Steps: []Step{
-		{Id: "p_img", Kind: NodePropose, Out: "image"},
-		{Id: "p_op", Kind: NodePropose, Out: "op"},
-		{Id: "p_val", Kind: NodePropose, Out: "value"},
-		{Id: "fix", Kind: NodeInvoke, Tool: "fix_dockerfile", Actor: "policy:test",
-			ArgRules: map[string]ArgRule{
+func perArgRecipe() stag.Recipe {
+	return stag.Recipe{Steps: []stag.Step{
+		{Id: "p_img", Kind: stag.NodePropose, Out: "image"},
+		{Id: "p_op", Kind: stag.NodePropose, Out: "op"},
+		{Id: "p_val", Kind: stag.NodePropose, Out: "value"},
+		{Id: "fix", Kind: stag.NodeInvoke, Tool: "fix_dockerfile", Actor: "policy:test",
+			ArgRules: map[string]stag.ArgRule{
 				"image": {Slot: "image", Rule: setRule("badport"), RuleID: "image.this"},
 				"op":    {Slot: "op", Rule: setRule("set_expose"), RuleID: "op.this"},
 				"value": {Slot: "value", Rule: setRule("8080"), RuleID: "port.correct"},
@@ -28,9 +32,9 @@ func perArgRecipe() Recipe {
 }
 
 func TestPerArgumentRulesClearEachArgument(t *testing.T) {
-	res := EvalArgs(perArgRecipe(), map[string]string{
+	res := stag.EvalArgs(perArgRecipe(), map[string]string{
 		"image": "badport", "op": "set_expose", "value": "8080"}, "h")
-	if res.Verdict != Allow || res.Fault != "" {
+	if res.Verdict != stag.Allow || res.Fault != "" {
 		t.Fatalf("each argument satisfies its own rule: %+v", res)
 	}
 	if len(res.Authorized) != 1 {
@@ -55,9 +59,9 @@ func TestArgumentValuesAreNotInterchangeable(t *testing.T) {
 		{"value in the op slot", "badport", "8080", "8080"},
 	}
 	for _, c := range cases {
-		res := EvalArgs(perArgRecipe(), map[string]string{
+		res := stag.EvalArgs(perArgRecipe(), map[string]string{
 			"image": c.image, "op": c.op, "value": c.value}, "h")
-		if res.Verdict != Deny {
+		if res.Verdict != stag.Deny {
 			t.Errorf("%s: must deny, got %v", c.name, res.Verdict)
 		}
 		if len(res.Authorized) != 0 {
@@ -68,9 +72,9 @@ func TestArgumentValuesAreNotInterchangeable(t *testing.T) {
 
 // All-or-nothing survives: one failing argument authorizes no call, even when the others pass.
 func TestOneFailingArgumentAuthorizesNothing(t *testing.T) {
-	res := EvalArgs(perArgRecipe(), map[string]string{
+	res := stag.EvalArgs(perArgRecipe(), map[string]string{
 		"image": "badport", "op": "set_expose", "value": "9999"}, "h")
-	if res.Verdict != Deny || len(res.Authorized) != 0 {
+	if res.Verdict != stag.Deny || len(res.Authorized) != 0 {
 		t.Errorf("one bad argument: %+v", res)
 	}
 	if len(res.Events) != 0 {
@@ -81,7 +85,7 @@ func TestOneFailingArgumentAuthorizesNothing(t *testing.T) {
 // Each cleared argument records its OWN crossing, naming the rule that cleared it — so the
 // audit says which rule authorized which argument, not merely that the call was allowed.
 func TestEachArgumentRecordsItsOwnRule(t *testing.T) {
-	res := EvalArgs(perArgRecipe(), map[string]string{
+	res := stag.EvalArgs(perArgRecipe(), map[string]string{
 		"image": "badport", "op": "set_expose", "value": "8080"}, "h")
 	if len(res.Events) != 3 {
 		t.Fatalf("want one crossing per argument, got %d", len(res.Events))
@@ -104,30 +108,30 @@ func TestEachArgumentRecordsItsOwnRule(t *testing.T) {
 
 // Fail closed: an argument with no rule of its own never clears. Silence is not permission.
 func TestArgumentWithoutARuleNeverClears(t *testing.T) {
-	r := Recipe{Steps: []Step{
-		{Id: "p", Kind: NodePropose, Out: "image"},
-		{Id: "i", Kind: NodeInvoke, Tool: "t", Actor: "a",
-			ArgRules: map[string]ArgRule{
+	r := stag.Recipe{Steps: []stag.Step{
+		{Id: "p", Kind: stag.NodePropose, Out: "image"},
+		{Id: "i", Kind: stag.NodeInvoke, Tool: "t", Actor: "a",
+			ArgRules: map[string]stag.ArgRule{
 				"image": {Slot: "image"}, // no Rule
 			}},
 	}}
-	res := EvalArgs(r, map[string]string{"image": "badport"}, "h")
-	if res.Verdict != Deny || len(res.Authorized) != 0 {
+	res := stag.EvalArgs(r, map[string]string{"image": "badport"}, "h")
+	if res.Verdict != stag.Deny || len(res.Authorized) != 0 {
 		t.Errorf("an argument with no rule must not clear: %+v", res)
 	}
 }
 
 // An argument fed by a slot nothing bound never clears either.
 func TestArgumentWithSeveredSlotNeverClears(t *testing.T) {
-	r := Recipe{Steps: []Step{
-		{Id: "p", Kind: NodePropose, Out: "image"},
-		{Id: "i", Kind: NodeInvoke, Tool: "t", Actor: "a",
-			ArgRules: map[string]ArgRule{
+	r := stag.Recipe{Steps: []stag.Step{
+		{Id: "p", Kind: stag.NodePropose, Out: "image"},
+		{Id: "i", Kind: stag.NodeInvoke, Tool: "t", Actor: "a",
+			ArgRules: map[string]stag.ArgRule{
 				"image": {Slot: "nothing_bound_this", Rule: setRule("badport"), RuleID: "r"},
 			}},
 	}}
-	res := EvalArgs(r, map[string]string{"image": "badport"}, "h")
-	if res.Verdict != Deny || len(res.Authorized) != 0 {
+	res := stag.EvalArgs(r, map[string]string{"image": "badport"}, "h")
+	if res.Verdict != stag.Deny || len(res.Authorized) != 0 {
 		t.Errorf("severed slot: %+v", res)
 	}
 }
@@ -136,9 +140,9 @@ func TestArgumentWithSeveredSlotNeverClears(t *testing.T) {
 // are recorded in a stable order regardless of Go's map iteration.
 func TestPerArgumentIsDeterministic(t *testing.T) {
 	args := map[string]string{"image": "badport", "op": "set_expose", "value": "8080"}
-	first := EvalArgs(perArgRecipe(), args, "h")
+	first := stag.EvalArgs(perArgRecipe(), args, "h")
 	for i := 0; i < 32; i++ {
-		got := EvalArgs(perArgRecipe(), args, "h")
+		got := stag.EvalArgs(perArgRecipe(), args, "h")
 		if got.Verdict != first.Verdict || len(got.Events) != len(first.Events) {
 			t.Fatalf("run %d diverged", i)
 		}
@@ -159,7 +163,7 @@ func FuzzPerArgumentAuthorization(f *testing.F) {
 	f.Add("", "", "")
 	r := perArgRecipe()
 	f.Fuzz(func(t *testing.T, image, op, value string) {
-		res := EvalArgs(r, map[string]string{"image": image, "op": op, "value": value}, "h")
+		res := stag.EvalArgs(r, map[string]string{"image": image, "op": op, "value": value}, "h")
 		okAll := image == "badport" && op == "set_expose" && value == "8080"
 		if okAll && len(res.Authorized) != 1 {
 			t.Fatalf("all three valid but authorized %d", len(res.Authorized))

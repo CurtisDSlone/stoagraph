@@ -141,7 +141,7 @@
             "multi-server",
             "route-picks-server"
           ],
-          "line": 233,
+          "line": 263,
           "name": "awaitFleet"
         }
       ]
@@ -261,6 +261,18 @@
       "symbols": [
         {
           "kw": [
+            "sinks",
+            "meta",
+            "emit",
+            "orchestration",
+            "read-back",
+            "fail-closed"
+          ],
+          "line": 140,
+          "name": "sinksOf"
+        },
+        {
+          "kw": [
             "connect",
             "transport",
             "auto",
@@ -269,7 +281,7 @@
             "daemon",
             "spawn"
           ],
-          "line": 168,
+          "line": 207,
           "name": "ConnectAuto"
         },
         {
@@ -281,8 +293,8 @@
             "scheme",
             "transport-choice"
           ],
-          "line": 177,
-          "name": "isHTTPEndpoint"
+          "line": 216,
+          "name": "IsHTTPEndpoint"
         }
       ]
     },
@@ -442,6 +454,64 @@
       "layer": "orchestrator",
       "package": "dispatch",
       "path": "stoa-kernel/harness/dispatch/wiring.go",
+      "symbols": []
+    },
+    {
+      "doc": "Package emit detects and handles recipe-emitted events (lifecycle.emit.* sinks).  When a recipe executes and sinks to a field prefixed with `lifecycle.emit.*`, the recipe has emitted an event. This package detects those ",
+      "keywords": [
+        "emit",
+        "lifecycle-sink",
+        "detect",
+        "re-route",
+        "event",
+        "bounded-text",
+        "cross-hop"
+      ],
+      "layer": "orchestrator",
+      "package": "emit",
+      "path": "stoa-kernel/harness/emit/emit.go",
+      "symbols": [
+        {
+          "kw": [
+            "emit",
+            "payload",
+            "bound",
+            "gate-owned",
+            "env",
+            "fail-safe",
+            "never-unbounded"
+          ],
+          "line": 52,
+          "name": "MaxPayloadBytes"
+        }
+      ]
+    },
+    {
+      "doc": "Package emit (integration.go) bridges emit detection to the harness dispatcher.  When an agent runs and calls tools through stag-proxy, each tool result may contain metadata about sinks that the recipe emitted. This modu",
+      "keywords": [
+        "emit",
+        "mcp-result-metadata",
+        "extract",
+        "sinks",
+        "dispatcher-bridge"
+      ],
+      "layer": "orchestrator",
+      "package": "emit",
+      "path": "stoa-kernel/harness/emit/integration.go",
+      "symbols": []
+    },
+    {
+      "doc": "Package emit (orchestrate.go) handles orchestration context and loop prevention.  This module manages emission chains to prevent infinite loops and tracks the orchestration context through recursive recipe invocations.",
+      "keywords": [
+        "emit",
+        "orchestration-context",
+        "loop-prevention",
+        "max-depth",
+        "chain"
+      ],
+      "layer": "orchestrator",
+      "package": "emit",
+      "path": "stoa-kernel/harness/emit/orchestrate.go",
       "symbols": []
     },
     {
@@ -1586,7 +1656,7 @@
             "leaf",
             "payload"
           ],
-          "line": 38,
+          "line": 43,
           "name": "Hash"
         }
       ]
@@ -1632,6 +1702,23 @@
           "name": "Hash"
         }
       ]
+    },
+    {
+      "doc": "",
+      "keywords": [
+        "sink",
+        "outcome",
+        "audit",
+        "record",
+        "per-sink",
+        "verdict",
+        "field",
+        "actor"
+      ],
+      "layer": "gate",
+      "package": "record",
+      "path": "stoa-kernel/stag/internal/record/sinkoutcome.go",
+      "symbols": []
     },
     {
       "doc": "",
@@ -1832,7 +1919,7 @@
             "client",
             "discovery"
           ],
-          "line": 42,
+          "line": 43,
           "name": "Config"
         },
         {
@@ -1843,7 +1930,7 @@
             "refresh",
             "expiry"
           ],
-          "line": 73,
+          "line": 74,
           "name": "Tokens"
         },
         {
@@ -1854,7 +1941,7 @@
             "tokens",
             "persisted"
           ],
-          "line": 82,
+          "line": 83,
           "name": "State"
         },
         {
@@ -1866,7 +1953,7 @@
             "save",
             "file"
           ],
-          "line": 95,
+          "line": 96,
           "name": "Store"
         },
         {
@@ -1877,7 +1964,7 @@
             "refresh",
             "connect"
           ],
-          "line": 147,
+          "line": 148,
           "name": "Bearer"
         },
         {
@@ -1889,7 +1976,7 @@
             "authorization-server",
             "well-known"
           ],
-          "line": 212,
+          "line": 213,
           "name": "Discover"
         },
         {
@@ -1900,7 +1987,7 @@
             "dynamic",
             "client"
           ],
-          "line": 347,
+          "line": 348,
           "name": "Register"
         },
         {
@@ -1911,7 +1998,7 @@
             "challenge",
             "s256"
           ],
-          "line": 378,
+          "line": 379,
           "name": "PKCE"
         },
         {
@@ -1923,7 +2010,7 @@
             "pkce",
             "resource"
           ],
-          "line": 391,
+          "line": 392,
           "name": "AuthCodeURL"
         },
         {
@@ -1933,7 +2020,7 @@
             "authorization-code",
             "token"
           ],
-          "line": 417,
+          "line": 418,
           "name": "Exchange"
         },
         {
@@ -1943,7 +2030,7 @@
             "token",
             "grant"
           ],
-          "line": 432,
+          "line": 433,
           "name": "Refresh"
         },
         {
@@ -1956,7 +2043,7 @@
             "post",
             "negotiate"
           ],
-          "line": 638,
+          "line": 639,
           "name": "pickTokenAuth"
         }
       ]
@@ -2466,7 +2553,7 @@
             "hash",
             "record"
           ],
-          "line": 335,
+          "line": 378,
           "name": "doRead"
         },
         {
@@ -2477,7 +2564,7 @@
             "namespace",
             "no-collision"
           ],
-          "line": 374,
+          "line": 417,
           "name": "ContextToolName"
         },
         {
@@ -2488,7 +2575,7 @@
             "schema",
             "query"
           ],
-          "line": 382,
+          "line": 425,
           "name": "contextTool"
         },
         {
@@ -2500,7 +2587,7 @@
             "untrusted",
             "never-denied"
           ],
-          "line": 395,
+          "line": 438,
           "name": "contextToolHandler"
         },
         {
@@ -2513,7 +2600,7 @@
             "untrusted",
             "every-decision"
           ],
-          "line": 512,
+          "line": 555,
           "name": "withReads"
         },
         {
@@ -2527,7 +2614,7 @@
             "report",
             "agent"
           ],
-          "line": 552,
+          "line": 595,
           "name": "executeAuthorized"
         },
         {
@@ -2538,7 +2625,7 @@
             "tool-error",
             "render"
           ],
-          "line": 669,
+          "line": 712,
           "name": "callErr"
         },
         {
@@ -2549,7 +2636,7 @@
             "content",
             "concat"
           ],
-          "line": 678,
+          "line": 721,
           "name": "textOf"
         },
         {
@@ -2562,7 +2649,7 @@
             "whitespace",
             "visible"
           ],
-          "line": 695,
+          "line": 738,
           "name": "quotedForCompare"
         },
         {
@@ -2573,7 +2660,7 @@
             "poll",
             "interval"
           ],
-          "line": 705,
+          "line": 748,
           "name": "sleepCtx"
         },
         {
@@ -2587,7 +2674,7 @@
             "sweep",
             "scope"
           ],
-          "line": 723,
+          "line": 766,
           "name": "newRunID"
         },
         {
@@ -2599,7 +2686,7 @@
             "authorized",
             "call"
           ],
-          "line": 737,
+          "line": 780,
           "name": "rawArgs"
         },
         {
@@ -2614,7 +2701,7 @@
             "agent-visible",
             "summary"
           ],
-          "line": 750,
+          "line": 793,
           "name": "firstLine"
         }
       ]
@@ -2780,7 +2867,10 @@
             "value",
             "events",
             "fault",
-            "approval-id"
+            "approval-id",
+            "sinks",
+            "emit",
+            "orchestration"
           ],
           "line": 120,
           "name": "Decision"
@@ -2796,7 +2886,7 @@
             "burned",
             "provenance"
           ],
-          "line": 152,
+          "line": 155,
           "name": "Grant"
         },
         {
@@ -2809,7 +2899,7 @@
             "concurrent-runs",
             "no-collision"
           ],
-          "line": 182,
+          "line": 185,
           "name": "GrantKey"
         },
         {
@@ -2823,7 +2913,7 @@
             "one-shot",
             "atomic"
           ],
-          "line": 191,
+          "line": 194,
           "name": "Authorizations"
         },
         {
@@ -2837,7 +2927,7 @@
             "notify",
             "crossing-budget"
           ],
-          "line": 219,
+          "line": 222,
           "name": "Gate"
         },
         {
@@ -2850,7 +2940,7 @@
             "evict",
             "already-connected"
           ],
-          "line": 256,
+          "line": 259,
           "name": "Revoked"
         },
         {
@@ -2863,7 +2953,7 @@
             "bearer-credential",
             "attribution"
           ],
-          "line": 263,
+          "line": 266,
           "name": "SessionID"
         },
         {
@@ -2876,7 +2966,7 @@
             "fail-closed",
             "approval-loop"
           ],
-          "line": 312,
+          "line": 315,
           "name": "Decide"
         },
         {
@@ -2886,9 +2976,10 @@
             "gated",
             "passthrough",
             "top-level",
-            "heads"
+            "heads",
+            "per-route"
           ],
-          "line": 512,
+          "line": 527,
           "name": "Covered"
         },
         {
@@ -2899,7 +2990,7 @@
             "properties",
             "unaccounted"
           ],
-          "line": 556,
+          "line": 573,
           "name": "CoverageGaps"
         },
         {
@@ -2910,7 +3001,7 @@
             "placeholder",
             "scan"
           ],
-          "line": 929,
+          "line": 946,
           "name": "hasApprovedArg"
         }
       ]
@@ -3044,7 +3135,7 @@
             "line-anchored",
             "error"
           ],
-          "line": 104,
+          "line": 113,
           "name": "errf"
         },
         {
@@ -3054,7 +3145,7 @@
             "ascii",
             "closed"
           ],
-          "line": 112,
+          "line": 121,
           "name": "nameOK"
         },
         {
@@ -3065,7 +3156,7 @@
             "dotted",
             "segments"
           ],
-          "line": 126,
+          "line": 135,
           "name": "ruleIdOK"
         },
         {
@@ -3074,7 +3165,7 @@
             "step",
             "intermediate"
           ],
-          "line": 143,
+          "line": 152,
           "name": "rawCase"
         },
         {
@@ -3086,7 +3177,7 @@
             "by",
             "name"
           ],
-          "line": 179,
+          "line": 188,
           "name": "Resolver"
         },
         {
@@ -3104,7 +3195,7 @@
             "does",
             "that)"
           ],
-          "line": 362,
+          "line": 377,
           "name": "frontParse"
         },
         {
@@ -3112,10 +3203,11 @@
             "passthrough",
             "lint",
             "contradiction",
-            "dead-declaration"
+            "dead-declaration",
+            "per-tool"
           ],
-          "line": 740,
-          "name": "lintPassThrough"
+          "line": 991,
+          "name": "lintTools"
         },
         {
           "kw": [
@@ -3125,7 +3217,7 @@
             "non-blocking",
             "authoritative-looking"
           ],
-          "line": 768,
+          "line": 1080,
           "name": "Cautions"
         },
         {
@@ -3138,10 +3230,9 @@
             "aliases",
             "merge",
             "duplicate",
-            "keys",
-            "teaching"
+            "keys"
           ],
-          "line": 792,
+          "line": 1121,
           "name": "hygiene"
         },
         {
@@ -3154,7 +3245,7 @@
             "allowlist",
             "templating"
           ],
-          "line": 867,
+          "line": 1193,
           "name": "strVal"
         },
         {
@@ -3164,7 +3255,7 @@
             "required",
             "byte-exact"
           ],
-          "line": 886,
+          "line": 1212,
           "name": "quotedStr"
         },
         {
@@ -3175,7 +3266,7 @@
             "kernel",
             "predicate"
           ],
-          "line": 898,
+          "line": 1224,
           "name": "intVal"
         },
         {
@@ -3188,7 +3279,7 @@
             "value",
             "unauthorable"
           ],
-          "line": 910,
+          "line": 1236,
           "name": "parseIngredient"
         },
         {
@@ -3201,7 +3292,7 @@
             "sorted",
             "set"
           ],
-          "line": 947,
+          "line": 1273,
           "name": "parseRule"
         },
         {
@@ -3215,7 +3306,7 @@
             "exit",
             "distinct"
           ],
-          "line": 1040,
+          "line": 1366,
           "name": "parseStep"
         },
         {
@@ -3230,13 +3321,13 @@
             "dead",
             "declarations"
           ],
-          "line": 1382,
+          "line": 1712,
           "name": "lint"
         }
       ]
     },
     {
-      "doc": "Package recipestore is the recipe-authoring core for the admin console: validate recipe YAML through the REAL parser + linter and persist valid recipes. Validate returns whether a draft parses, its lint error or warnings",
+      "doc": "Package recipestore is the recipe-authoring core behind the gate's /api/recipes and the -recipes-dir a gate is started with: validate recipe YAML through the REAL parser + linter and persist valid recipes. Validate retur",
       "keywords": [
         "recipe",
         "authoring",
@@ -3262,7 +3353,7 @@
             "verdict",
             "tier"
           ],
-          "line": 23,
+          "line": 44,
           "name": "TierRow"
         },
         {
@@ -3274,9 +3365,10 @@
             "hash",
             "error",
             "warnings",
-            "tiers"
+            "tiers",
+            "providers"
           ],
-          "line": 30,
+          "line": 51,
           "name": "ValidateResult"
         },
         {
@@ -3286,8 +3378,22 @@
             "file-backed",
             "recipes"
           ],
-          "line": 47,
+          "line": 83,
           "name": "Store"
+        },
+        {
+          "kw": [
+            "invoked",
+            "tools",
+            "advertised",
+            "name",
+            "invoke",
+            "await",
+            "dedup",
+            "sorted"
+          ],
+          "line": 204,
+          "name": "invokedTools"
         },
         {
           "kw": [
@@ -3299,7 +3405,7 @@
             "members",
             "sorted"
           ],
-          "line": 89,
+          "line": 220,
           "name": "vocab"
         },
         {
@@ -3314,7 +3420,7 @@
             "eval",
             "result"
           ],
-          "line": 105,
+          "line": 236,
           "name": "tierName"
         },
         {
@@ -3325,7 +3431,7 @@
             "validated",
             "sorted"
           ],
-          "line": 119,
+          "line": 250,
           "name": "List"
         },
         {
@@ -3336,7 +3442,7 @@
             "name",
             "sanitized"
           ],
-          "line": 143,
+          "line": 274,
           "name": "Get"
         },
         {
@@ -3347,7 +3453,7 @@
             "write",
             "fail-closed"
           ],
-          "line": 151,
+          "line": 282,
           "name": "Save"
         },
         {
@@ -3356,7 +3462,7 @@
             "name",
             "sanitized"
           ],
-          "line": 168,
+          "line": 299,
           "name": "Delete"
         },
         {
@@ -3369,7 +3475,7 @@
             "no",
             "traversal"
           ],
-          "line": 176,
+          "line": 307,
           "name": "nameOK"
         }
       ]
@@ -3603,7 +3709,7 @@
         "save",
         "delete",
         "admin",
-        "console"
+        "api"
       ],
       "layer": "gate",
       "package": "serve",
@@ -3714,7 +3820,7 @@
             "recipe",
             "gatearg"
           ],
-          "line": 83,
+          "line": 85,
           "name": "PolicyView"
         },
         {
@@ -3727,7 +3833,7 @@
             "act",
             "prove"
           ],
-          "line": 90,
+          "line": 92,
           "name": "ChainView"
         },
         {
@@ -3739,7 +3845,7 @@
             "actor",
             "subject"
           ],
-          "line": 99,
+          "line": 101,
           "name": "EventView"
         },
         {
@@ -3753,7 +3859,7 @@
             "chain",
             "events"
           ],
-          "line": 107,
+          "line": 109,
           "name": "DecisionView"
         },
         {
@@ -3770,7 +3876,7 @@
             "fault",
             "releases"
           ],
-          "line": 125,
+          "line": 127,
           "name": "RecordView"
         },
         {
@@ -3784,7 +3890,7 @@
             "verified",
             "error"
           ],
-          "line": 136,
+          "line": 138,
           "name": "VerifyView"
         },
         {
@@ -3795,7 +3901,7 @@
             "verify",
             "audit-chain"
           ],
-          "line": 146,
+          "line": 148,
           "name": "LogView"
         },
         {
@@ -3810,7 +3916,7 @@
             "health",
             "cors"
           ],
-          "line": 152,
+          "line": 154,
           "name": "Handler"
         },
         {
@@ -3820,7 +3926,7 @@
             "dev",
             "preflight"
           ],
-          "line": 210,
+          "line": 212,
           "name": "cors"
         },
         {
@@ -3831,7 +3937,7 @@
             "view",
             "fail-closed"
           ],
-          "line": 225,
+          "line": 227,
           "name": "handleDecide"
         },
         {
@@ -3844,7 +3950,7 @@
             "chain",
             "events"
           ],
-          "line": 244,
+          "line": 246,
           "name": "view"
         },
         {
@@ -3855,7 +3961,7 @@
             "signed",
             "events"
           ],
-          "line": 274,
+          "line": 276,
           "name": "handleLog"
         },
         {
@@ -3872,7 +3978,7 @@
             "escalate",
             "releases"
           ],
-          "line": 313,
+          "line": 315,
           "name": "readRecords"
         }
       ]
@@ -3956,7 +4062,7 @@
             "canonical",
             "register"
           ],
-          "line": 102,
+          "line": 110,
           "name": "String"
         },
         {
@@ -3969,7 +4075,7 @@
             "of",
             "string"
           ],
-          "line": 128,
+          "line": 136,
           "name": "ParseNodeKind"
         },
         {
@@ -3981,7 +4087,7 @@
             "forward",
             "edge"
           ],
-          "line": 154,
+          "line": 162,
           "name": "Case"
         },
         {
@@ -3995,7 +4101,7 @@
             "forward-only",
             "edges"
           ],
-          "line": 160,
+          "line": 168,
           "name": "Step"
         },
         {
@@ -4008,7 +4114,7 @@
             "fetch",
             "not-an-action"
           ],
-          "line": 205,
+          "line": 213,
           "name": "AuthorizedRead"
         },
         {
@@ -4021,16 +4127,27 @@
             "invoke",
             "precise"
           ],
-          "line": 222,
+          "line": 230,
           "name": "ArgRule"
+        },
+        {
+          "kw": [
+            "tool",
+            "caps",
+            "passthrough",
+            "per-tool"
+          ],
+          "line": 240,
+          "name": "ToolCaps"
         },
         {
           "kw": [
             "recipe",
             "ingredients",
-            "steps"
+            "steps",
+            "tools"
           ],
-          "line": 229,
+          "line": 249,
           "name": "Recipe"
         },
         {
@@ -4044,7 +4161,7 @@
             "executor",
             "re-cross"
           ],
-          "line": 249,
+          "line": 279,
           "name": "AuthorizedCall"
         },
         {
@@ -4055,7 +4172,7 @@
             "per",
             "sink"
           ],
-          "line": 266,
+          "line": 296,
           "name": "SinkOutcome"
         },
         {
@@ -4067,7 +4184,7 @@
             "fail",
             "escalate"
           ],
-          "line": 281,
+          "line": 340,
           "name": "GateOutcome"
         },
         {
@@ -4080,7 +4197,7 @@
             "events",
             "fault"
           ],
-          "line": 292,
+          "line": 351,
           "name": "EvalResult"
         },
         {
@@ -4096,7 +4213,7 @@
             "foreach",
             "single-arg"
           ],
-          "line": 317,
+          "line": 376,
           "name": "Eval"
         },
         {
@@ -4107,7 +4224,7 @@
             "inputs",
             "propose-by-name"
           ],
-          "line": 326,
+          "line": 385,
           "name": "EvalArgs"
         },
         {
@@ -4119,7 +4236,7 @@
             "audit",
             "invoke"
           ],
-          "line": 401,
+          "line": 460,
           "name": "sortedArgs"
         },
         {
@@ -4131,7 +4248,7 @@
             "iteration",
             "audit"
           ],
-          "line": 413,
+          "line": 472,
           "name": "sortedKeys"
         }
       ]
@@ -4240,12 +4357,11 @@
       ]
     },
     {
-      "doc": "Package store is the SQLite config store for the admin console's Adapters (Planning/18): the persisted, RELATIONAL config that the file-based recipes bind to \u2014 MCP servers (+ their tools), context providers, and routes (",
+      "doc": "Package store is the SQLite config store behind the gate's /api/mcp-servers and /api/routes (Planning/18): the persisted, RELATIONAL config that the file-based recipes bind to \u2014 MCP servers (+ their tools), context provi",
       "keywords": [
         "sqlite",
         "config",
         "store",
-        "adapters",
         "mcp-server",
         "context-provider",
         "route",

@@ -1,4 +1,4 @@
-package oauth
+package oauth_test
 
 // Integration test against a REAL OAuth 2.0 / OIDC identity provider, not a mock.
 //
@@ -26,6 +26,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/oauth"
 )
 
 // idpBase is where the test IdP listens. Override with STOAGRAPH_IDP_URL.
@@ -55,11 +57,11 @@ func liveIdP(t *testing.T) string {
 func TestAgainstRealIdP(t *testing.T) {
 	base := liveIdP(t)
 	ctx := context.Background()
-	redirect := "http://localhost:8080" + CallbackPath
+	redirect := "http://localhost:8080" + oauth.CallbackPath
 
 	// 1. DISCOVERY. The IdP is not an MCP resource, so the protected-resource probe misses and we fall
 	//    through to its OIDC document — exercising the same fallback ladder a bare AS would hit.
-	cfg, err := Discover(ctx, nil, base)
+	cfg, err := oauth.Discover(ctx, nil, base)
 	if err != nil {
 		t.Fatalf("discover: %v", err)
 	}
@@ -73,7 +75,7 @@ func TestAgainstRealIdP(t *testing.T) {
 
 	// 2. DYNAMIC CLIENT REGISTRATION (RFC 7591). The gate registers ITSELF — no operator-provided
 	//    client_id — which is the zero-config path MCP servers are supposed to support.
-	cfg, err = Register(ctx, nil, cfg, redirect, "stoagraph-test")
+	cfg, err = oauth.Register(ctx, nil, cfg, redirect, "stoagraph-test")
 	if err != nil {
 		t.Fatalf("dynamic client registration: %v", err)
 	}
@@ -84,8 +86,8 @@ func TestAgainstRealIdP(t *testing.T) {
 
 	// 3. AUTHORIZATION CODE + PKCE. The IdP auto-approves its test user and 302s back to our loopback
 	//    redirect_uri with the code — so we can drive the browser leg headlessly.
-	verifier, challenge := PKCE()
-	state := NewState()
+	verifier, challenge := oauth.PKCE()
+	state := oauth.NewState()
 	authURL := cfg.AuthCodeURL(redirect, state, challenge)
 
 	noRedirect := &http.Client{
@@ -154,8 +156,8 @@ func TestAgainstRealIdP(t *testing.T) {
 	//    already spent there and is now dead (it returns invalid_grant). And the gate must PERSIST each
 	//    rotated token: keep the old one and the next refresh fails, locking the operator out until they
 	//    sign in again. That is precisely what this step asserts.
-	st := Store{Dir: t.TempDir()}
-	expired := State{Config: cfg, Tokens: Tokens{
+	st := oauth.Store{Dir: t.TempDir()}
+	expired := oauth.State{Config: cfg, Tokens: oauth.Tokens{
 		AccessToken:  rt.AccessToken,
 		RefreshToken: rt.RefreshToken,              // the CURRENT one; step 5 rotated the original away
 		Expiry:       time.Now().Add(-time.Second), // force the refresh path

@@ -17,26 +17,33 @@ go run . -http :9100        # streamable HTTP (a containerised gate reaches it o
 go run .                    # stdio (a host-run gate spawns it)
 ```
 
-## 2. Register it with the gate
+## 2. Gate it: drop the recipe in as a plain file
+
+A recipe is just YAML. `stag-serve` reads whatever is in the directory it was started with
+(`-recipes-dir`, `$STOA_HOME/recipes` under `tools/stoa`) — no API call needed to author one:
 
 ```bash
-ADMIN=$(grep STAG_CONSOLE_TOKEN ../../.env | cut -d= -f2)     # your gate key
-curl -s -H "Authorization: Bearer $ADMIN" -X POST localhost:8080/api/mcp-servers \
-  -d '{"name":"my-tools","transport":"http","target":"http://custom-tool:9100/mcp"}'
+cp recipe.yaml "$(stoa home)/recipes/"     # stag-serve picks it up; nothing to POST
 ```
 
-(Under Docker, use the compose service name — e.g. `http://custom-tool:9100/mcp`. On the host,
-`http://localhost:9100/mcp`.)
+(Running under Docker instead of `tools/stoa`? Same file, no `stoa home` shortcut — mount it into
+the gate's recipes volume, or `POST /api/recipes --data-binary @recipe.yaml`, which writes into
+that same directory through the store.)
 
-## 3. Gate it
+## 3. Register your tool server and route it to that recipe
+
+Routes and MCP-server registrations aren't plain files — they're relational (a tool can be routed
+differently as you register more servers), so these two go through the API:
 
 ```bash
-# save the policy
-curl -s -H "Authorization: Bearer $ADMIN" -X POST localhost:8080/api/recipes --data-binary @recipe.yaml
-# route the tool to it — gate the `channel` argument
+ADMIN=$(stoa token admin)      # reads $STOA_HOME/data/control.tokens; see docs/development.md
+curl -s -H "Authorization: Bearer $ADMIN" -X POST localhost:8080/api/mcp-servers \
+  -d '{"name":"my-tools","transport":"http","target":"http://localhost:9100/mcp"}'
 curl -s -H "Authorization: Bearer $ADMIN" -X POST localhost:8080/api/routes \
   -d '{"tool":"notify","server":"my-tools","recipe":"notify_policy","gateArg":"channel"}'
 ```
+
+(Under Docker, target the compose service name instead — e.g. `http://custom-tool:9100/mcp`.)
 
 ## 4. See it enforced
 
@@ -83,21 +90,21 @@ services:
       - ${HOME}/.kube/config:/home/mcp/.kube/config:ro   # the credential stays in the tool's container
 ```
 
-Register `http://k8s-tools:9200/mcp` in **Adapters**, then gate its tools with recipes. The credential
-never touches the agent or the gate's control plane — only the tool server holds it, and every call it
-makes is still gated.
+Register `http://k8s-tools:9200/mcp` via `POST /api/mcp-servers` (`"authScheme":"none"`), then gate its
+tools with recipes. The credential never touches the agent or the gate's control plane — only the tool
+server holds it, and every call it makes is still gated.
 
 ## Downstream auth, at a glance
 
 When a server needs an HTTP credential, the gate holds it and injects it downstream — the agent never
-sees it. In **Adapters**, pick the scheme:
+sees it. Set `authScheme` on the `POST /api/mcp-servers` body:
 
-| Scheme | For | You provide |
+| `authScheme` | For | You provide |
 |---|---|---|
-| **bearer / token** | most servers; pre-issued OAuth tokens / PATs | the token (env var preferred) |
-| **header key** | custom-header APIs (`X-API-Key`) | header name + key |
-| **query-param key** | keys passed in the URL (e.g. Alpha Vantage `?apikey=`) | param name + key |
-| **OAuth sign-in** | providers with a login flow | nothing — click **Sign in**; the gate runs discovery + PKCE and holds the auto-refreshing token |
+| **`bearer`** | most servers; pre-issued OAuth tokens / PATs | `secretEnv` (preferred) or `secret` |
+| **`header`** | custom-header APIs (`X-API-Key`) | `authHeader` (header name) + `secretEnv`/`secret` |
+| **`query`** | keys passed in the URL (e.g. Alpha Vantage `?apikey=`) | `authHeader` (param name) + `secretEnv`/`secret` |
+| **`oauth`** | providers with a login flow | nothing — open `GET /api/oauth/start?server=<name>` in a browser (admin token required) and the gate runs discovery + PKCE, then holds the auto-refreshing token; see [`../oauth-profiles/`](../oauth-profiles/) for providers needing a profile first |
 
 **Adding a provider never requires code.** A spec-compliant MCP server needs no configuration at all: the
 gate discovers its authorization server, registers itself dynamically, and signs in with PKCE. For the

@@ -1,31 +1,35 @@
-package gate
+package gate_test
 
-import "testing"
+import (
+	"testing"
 
-var allVerdicts = []Verdict{Allow, Escalate, Deny}
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/internal/gate"
+)
+
+var allVerdicts = []gate.Verdict{gate.Allow, gate.Escalate, gate.Deny}
 
 func TestVerdict(t *testing.T) {
 	// And table (the rollup is conjunctive: the most restrictive verdict wins).
-	andCases := []struct{ a, b, want Verdict }{
-		{Allow, Deny, Deny}, {Allow, Escalate, Escalate}, {Escalate, Deny, Deny},
-		{Allow, Allow, Allow}, {Deny, Deny, Deny},
+	andCases := []struct{ a, b, want gate.Verdict }{
+		{gate.Allow, gate.Deny, gate.Deny}, {gate.Allow, gate.Escalate, gate.Escalate}, {gate.Escalate, gate.Deny, gate.Deny},
+		{gate.Allow, gate.Allow, gate.Allow}, {gate.Deny, gate.Deny, gate.Deny},
 	}
 	for _, c := range andCases {
-		if got := And(c.a, c.b); got != c.want {
+		if got := gate.And(c.a, c.b); got != c.want {
 			t.Errorf("And(%v,%v) = %v, want %v", c.a, c.b, got, c.want)
 		}
 	}
 
 	// Idempotence, identity/absorbing, commutativity over every pair.
 	for _, a := range allVerdicts {
-		if And(a, a) != a {
+		if gate.And(a, a) != a {
 			t.Errorf("idempotence failed for %v", a)
 		}
-		if And(a, Allow) != a || And(a, Deny) != Deny {
+		if gate.And(a, gate.Allow) != a || gate.And(a, gate.Deny) != gate.Deny {
 			t.Errorf("And identity/absorbing failed for %v", a)
 		}
 		for _, b := range allVerdicts {
-			if And(a, b) != And(b, a) {
+			if gate.And(a, b) != gate.And(b, a) {
 				t.Errorf("commutativity failed for %v,%v", a, b)
 			}
 		}
@@ -35,7 +39,7 @@ func TestVerdict(t *testing.T) {
 	for _, a := range allVerdicts {
 		for _, b := range allVerdicts {
 			for _, c := range allVerdicts {
-				if And(And(a, b), c) != And(a, And(b, c)) {
+				if gate.And(gate.And(a, b), c) != gate.And(a, gate.And(b, c)) {
 					t.Errorf("And associativity failed for %v,%v,%v", a, b, c)
 				}
 			}
@@ -44,34 +48,34 @@ func TestVerdict(t *testing.T) {
 
 	// String round-trip; error cases fail closed to Deny.
 	for _, v := range allVerdicts {
-		if got, err := ParseVerdict(v.String()); err != nil || got != v {
+		if got, err := gate.ParseVerdict(v.String()); err != nil || got != v {
 			t.Errorf("ParseVerdict(%q) = (%v,%v), want (%v,nil)", v.String(), got, err, v)
 		}
 	}
 	for _, s := range []string{"unknown", "bogus", ""} {
-		if got, err := ParseVerdict(s); err == nil {
+		if got, err := gate.ParseVerdict(s); err == nil {
 			t.Errorf("ParseVerdict(%q) should error", s)
-		} else if got != Deny {
+		} else if got != gate.Deny {
 			t.Errorf("ParseVerdict(%q) error = %v, want Deny (fail closed)", s, got)
 		}
 	}
 
 	// Fold identity and multi-arg fold (== max over the args).
-	if AndAll() != Allow {
+	if gate.AndAll() != gate.Allow {
 		t.Errorf("empty fold identity failed")
 	}
 	foldCases := []struct {
-		vs  []Verdict
-		and Verdict
+		vs  []gate.Verdict
+		and gate.Verdict
 	}{
-		{[]Verdict{Escalate}, Escalate},
-		{[]Verdict{Allow, Escalate, Deny}, Deny},
-		{[]Verdict{Allow, Escalate}, Escalate},
-		{[]Verdict{Escalate, Deny}, Deny},
-		{[]Verdict{Allow, Allow}, Allow},
+		{[]gate.Verdict{gate.Escalate}, gate.Escalate},
+		{[]gate.Verdict{gate.Allow, gate.Escalate, gate.Deny}, gate.Deny},
+		{[]gate.Verdict{gate.Allow, gate.Escalate}, gate.Escalate},
+		{[]gate.Verdict{gate.Escalate, gate.Deny}, gate.Deny},
+		{[]gate.Verdict{gate.Allow, gate.Allow}, gate.Allow},
 	}
 	for _, c := range foldCases {
-		if got := AndAll(c.vs...); got != c.and {
+		if got := gate.AndAll(c.vs...); got != c.and {
 			t.Errorf("AndAll(%v) = %v, want %v", c.vs, got, c.and)
 		}
 	}
@@ -83,21 +87,21 @@ func FuzzVerdictRollup(f *testing.F) {
 	f.Add([]byte{2, 2, 2})
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		var vs []Verdict
-		max := Allow
+		var vs []gate.Verdict
+		max := gate.Allow
 		for _, b := range data {
-			v := Verdict(b % 3)
+			v := gate.Verdict(b % 3)
 			vs = append(vs, v)
 			if v > max {
 				max = v
 			}
 		}
 		if len(data) == 0 {
-			max = Allow
+			max = gate.Allow
 		}
 
 		// The conjunctive fold equals the most restrictive (max) verdict in the batch.
-		if got := AndAll(vs...); got != max {
+		if got := gate.AndAll(vs...); got != max {
 			t.Errorf("AndAll(%v) = %v, want %v", vs, got, max)
 		}
 	})

@@ -1,4 +1,4 @@
-package oauth
+package oauth_test
 
 // kw-test: oauth discovery dcr pkce exchange refresh store bearer against a mock authorization server
 
@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/oauth"
 )
 
 // mockAS stands up an authorization server that serves the discovery documents, dynamic registration,
@@ -70,9 +72,9 @@ func TestFullFlow(t *testing.T) {
 	defer srv.Close()
 	ctx := context.Background()
 	hc := srv.Client()
-	redirect := "http://localhost:8080" + CallbackPath
+	redirect := "http://localhost:8080" + oauth.CallbackPath
 
-	cfg, err := Discover(ctx, hc, srv.URL+"/mcp")
+	cfg, err := oauth.Discover(ctx, hc, srv.URL+"/mcp")
 	if err != nil {
 		t.Fatalf("discover: %v", err)
 	}
@@ -86,7 +88,7 @@ func TestFullFlow(t *testing.T) {
 		t.Fatalf("resource wrong: %q", cfg.Resource)
 	}
 
-	cfg, err = Register(ctx, hc, cfg, redirect, "stoagraph")
+	cfg, err = oauth.Register(ctx, hc, cfg, redirect, "stoagraph")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -94,8 +96,8 @@ func TestFullFlow(t *testing.T) {
 		t.Fatalf("client id: %q", cfg.ClientID)
 	}
 
-	verifier, challenge := PKCE()
-	state := NewState()
+	verifier, challenge := oauth.PKCE()
+	state := oauth.NewState()
 	au := cfg.AuthCodeURL(redirect, state, challenge)
 	for _, want := range []string{"response_type=code", "code_challenge_method=S256", "state=" + state, "client_id=client-123", "resource="} {
 		if !strings.Contains(au, want) {
@@ -129,11 +131,11 @@ func TestStoreRoundTripAndBearerRefresh(t *testing.T) {
 	ctx := context.Background()
 	hc := srv.Client()
 
-	st := Store{Dir: t.TempDir()}
+	st := oauth.Store{Dir: t.TempDir()}
 	// seed a near-expired token so Bearer must refresh (rt-1 -> at-2)
-	seed := State{
-		Config: Config{TokenEndpoint: srv.URL + "/token", ClientID: "client-123", Resource: srv.URL + "/mcp"},
-		Tokens: Tokens{AccessToken: "at-1", RefreshToken: "rt-1", Expiry: time.Now().Add(-1 * time.Second)},
+	seed := oauth.State{
+		Config: oauth.Config{TokenEndpoint: srv.URL + "/token", ClientID: "client-123", Resource: srv.URL + "/mcp"},
+		Tokens: oauth.Tokens{AccessToken: "at-1", RefreshToken: "rt-1", Expiry: time.Now().Add(-1 * time.Second)},
 	}
 	if err := st.Save("alpha vantage", seed); err != nil { // name has a space: safeName must handle it
 		t.Fatalf("save: %v", err)
@@ -205,7 +207,7 @@ func TestDiscoverGitHubShape(t *testing.T) {
 	base = srv.URL
 	defer srv.Close()
 
-	cfg, err := Discover(context.Background(), srv.Client(), srv.URL+"/mcp")
+	cfg, err := oauth.Discover(context.Background(), srv.Client(), srv.URL+"/mcp")
 	if err != nil {
 		t.Fatalf("discover: %v", err)
 	}
@@ -226,7 +228,7 @@ func TestDiscoverGitHubShape(t *testing.T) {
 	}
 
 	// No DCR: Register must leave the client empty so the caller can demand a pre-registered client_id.
-	got, rerr := Register(context.Background(), srv.Client(), cfg, "http://localhost:8080"+CallbackPath, "stoagraph")
+	got, rerr := oauth.Register(context.Background(), srv.Client(), cfg, "http://localhost:8080"+oauth.CallbackPath, "stoagraph")
 	if rerr != nil {
 		t.Fatalf("register should no-op without a registration endpoint, got: %v", rerr)
 	}
@@ -236,7 +238,7 @@ func TestDiscoverGitHubShape(t *testing.T) {
 }
 
 func TestBearerUnauthorized(t *testing.T) {
-	st := Store{Dir: t.TempDir()}
+	st := oauth.Store{Dir: t.TempDir()}
 	if _, err := st.Bearer(context.Background(), nil, "never-signed-in"); err == nil {
 		t.Fatal("expected error for a server with no stored token")
 	}

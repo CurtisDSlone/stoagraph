@@ -1,8 +1,10 @@
-package recipe
+package recipe_test
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipe"
 )
 
 const awaitSrc = `
@@ -19,7 +21,7 @@ steps:
 `
 
 func TestAwaitParses(t *testing.T) {
-	p, err := Parse([]byte(awaitSrc))
+	p, err := recipe.Parse([]byte(awaitSrc))
 	if err != nil {
 		t.Fatalf("a valid await recipe must parse: %v", err)
 	}
@@ -38,7 +40,7 @@ func TestAwaitParses(t *testing.T) {
 // The condition and the bounds ride in the SEMANTIC hash: how long a policy is willing to wait,
 // and for what, is part of what the policy IS.
 func TestAwaitBoundsRideInSemanticHash(t *testing.T) {
-	base, err := Parse([]byte(awaitSrc))
+	base, err := recipe.Parse([]byte(awaitSrc))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +50,7 @@ func TestAwaitBoundsRideInSemanticHash(t *testing.T) {
 		// a different tool polled: same rules, different policy
 		strings.Replace(awaitSrc, "tool: k8s__pods_on_node", "tool: k8s__get_workload", 1),
 	} {
-		p, err := Parse([]byte(alt))
+		p, err := recipe.Parse([]byte(alt))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -70,7 +72,7 @@ func TestAwaitRejectsMalformed(t *testing.T) {
 		{"zero attempts", strings.Replace(awaitSrc, "attempts: 6", "attempts: 0", 1)},
 	}
 	for _, c := range cases {
-		if _, err := Parse([]byte(c.src)); err == nil {
+		if _, err := recipe.Parse([]byte(c.src)); err == nil {
 			t.Errorf("%s: must be rejected", c.name)
 		}
 	}
@@ -88,7 +90,7 @@ steps:
   - {id: p, kind: propose, out: v}
   - {id: i, kind: invoke, tool: t, args: {a: {slot: v, rule: ok}}, until: ok, actor: a}
 `
-	if _, err := Parse([]byte(src)); err == nil {
+	if _, err := recipe.Parse([]byte(src)); err == nil {
 		t.Error("an until-condition on an invoke must be rejected")
 	}
 }
@@ -96,7 +98,7 @@ steps:
 // The bounds a recipe may ask for are the KERNEL's, and the linter says so at author time
 // rather than leaving it to a runtime fault.
 func TestAwaitCapErrorNamesTheLimit(t *testing.T) {
-	_, err := Parse([]byte(strings.Replace(awaitSrc, "attempts: 6", "attempts: 999", 1)))
+	_, err := recipe.Parse([]byte(strings.Replace(awaitSrc, "attempts: 6", "attempts: 999", 1)))
 	if err == nil {
 		t.Fatal("over-cap attempts must be rejected")
 	}

@@ -21,7 +21,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.." || exit 1
 CHECKOUT="$(pwd)"
 
-STOA_HOME="${STOA_HOME:-$HOME/.stoagraph}"
+STOA_HOME="${STOA_HOME:-$CHECKOUT/.stoagraph}"
 LINKDIR="${STOA_LINKDIR:-$HOME/.local/bin}"
 START=0; NOPATH=0
 for a in "$@"; do

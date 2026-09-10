@@ -242,6 +242,74 @@ func TestDeniedMultiArgRecordsNoRelease(t *testing.T) {
 	}
 }
 
+const benignPlusAuthoritativeSrc = `recipe: log_then_write_policy
+version: 1
+rules:
+  text.allowed:
+    kind: set_membership
+    set: ["hello"]
+steps:
+  - {id: po, kind: propose, out: text}
+  - {id: log, kind: sink, in: text, field: log.plan, sensitivity: benign}
+  - {id: apply, kind: sink, in: text, field: mcp.write_note.text, sensitivity: authoritative, rule: text.allowed, actor: "policy:mcp_proxy"}
+`
+
+// TestBenignSinkReachesAuditLog is the regression test for the audit-log gap: a benign sink's
+// Field/Actor were computed on every evaluation but never made it past the in-process
+// stag.Decision.Sinks — DecisionRecord had no Sinks field for record() to populate, so a benign
+// sink's crossing was silently absent from decisions.jsonl even on a call that fully happened.
+func TestBenignSinkReachesAuditLog(t *testing.T) {
+	p, err := recipe.Parse([]byte(benignPlusAuthoritativeSrc))
+	if err != nil {
+		t.Fatalf("policy must parse: %v", err)
+	}
+	sink := &spySink{}
+	g := proxy.Gate{
+		Routes: proxy.Router{"write_note": {Recipe: p.Recipe, RecipeHash: p.SemanticHash, GateArg: "text"}},
+		Sink:   sink,
+	}
+
+	d := g.Decide(context.Background(), proxy.ToolCall{Tool: "write_note", Args: map[string]string{"text": "hello"}})
+	if d.Verdict != stag.Allow || !d.Forward {
+		t.Fatalf("must allow and forward: %+v", d)
+	}
+	if len(sink.recs) != 1 {
+		t.Fatalf("expected 1 recorded leaf, got %d", len(sink.recs))
+	}
+	rec := sink.recs[0]
+	if len(rec.Sinks) != 2 {
+		t.Fatalf("forwarded call must record both sinks (benign + authoritative), got %d: %+v", len(rec.Sinks), rec.Sinks)
+	}
+	var sawBenign bool
+	for _, so := range rec.Sinks {
+		if so.Field == "log.plan" {
+			sawBenign = true
+			// a benign sink has no rule, so Released is always false (nothing to release); it
+			// clears unconditionally, so Verdict is still Allow (gate.GateSink's benign case).
+			if so.Sink.String() != "benign" || so.Verdict != stag.Allow || so.Released {
+				t.Errorf("benign sink outcome wrong shape: %+v", so)
+			}
+		}
+	}
+	if !sawBenign {
+		t.Fatalf("the benign sink's Field must reach the audit record: %+v", rec.Sinks)
+	}
+
+	// and a DENIED call (text outside the allowed set) must record no sinks at all — the call
+	// never reached the tool, so nothing it evaluated may be logged as having happened.
+	sink.recs = nil
+	d2 := g.Decide(context.Background(), proxy.ToolCall{Tool: "write_note", Args: map[string]string{"text": "nope"}})
+	if d2.Verdict != stag.Deny || d2.Forward {
+		t.Fatalf("must deny and not forward: %+v", d2)
+	}
+	if len(sink.recs) != 1 {
+		t.Fatalf("expected 1 recorded leaf, got %d", len(sink.recs))
+	}
+	if rec2 := sink.recs[0]; len(rec2.Sinks) != 0 {
+		t.Errorf("a denied call must record no sinks (nothing happened), got %d: %+v", len(rec2.Sinks), rec2.Sinks)
+	}
+}
+
 func FuzzForwardIffCleared(f *testing.F) {
 	f.Add("write_note", "hello")
 	f.Add("write_note", "rm -rf /")

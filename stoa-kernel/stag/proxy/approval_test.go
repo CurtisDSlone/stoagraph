@@ -14,7 +14,9 @@ import (
 // "$approved" placeholder from the approval store at eval time.
 const apprSrc = `recipe: appr_test
 version: 1
-passthrough: ["deployment"]
+tools:
+  k8s:
+    scale_deployment: {passthrough: ["deployment"]}
 rules:
   approved: {kind: signed_equality, signed: "$approved"}
   is_prod:  {kind: set_membership, set: ["prod"]}
@@ -73,7 +75,7 @@ func apprRouter(t testing.TB) proxy.Router {
 		t.Fatalf("approval recipe must parse+lint: %v", err)
 	}
 	return proxy.Router{
-		"scale_deployment": {Recipe: p.Recipe, RecipeHash: p.SemanticHash, GateArg: "namespace,approval_token", RecipeName: "appr_test"},
+		"scale_deployment": {Recipe: p.Recipe, RecipeHash: p.SemanticHash, GateArg: "namespace,approval_token", RecipeName: "appr_test", Server: "k8s", Tool: "scale_deployment"},
 	}
 }
 

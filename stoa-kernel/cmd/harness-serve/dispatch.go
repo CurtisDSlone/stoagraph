@@ -15,6 +15,7 @@ import (
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/agent"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/bind"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/dispatch"
+	emitpkg "github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/emit"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -120,14 +121,11 @@ func (s *Server) dispatch(w http.ResponseWriter, r *http.Request) {
 	} else if dec.Router != "" {
 		via += " · " + dec.Router
 	}
-	target := dec.RecipeID
-	if len(dec.Tools) > 0 {
-		target = fmt.Sprintf("toolset [%s]", strings.Join(dec.Tools, ", "))
-	}
 	emit(agent.Event{Kind: "dispatch", Tool: dec.RecipeID,
-		Result: fmt.Sprintf("routed to %s via %s (confidence %s)", target, via, dec.Confidence)})
+		Result: fmt.Sprintf("routed to %s via %s (confidence %s)", dec.RecipeID, via, dec.Confidence)})
 
-	s.governedRun(ctx, dec, req.Event, req.Model, req.System, req.MaxTurns, emit)
+	s.governedRun(ctx, dec, req.Event, req.Model, req.System, req.MaxTurns, emit,
+		emitpkg.NewOrchestrationContext(eventID(req.Event)))
 }
 
 // governedRun is the "run a governed agent for a resolved event" core, shared by the SSE console
@@ -136,35 +134,37 @@ func (s *Server) dispatch(w http.ResponseWriter, r *http.Request) {
 // session's UNTRUSTED context from the gate, and runs the model<->gate loop. Every proposed tool call
 // is gated; a misroute cannot breach. emit streams the transcript (SSE downstream, or a log for the
 // async webhook path).
-func (s *Server) governedRun(ctx context.Context, dec dispatch.Decision, event map[string]any, modelName, system string, maxTurns int, emit func(agent.Event)) {
+func (s *Server) governedRun(ctx context.Context, dec dispatch.Decision, event map[string]any, modelName, system string, maxTurns int, emit func(agent.Event), oc emitpkg.OrchestrationContext) {
 	stag := dispatch.StagClient{BaseURL: s.approvals, Token: s.stagToken}
-	// Union both route sources rather than picking one: an event-map entry naming BOTH a recipe and
-	// an explicit tools list wants both bound — the recipe's own trigger tool (whose invoke/await
-	// steps are the only place a multi-step arc is actually enforced) alongside any individually
-	// listed diagnostic tools. Picking only one, as this used to, meant a `tools:` list silently
-	// dropped dec.RecipeID and the recipe's trigger tool was never reachable — so its invoke/await
-	// enforcement never ran in the autonomous dispatch path, for any scenario that names `tools`.
+	// A session's toolset AND its READ-channel providers come entirely from the recipe itself now —
+	// the event map names only WHICH recipe governs. RoutesForSession resolves every route the
+	// recipe governs directly PLUS the routes for every sub-tool its own invoke/await steps
+	// authorize (a sequenced sub-tool is deliberately routed to its OWN separate recipe, never the
+	// recipe that invokes it — RoutesForRecipe alone would never reach it, which is the gap an
+	// invoke-only trigger recipe used to fall into: every sub-call denied "no recipe for tool",
+	// and nothing the agent could act on). ProviderNamesForSession mirrors this for the READ
+	// channel: the trigger recipe's own providers: allowlist, unioned with each distinct
+	// sub-recipe's. Nothing is unioned in from a separate event-map-declared list anymore.
 	var routes []dispatch.RouteSpec
+	var providers []dispatch.ProviderSpec
 	var err error
 	if dec.RecipeID != "" {
-		routes, err = stag.RoutesForRecipe(dec.RecipeID)
+		routes, err = stag.RoutesForSession(dec.RecipeID)
 		if err != nil {
 			emit(agent.Event{Kind: "error", Text: "routes for session: " + err.Error()})
 			return
 		}
-	}
-	if len(dec.Tools) > 0 {
-		extra, terr := stag.RoutesForTools(dec.Tools)
-		if terr != nil {
-			emit(agent.Event{Kind: "error", Text: "routes for session: " + terr.Error()})
-			return
+		names, nerr := stag.ProviderNamesForSession(dec.RecipeID, routes)
+		if nerr != nil {
+			emit(agent.Event{Kind: "dispatch", Result: "recipe providers unavailable, proceeding without READ channel: " + nerr.Error()})
+		} else if len(names) > 0 {
+			var perr error
+			providers, perr = stag.ProvidersFor(names)
+			if perr != nil {
+				emit(agent.Event{Kind: "dispatch", Result: "context providers unavailable, proceeding without READ channel: " + perr.Error()})
+				providers = nil
+			}
 		}
-		routes = mergeRouteSpecs(routes, extra)
-	}
-	providers, perr := stag.ProvidersFor(dec.Context)
-	if perr != nil {
-		emit(agent.Event{Kind: "dispatch", Result: "context providers unavailable, proceeding without READ channel: " + perr.Error()})
-		providers = nil
 	}
 	endpoint, token, err := dispatch.Binder{DaemonURL: s.daemon, Token: s.stagToken}.Bind(ctx, routes, providers)
 	if err != nil {
@@ -219,32 +219,82 @@ func (s *Server) governedRun(ctx context.Context, dec dispatch.Decision, event m
 	if maxTurns <= 0 {
 		maxTurns = 6
 	}
-	agent.Run(ctx, proposer, sess, maxTurns, agent.NewApprovalConfig(s.approvals, s.stagToken), emit)
+
+	// Accumulate the recipe's emit sinks as the transcript goes by. The sinks ride
+	// `verdict` events (agent.Event.Sinks); the agent itself never reads them.
+	var collector emitpkg.SinkCollector
+	tap := func(e agent.Event) {
+		if len(e.Sinks) > 0 {
+			collector.Add(e.Sinks)
+		}
+		emit(e)
+	}
+	agent.Run(ctx, proposer, sess, maxTurns, agent.NewApprovalConfig(s.approvals, s.stagToken), tap)
+
+	s.runEmits(ctx, collector.All(), modelName, system, maxTurns, emit, oc)
 }
 
-// mergeRouteSpecs unions two route sets, deduping by (server, tool) so the same downstream call is
-// never bound twice. base wins on conflict — it holds the recipe's own routes, which include its
-// sequenced/invoke-only tools; extra holds the explicitly-listed tools from the event map. Keeping
-// base first means a recipe's own binding for a tool is never silently overridden by a same-named
-// entry in an event map's `tools` list.
-func mergeRouteSpecs(base, extra []dispatch.RouteSpec) []dispatch.RouteSpec {
-	seen := make(map[string]bool, len(base)+len(extra))
-	out := make([]dispatch.RouteSpec, 0, len(base)+len(extra))
-	for _, r := range base {
-		key := r.Server + "\x00" + r.Tool
-		if !seen[key] {
-			seen[key] = true
-			out = append(out, r)
+// runEmits is the orchestration hop: an emitted event is re-dispatched through the SAME
+// front door an external event uses — LoadEventMap, Dispatcher.Dispatch, then governedRun.
+//
+// It re-routes rather than calling the next recipe directly, and that is the whole safety
+// argument. The emitted event carries no authority from the recipe that emitted it: the
+// next session is bound to the NEXT recipe's own routes, and every call it proposes is
+// re-gated against that recipe. A chain cannot launder an action by emitting toward it.
+//
+// The event map is re-read per hop deliberately. A hop is a fresh routing decision, and an
+// operator who edits the map mid-chain means it — a cached map would let a revoked route
+// keep serving for the life of a chain.
+func (s *Server) runEmits(ctx context.Context, sinks []map[string]any, modelName, system string, maxTurns int, emit func(agent.Event), oc emitpkg.OrchestrationContext) {
+	if len(sinks) == 0 {
+		return
+	}
+	// Slot values ride the gate's own sink metadata for emit fields (mcpgate.withSinks),
+	// so nil here means "no harness override" — EmitFromMetadata reads the gate's value.
+	summary, err := emitpkg.ProcessEmitsAfterRun(ctx, sinks, nil, oc,
+		func(ctx context.Context, event map[string]any, next emitpkg.OrchestrationContext) (bool, error) {
+			emap, err := dispatch.LoadEventMap(s.eventMap)
+			if err != nil {
+				return false, err
+			}
+			stagc := dispatch.StagClient{BaseURL: s.approvals, Token: s.stagToken}
+			dec, err := dispatch.Dispatcher{Map: emap, Catalog: stagc.Catalog}.Dispatch(ctx, dispatch.Event(event))
+			if err != nil {
+				return false, err
+			}
+			if !dec.Dispatched() {
+				return false, nil // nothing listens for this kind; the chain ends here
+			}
+			emit(agent.Event{Kind: "dispatch", Tool: dec.RecipeID, Result: fmt.Sprintf(
+				"emit → %v routed to %s (depth %d/%d)", event["kind"], dec.RecipeID, next.EmitDepth, emitpkg.MaxEmitDepth)})
+			s.governedRun(ctx, dec, event, modelName, system, maxTurns, emit, next)
+			return true, nil
+		})
+	if err != nil {
+		emit(agent.Event{Kind: "error", Text: "emit processing: " + err.Error()})
+		return
+	}
+	if summary.Blocked {
+		emit(agent.Event{Kind: "dispatch", Result: fmt.Sprintf(
+			"emit chain stopped: %s (path: %s)", summary.BlockReason, strings.Join(oc.EmissionPath, " → "))})
+		return
+	}
+	if summary.Invalid > 0 {
+		emit(agent.Event{Kind: "dispatch", Result: fmt.Sprintf(
+			"%d of %d emit(s) not dispatched", summary.Invalid, summary.Total)})
+	}
+}
+
+// eventID names an event for the orchestration chain. The ingress id when the event
+// carries one, else a marker — the id is for AUDIT LEGIBILITY (which chain is this),
+// never for authority, so an unnamed event is not an error.
+func eventID(event map[string]any) string {
+	for _, k := range []string{"id", "event_id", "_id"} {
+		if v, ok := event[k].(string); ok && v != "" {
+			return v
 		}
 	}
-	for _, r := range extra {
-		key := r.Server + "\x00" + r.Tool
-		if !seen[key] {
-			seen[key] = true
-			out = append(out, r)
-		}
-	}
-	return out
+	return "evt"
 }
 
 // eventInput renders the event as compact-ish JSON — the untrusted "ticket". bind.Assemble adds the

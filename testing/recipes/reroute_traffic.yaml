@@ -2,6 +2,7 @@ recipe: reroute_policy
 version: 1
 # Data-residency policy: EU customer traffic must stay in the EU. The ONLY sanctioned failover
 # for eu-west is eu-central. A US (or any non-EU) failover target is a residency violation and is denied.
+providers: ["runbook", "edge-logs"]
 rules:
   target.ok: {kind: set_membership, set: ["eu-central"]}
 steps:

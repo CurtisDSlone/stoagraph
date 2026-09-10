@@ -40,7 +40,7 @@ services:
   # Deterministic policy, audit, approvals. Holds no model and no API keys — enforced by
   # stoa-kernel/architecture_test.go, which fails the build if a gate package imports orchestrator code.
   stag-serve:
-    image: ghcr.io/CurtisDSlone/stoagraph/stag-serve:${STOAGRAPH_VERSION:-latest}
+    image: ghcr.io/curtisdslone/stoagraph/stag-serve:${STOAGRAPH_VERSION:-latest}
     command: ["-addr", ":8080", "-tokens", ""] # -tokens "" => env only; no secrets file on disk
     environment:
       # One human key opens the gate. `admin` (author policy) and `approve` (release a held action) are
@@ -69,7 +69,7 @@ services:
   # The MCP gating proxy. Sessions are bound to a recipe HERE, by the trusted dispatcher.
   # It waits for a downstream to be registered rather than crash-looping on a fresh instance.
   stag-proxy:
-    image: ghcr.io/CurtisDSlone/stoagraph/stag-proxy:${STOAGRAPH_VERSION:-latest}
+    image: ghcr.io/curtisdslone/stoagraph/stag-proxy:${STOAGRAPH_VERSION:-latest}
     command: ["-http", ":8091", "-tokens", ""]
     environment:
       STAG_DISPATCH_TOKEN: ${STAG_DISPATCH_TOKEN:?run stoagraph up}
@@ -89,7 +89,7 @@ services:
   # ------------------------------------------------------- THE ORCHESTRATOR
   # This is where the model API KEYS live. Note what it is NOT given below.
   harness-serve:
-    image: ghcr.io/CurtisDSlone/stoagraph/harness-serve:${STOAGRAPH_VERSION:-latest}
+    image: ghcr.io/curtisdslone/stoagraph/harness-serve:${STOAGRAPH_VERSION:-latest}
     command:
       [
         "-addr",
@@ -154,7 +154,7 @@ services:
   # (examples/local-tools/ in the repo has a tools.yaml to copy.)
   local-tools:
     profiles: ["tools"]
-    image: ghcr.io/CurtisDSlone/stoagraph/local-tools:${STOAGRAPH_VERSION:-latest}
+    image: ghcr.io/curtisdslone/stoagraph/local-tools:${STOAGRAPH_VERSION:-latest}
     command: ["-config", "/app/tools.yaml", "-root", "/workspace", "-http", ":9300"]
     volumes:
       # Point TOOLS_WORKSPACE at YOUR project. Read-only: a tool that cannot write cannot corrupt.

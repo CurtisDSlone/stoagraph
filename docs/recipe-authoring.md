@@ -39,8 +39,10 @@ a call is never authority to make it.
 ```yaml
 recipe: my_policy       # name (also the id you route tools to)
 version: 1
-                        # (an optional `passthrough:` list declares arguments knowingly
-                        #  forwarded UNGATED — omit the key to gate every argument)
+                        # (an optional `tools:` map declares, per server/tool, which arguments
+                        #  are knowingly forwarded UNGATED — see "The coverage contract" below)
+                        # (an optional `providers:` list allowlists which context providers this
+                        #  recipe's `read` steps may name — see the `read` step and Chapter 6)
 rules:                  # named predicates, referenced by id — the only reuse mechanism
   ns.safe:  {kind: set_membership, set: ["dev", "staging"]}
   count.ok: {kind: numeric_range, min: 0, max: 5}
@@ -51,6 +53,34 @@ steps:                  # the graph, top to bottom; edges only ever point forwar
   - {id: apply, kind: sink, in: replicas, field: k8s.scale.apply,
      sensitivity: authoritative, rule: count.ok, actor: "policy:platform"}
 ```
+
+The full top-level key set is `recipe`, `version`, `ingredients`, `rules`, `tools`, `providers`,
+`steps` — anything else is rejected, not ignored. `ingredients` is covered next; `tools` in
+[The coverage contract](#the-coverage-contract-tools-passthrough), `providers` in the
+[`read`](#read) step below, and composition (`goto_recipe`/`default_recipe`) in
+[Composing recipes](#composing-recipes).
+
+### `ingredients` — slots that exist before the first `propose`
+
+Most recipes need nothing here: every value a recipe judges normally arrives through a `propose`
+step, untrusted, from the call itself. `ingredients` exists for the rarer case — a slot the recipe
+wants to reason about that isn't one of the call's own arguments, pre-declared with a fixed origin
+and trust class:
+
+```yaml
+ingredients:
+  deploy_window:
+    origin: "ops-calendar"
+    trust: caller
+```
+
+`origin` is a free-text label recorded for the audit; `trust` is one of the three closed classes
+(`untrusted`, `caller`, `authoritative`) — the *only* place in the whole language you can assert a
+starting trust class other than `untrusted`, because it is the author declaring a fact about the
+deployment (not a proposed value), not the kernel promoting one. An ingredient sits in scope for
+the whole recipe exactly like a `propose`d slot, and the linter's declare-before-use and
+definite-assignment checks apply to it identically. There is no `value:` key — an ingredient names
+a slot and its starting trust, never a literal value to smuggle in.
 
 Two hashes are derived from every recipe. The **artifact hash** is the bytes of the file; the
 **semantic hash** is the policy's *identity* — what it accepts, which tool it authorizes, which
@@ -118,7 +148,7 @@ a DAG that always terminates.
 | --- | --- | --- |
 | [`propose`](#propose) | bind a tool argument as an untrusted value | `out`, `goto` |
 | [`gate`](#gate) | halt the recipe unless a value clears a rule | `in`, `rule`, `on_fail` |
-| [`branch`](#branch) | route to one of several steps by rule | `in`, `cases`, `default` |
+| [`branch`](#branch) | route to one of several steps by rule | `in`, `cases`, `default`, `default_recipe` |
 | [`sink`](#sink) | the crossing: release a value to the tool, and record it | `in`, `field`, `sensitivity`, `rule`, `actor`, `goto` |
 | [`invoke`](#invoke) | authorize one tool call in a sequence | `tool`, `args`, `actor`, `goto` |
 | [`await`](#await) | do not proceed until a tool's output satisfies a rule | `tool`, `args`, `until`, `attempts`, `every_ms`, `actor`, `goto` |
@@ -182,8 +212,8 @@ Routing, never enforcement. The first case whose rule releases wins; if none doe
   default: block                        # anything else → deny
 ```
 
-Every edge is explicit — including `default`, which is required. A branch on a value that was
-never bound is a **fault**, not a fall-through: routing on uncertainty is refused.
+Every edge is explicit — including a default target, which is required. A branch on a value that
+was never bound is a **fault**, not a fall-through: routing on uncertainty is refused.
 
 A branch **selects which path is authorized**, so it composes with sequences: "if prod, authorize
 the careful sequence; otherwise the quick one" is a branch whose cases `goto` different `invoke`
@@ -191,6 +221,11 @@ chains.
 
 `branch` reads a value the *caller proposed*. It cannot read what a previous call returned — see
 [Not in v1](#not-in-v1).
+
+**A case's target, and the branch's default, can each be a step id *or* a sub-recipe.** `goto`
+names a step in this recipe; `goto_recipe` splices a whole other recipe onto that case instead —
+exactly one of the two, required. The same choice exists at the branch level: `default` names a
+step, `default_recipe` splices one in. See [Composing recipes](#composing-recipes).
 
 ---
 
@@ -275,9 +310,22 @@ kernel and a recipe cannot raise them. Full detail in
 Fetches context from a source **the recipe names**, asking a question **the recipe bounds**.
 
 ```yaml
-- {id: brief, kind: read, provider: runbooks,
-   query: {slot: topic, rule: topic.allowed}}
+recipe: read_example
+version: 1
+providers: ["runbooks"]        # a read step may only name a provider listed here
+rules:
+  topic.allowed: {kind: set_membership, set: ["drain", "rollout"]}
+steps:
+  - {id: p_topic, kind: propose, out: topic}
+  - {id: brief, kind: read, provider: runbooks,
+     query: {slot: topic, rule: topic.allowed}}
+  - {id: done, kind: exit}
 ```
+
+**`providers` is a required top-level allowlist for every `read` in the recipe.** A `read` step
+naming a provider not in this list is refused at lint time — `providers:` is the same kind of
+declared, reviewable boundary `tools:` is for tool arguments, just for the read channel instead of
+the write channel. Omit the key only if the recipe has no `read` steps at all.
 
 A bound provider is also advertised to the agent as a `context__<name>` tool, and that leaves
 both decisions to the model: which source to consult, and what to ask it. The question is then
@@ -357,6 +405,67 @@ A terminal. Halts this path, adds no verdict, records no crossing.
 Needed because steps fall through by default: without an `exit`, a branch target would run on
 into whatever step happens to be written next.
 
+## Composing recipes
+
+A `branch` case or a branch's default target can splice in a whole other recipe instead of naming
+a step in this one — informally, a "recipe of recipes." A shared policy (an escalation path, say)
+is written once and spliced into many tool recipes' branches, instead of copy-pasted into each.
+
+```yaml
+# escalation_path.yaml — a shared sub-recipe, stored and referenced by name
+recipe: escalation_path
+version: 1
+rules:
+  approved: {kind: signed_equality, signed: "$approved"}
+steps:
+  - {id: p_tok, kind: propose, out: approval_token}
+  - {id: g, kind: gate, in: approval_token, rule: approved, on_fail: escalate}
+  - {id: done, kind: exit}
+```
+
+```yaml
+# fix_vulnerability_policy.yaml — the parent, splicing escalation_path onto its default case
+recipe: fix_vulnerability_policy
+version: 1
+rules:
+  known.cve: {kind: set_membership, set: ["CVE-2026-9999"]}
+steps:
+  - {id: p_cve, kind: propose, out: cve}
+  - id: route
+    kind: branch
+    in: cve
+    cases:
+      - {rule: known.cve, goto: apply}
+    default_recipe: escalation_path   # an unrecognized CVE escalates through the shared path
+  - {id: apply, kind: sink, in: cve, field: patch.apply,
+     sensitivity: authoritative, rule: known.cve, actor: "policy:patch", goto: exit_ok}
+  - {id: exit_ok, kind: exit}
+```
+
+`goto_recipe` (on a case) and `default_recipe` (on the branch) each name a sub-recipe by its
+`recipe:` id, resolved the same way a route resolves one — from whatever's already saved. The named
+recipe's steps are inlined at that point, namespaced so their ids can't collide with the parent's,
+and the whole spliced graph is linted and hashed **together**: `fix_vulnerability_policy`'s
+semantic hash changes if `escalation_path` changes underneath it, exactly as it should for a policy
+whose actual behavior just changed.
+
+**Three rules keep this from becoming its own small language:**
+
+- **Exactly depth-1.** A sub-recipe that itself uses `goto_recipe`/`default_recipe` is refused at
+  splice time — `escalation_path` above cannot, in turn, splice in a third recipe. Composition is
+  one flat layer, not a tree an author has to trace through to know what a recipe actually does.
+- **Both recipes must be sealed.** A recipe that composes a sub-recipe must itself end in an
+  explicit `exit` step (nothing may fall through past the splice point), and the sub-recipe being
+  spliced in must *also* end in an `exit` (it runs as a tail — there's nothing after it to fall
+  into). Either omission is a rejected recipe, not a runtime surprise.
+- **No self-reference**, and at most 64 sub-recipe references in one recipe (the same
+  author-unraisable-bound discipline every other count in this language uses).
+
+Composition is resolved by name at parse/save time, not at call time — there's no separate runtime
+"which sub-recipe" decision for the kernel to make. The spliced result is one ordinary recipe as
+far as `Eval` is concerned; nothing about `invoke`, `await`, or the load-bearing invariant changes
+because part of the graph came from another file.
+
 ## Verdicts
 
 | Verdict | Meaning | Forwarded to the tool? |
@@ -407,8 +516,11 @@ runtime:
 | `await` attempts | 1–32 | wall-clock an agent can spend by triggering a sequence |
 | `await` interval | 0–30 000 ms | as above |
 | `await` total | attempts × interval ≤ 5 min | as above |
-| `passthrough` args | 64 | |
-| sub-recipe references | 64 | |
+| `passthrough` args per tool | 64 | |
+| servers named under `tools:` | 64 | |
+| tools named per server under `tools:` | 64 | |
+| providers named under `providers:` | 64 | |
+| sub-recipe references (`goto_recipe`/`default_recipe`) | 64 | one flat layer, not a tree to trace through |
 
 **Over the cap is a rejection, never a clamp.** An author who writes `attempts: 1000` believes
 they will get 1000; silently substituting 32 would be a policy that does not do what it says.
@@ -431,6 +543,13 @@ The parser is deliberately strict about the *file*, not just the policy:
   quoted if you mean the strings. A slot named `n` is rejected, because another YAML reader would
   parse it as the boolean `false` and see a different policy than you wrote.
 - **caps on size, depth and node count**
+- **a handful of keys from more familiar automation idioms are refused with a specific message**
+  where they could only be a mistake — a step key or a top-level document key named `when`, `loop`,
+  `with_items`, `register`, `vars`, `notify`, `become`, or `on` gets pointed at the real StAG idiom
+  instead of a bare "unknown key." This applies only where the key SET is fixed by the format (a
+  step's keys, the document's top-level keys) — a server, tool, or provider name you choose under
+  `tools:`/`providers:` is never checked against this list, so naming a tool `notify` is entirely
+  legal.
 
 A recipe is a security document. Two files that look the same must mean the same thing, and a
 clever YAML feature that makes them differ is a liability, not a convenience.
@@ -608,6 +727,7 @@ gets exactly the context the author decided it needs:
 ```yaml
 recipe: maint_with_brief
 version: 1
+providers: ["runbooks"]
 rules:
   topic.allowed: {kind: set_membership, set: ["drain", "rollout"]}
   node.worker:   {kind: set_membership, set: ["kind-worker", "kind-worker2"]}
@@ -663,7 +783,7 @@ mints. If the node never empties, the sequence halts with it still cordoned: a h
 maintenance window someone must notice, which is the honest outcome. It is not safe to hand a
 node back to the scheduler on the assumption that a drain worked.
 
-## The coverage contract (`passthrough`)
+## The coverage contract (`tools:` / `passthrough`)
 
 **Every argument a tool takes must be accounted for: gated, or declared.** An argument that is
 neither is *unaccounted for*, and the gate denies the call.
@@ -673,12 +793,16 @@ nothing about the ones you didn't — and an unlisted argument is forwarded to t
 A policy that gates `to` on `wire_transfer(to, amount)` looks complete: the tool is routed, the
 listed path clears, and *any* `amount` goes through.
 
-So a recipe declares what it knowingly forwards ungated:
+So a recipe declares what it knowingly forwards ungated, per tool, under a top-level `tools:` map
+keyed `server -> tool -> {passthrough: [...]}`:
 
 ```yaml
 recipe: notify_policy
 version: 1
-passthrough: ["text"]        # notify(channel, text): `text` is the body, forwarded ungated
+tools:
+  ops:                              # the MCP server this recipe names a tool on
+    notify:                         # the tool: notify(channel, text)
+      passthrough: ["text"]         # `text` is the body, forwarded ungated; `channel` is gated below
 rules:
   channel.allowed: {kind: set_membership, set: ["support", "general", "incidents"]}
 steps:
@@ -687,18 +811,25 @@ steps:
      sensitivity: authoritative, rule: channel.allowed, actor: "policy:notify"}
 ```
 
+The nesting is deliberate: coverage is a fact about *one tool on one server*, not about the recipe
+as a whole. A recipe naming several tools declares `passthrough` separately under each — there is
+no recipe-wide list. Naming a tool under `tools:` with an empty mapping (`{}`) is legal too: it
+declares the recipe knows about that tool and forwards nothing ungated, which is different from
+never mentioning the tool at all.
+
 `passthrough` is **not** an escape hatch, it is a signature. Two things enforce it:
 
 - **At bind**, the tool's own schema is checked against the policy. A schema argument that is
-  neither gated nor declared means the tool is **not advertised** — it stays unrouted, and unrouted
-  is denied. You cannot leave a hole you didn't know about.
-- **At decide**, the arguments the agent *actually sent* are checked. A permissive schema (or one
-  that simply lies) cannot smuggle an argument past the policy.
+  neither gated (via the route's `gateArg`) nor declared `passthrough` for that `(server, tool)`
+  pair means the tool is **not advertised** — it stays unrouted, and unrouted is denied. You cannot
+  leave a hole you didn't know about.
+- **At decide**, the arguments the agent *actually sent* are checked against the same coverage set.
+  A permissive schema (or one that simply lies) cannot smuggle an argument past the policy.
 
 **It lives in the recipe, not the route, because it is part of the policy's identity.** Adding an
-argument to `passthrough` changes the recipe's semantic hash, so the signed record can always tell a
-gated argument from one that was waved through. A route-side declaration would leave two different
-policies producing the same audit trail.
+argument to a tool's `passthrough` list changes the recipe's semantic hash, so the signed record can
+always tell a gated argument from one that was waved through. A route-side declaration would leave
+two different policies producing the same audit trail.
 
 **Declaring an authoritative-looking argument (`amount`, `path`, `to`, `cmd`) raises a caution** in
 the `POST /api/recipes` validation response. It does not block the save — you may have a reason — but
@@ -709,13 +840,29 @@ action was judged, or knowingly wasn't. It is not a confidentiality control: a g
 still carry information out within its allowed set, and a declared passthrough carries whatever the
 model puts in it. Bounding *where* an action lands is not the same as bounding *what it says*.
 
+### Store-backed validation: does the name actually exist
+
+Everything above is a **structural** check — does the recipe make sense on its own, with no config
+store in the picture. `POST /api/recipes` (and `Save`, if you're using the store directly) does one
+more check after that, against whatever is actually registered: does `tools:` name a server that's
+really registered, and — if that server's tool discovery has actually run — does it really expose a
+tool by that name; and does `providers:` name providers that are really registered.
+
+This fails closed, the same posture as everything else in this language: a `tools:`/`providers:`
+entry naming something unregistered is a **refused save**, not a warning. The one deliberate
+softness: a registered server whose tool list hasn't been discovered yet (nothing has connected to
+it) can't prove a tool name is *wrong*, so a tool-name check on such a server is skipped — but the
+server itself must still be registered either way, always. Register the server and its providers
+*before* saving a recipe that names them, in that order — saving a recipe first and registering the
+server after will refuse the save.
+
 ## Multiple arguments, and human approval
 
 - **Multi-argument gating** — route a tool to several arguments at once (e.g. `namespace,replicas`);
   each `propose out: X` binds the argument named `X`, so one recipe decides from the whole action
   (e.g. "scaling *prod* escalates regardless of the count"). A path may reach into the payload
-  (`files[].path`), and every value it selects must clear. Anything you do not gate must appear in
-  `passthrough` (above), or the call is denied.
+  (`files[].path`), and every value it selects must clear. Anything you do not gate must appear
+  under that tool's `passthrough:` list in `tools:` (above), or the call is denied.
 - **Human approval** — a `signed_equality` gate whose `signed:` value is `"$approved"` escalates until
   a human approves; approval mints a signed release for that exact action, and the retried call passes.
   The approval fingerprint binds the **whole** action, including passthrough arguments — so a human
@@ -733,15 +880,21 @@ Every form, with `<...>` placeholders. Not a runnable recipe — the ids repeat.
 ```text
 recipe: <name>          # required; the id a tool is routed to
 version: 1              # required
-passthrough: [a, b]     # optional; arguments knowingly forwarded UNGATED
+ingredients:             # optional; slots pre-declared before any propose (rare)
+  <name>: {origin: "<label>", trust: untrusted|caller|authoritative}
+tools:                   # optional; per-tool coverage, server -> tool -> caps
+  <server>:
+    <tool>: {passthrough: [a, b]}   # arguments knowingly forwarded UNGATED for this tool
 rules:                  # named predicates, referenced by id
   <id>: {kind: set_membership,  set: ["a", "b"]}
   <id>: {kind: numeric_range,   min: 0, max: 5}
   <id>: {kind: signed_equality, signed: "$approved"}
+providers: [<name>, ...] # optional; required if any `read` step is used
 steps:
   - {id: <id>, kind: propose, out: <arg>}
   - {id: <id>, kind: gate,    in: <slot>, rule: <id>, on_fail: deny|escalate}
-  - {id: <id>, kind: branch,  in: <slot>, cases: [{rule: <id>, goto: <id>}], default: <id>}
+  - {id: <id>, kind: branch,  in: <slot>,
+     cases: [{rule: <id>, goto: <id>}], default: <id>}          # or goto_recipe/default_recipe
   - {id: <id>, kind: sink,    in: <slot>, field: <name>,
      sensitivity: authoritative|benign, rule: <id>, actor: "policy:<who>"}
   - {id: <id>, kind: invoke,  tool: <server>__<tool>,

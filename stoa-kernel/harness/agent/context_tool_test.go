@@ -1,4 +1,4 @@
-package agent
+package agent_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/agent"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/mcpgate"
@@ -46,11 +47,11 @@ func TestHarnessSeesContextProvidersWithNoChanges(t *testing.T) {
 	defer sess.Close()
 
 	// the harness's OWN discovery path, unmodified
-	tools, err := listTools(ctx, sess)
+	tools, err := agent.ListTools(ctx, sess)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var found *Tool
+	var found *agent.Tool
 	for i := range tools {
 		if tools[i].Name == mcpgate.ContextToolName("runbooks") {
 			found = &tools[i]

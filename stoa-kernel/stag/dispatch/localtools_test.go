@@ -1,4 +1,4 @@
-package dispatch
+package dispatch_test
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/localtools"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/dispatch"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
 )
 
@@ -45,7 +46,7 @@ tools:
 
 func TestLocalTransportRunsTheDeclaredTool(t *testing.T) {
 	cfg := toolsYAML(t, t.TempDir())
-	tr := NewLocalTransport(cfg)
+	tr := dispatch.NewLocalTransport(cfg)
 	out, err := tr.Call(context.Background(), proxy.ToolCall{Tool: "echo_it", Args: map[string]string{"value": "hello"}})
 	if err != nil {
 		t.Fatalf("declared tool must run: %v", err)
@@ -59,7 +60,7 @@ func TestLocalTransportRunsTheDeclaredTool(t *testing.T) {
 // surface the operator authored.
 func TestLocalTransportRefusesUndeclaredTool(t *testing.T) {
 	cfg := toolsYAML(t, t.TempDir())
-	tr := NewLocalTransport(cfg)
+	tr := dispatch.NewLocalTransport(cfg)
 	if _, err := tr.Call(context.Background(), proxy.ToolCall{Tool: "not_a_tool"}); err == nil {
 		t.Error("an undeclared tool must not run")
 	}
@@ -69,7 +70,7 @@ func TestLocalTransportRefusesUndeclaredTool(t *testing.T) {
 // not a step that succeeded, and the executor must not carry on as though it were.
 func TestLocalTransportNonZeroExitIsAnError(t *testing.T) {
 	cfg := toolsYAML(t, t.TempDir())
-	tr := NewLocalTransport(cfg)
+	tr := dispatch.NewLocalTransport(cfg)
 	if _, err := tr.Call(context.Background(), proxy.ToolCall{Tool: "fail_it", Args: map[string]string{}}); err == nil {
 		t.Error("a failing tool must surface as a transport error so the sequence halts")
 	}
@@ -79,7 +80,7 @@ func TestLocalTransportNonZeroExitIsAnError(t *testing.T) {
 // is ONE argument, exactly as localtools guarantees.
 func TestLocalTransportInheritsArgvDiscipline(t *testing.T) {
 	cfg := toolsYAML(t, t.TempDir())
-	tr := NewLocalTransport(cfg)
+	tr := dispatch.NewLocalTransport(cfg)
 	payload := "x; rm -rf /"
 	out, err := tr.Call(context.Background(), proxy.ToolCall{Tool: "echo_it", Args: map[string]string{"value": payload}})
 	if err != nil {

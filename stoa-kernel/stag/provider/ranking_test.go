@@ -1,10 +1,12 @@
-package provider
+package provider_test
 
 import (
 	"context"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
 )
 
 // RANKING IS WHAT MAKES A LOW k SAFE. Returning 2 of 13 matches is only useful if they are the
@@ -41,7 +43,7 @@ func rankDir(t *testing.T) string {
 // The document whose TITLE and FILENAME are about the query ranks first, not the one that sorts
 // first alphabetically.
 func TestRankingPutsTheOnAboutItFirst(t *testing.T) {
-	s, err := NewStatic("rb", rankDir(t))
+	s, err := provider.NewStatic("rb", rankDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +66,7 @@ func TestRankingPutsTheOnAboutItFirst(t *testing.T) {
 
 // A document that does not mention the query at all is not returned.
 func TestRankingExcludesNonMatches(t *testing.T) {
-	s, err := NewStatic("rb", rankDir(t))
+	s, err := provider.NewStatic("rb", rankDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +82,7 @@ func TestRankingExcludesNonMatches(t *testing.T) {
 // records what was served must be replayable, which a scoring function can promise and an
 // embedding model cannot.
 func TestRankingIsDeterministic(t *testing.T) {
-	s, err := NewStatic("rb", rankDir(t))
+	s, err := provider.NewStatic("rb", rankDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +108,7 @@ func TestEqualScoresBreakTiesByPath(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	s, err := NewStatic("rb", d)
+	s, err := provider.NewStatic("rb", d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +124,7 @@ func TestEqualScoresBreakTiesByPath(t *testing.T) {
 // A multi-word query scores on its terms, so "drain node" finds the drain document rather than
 // requiring that exact phrase to appear.
 func TestMultiTermQuery(t *testing.T) {
-	s, err := NewStatic("rb", rankDir(t))
+	s, err := provider.NewStatic("rb", rankDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +137,7 @@ func TestMultiTermQuery(t *testing.T) {
 	}
 }
 
-func sources(items []ContextItem) []string {
+func sources(items []provider.ContextItem) []string {
 	out := make([]string, 0, len(items))
 	for _, it := range items {
 		out = append(out, it.Source)

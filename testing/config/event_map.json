@@ -3,16 +3,12 @@
     "id": "traffic-failure",
     "match": { "type": "posture.drifted" },
     "recipe": "reroute_policy",
-    "tools": ["ops__reroute_traffic", "ops__notify_soc", "ops__open_ticket"],
-    "context": ["runbook", "edge-logs"],
     "require_attribution": true
   },
   {
     "id": "vuln-finding",
     "match": { "type": "finding.detected" },
     "recipe": "fixvuln_policy",
-    "tools": ["ops__fix_vulnerability", "ops__notify_soc", "ops__open_ticket"],
-    "context": ["runbook"],
     "require_attribution": true
   }
 ]

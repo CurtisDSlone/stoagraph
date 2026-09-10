@@ -1,14 +1,15 @@
-package record
+package record_test
 
 import (
 	"math"
 	"testing"
 
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/internal/record"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/internal/trust"
 )
 
-func baseEvent() ReleaseEvent {
-	return ReleaseEvent{
+func baseEvent() record.ReleaseEvent {
+	return record.ReleaseEvent{
 		SubjectClass:    trust.Untrusted,
 		SubjectOrigin:   "retriever.runbooks",
 		CollectedField:  "classify.output.action",
@@ -36,7 +37,7 @@ func TestReleaseEvent(t *testing.T) {
 	}
 
 	// legible canonical form pins the shape (class NAMES, int64 ordering, snake_case keys)
-	want, err := CanonicalHash(map[string]any{
+	want, err := record.CanonicalHash(map[string]any{
 		"subject_class":    e.SubjectClass.String(),
 		"subject_origin":   e.SubjectOrigin,
 		"collected_field":  e.CollectedField,
@@ -57,17 +58,17 @@ func TestReleaseEvent(t *testing.T) {
 	// tamper-evidence: changing any one of the nine fields changes the hash
 	mutators := []struct {
 		name string
-		mut  func(*ReleaseEvent)
+		mut  func(*record.ReleaseEvent)
 	}{
-		{"SubjectClass", func(e *ReleaseEvent) { e.SubjectClass = trust.Caller }},
-		{"SubjectOrigin", func(e *ReleaseEvent) { e.SubjectOrigin = "retriever.web" }},
-		{"CollectedField", func(e *ReleaseEvent) { e.CollectedField = "classify.output.other" }},
-		{"TargetClass", func(e *ReleaseEvent) { e.TargetClass = trust.Caller }},
-		{"TargetField", func(e *ReleaseEvent) { e.TargetField = "act.args.other" }},
-		{"AuthorizingRule", func(e *ReleaseEvent) { e.AuthorizingRule = "actions.other" }},
-		{"Actor", func(e *ReleaseEvent) { e.Actor = "policy:other" }},
-		{"Ordering", func(e *ReleaseEvent) { e.Ordering = 8 }},
-		{"RecipeHash", func(e *ReleaseEvent) { e.RecipeHash = e.RecipeHash[:63] + "6" }}, // one-char edit
+		{"SubjectClass", func(e *record.ReleaseEvent) { e.SubjectClass = trust.Caller }},
+		{"SubjectOrigin", func(e *record.ReleaseEvent) { e.SubjectOrigin = "retriever.web" }},
+		{"CollectedField", func(e *record.ReleaseEvent) { e.CollectedField = "classify.output.other" }},
+		{"TargetClass", func(e *record.ReleaseEvent) { e.TargetClass = trust.Caller }},
+		{"TargetField", func(e *record.ReleaseEvent) { e.TargetField = "act.args.other" }},
+		{"AuthorizingRule", func(e *record.ReleaseEvent) { e.AuthorizingRule = "actions.other" }},
+		{"Actor", func(e *record.ReleaseEvent) { e.Actor = "policy:other" }},
+		{"Ordering", func(e *record.ReleaseEvent) { e.Ordering = 8 }},
+		{"RecipeHash", func(e *record.ReleaseEvent) { e.RecipeHash = e.RecipeHash[:63] + "6" }}, // one-char edit
 	}
 	for _, m := range mutators {
 		me := baseEvent()
@@ -110,7 +111,7 @@ func FuzzReleaseEvent(f *testing.F) {
 	f.Add("o", "cf", "tf", "rule", "actor", "rh", int64(7), uint8(0), uint8(2))
 	f.Add("", "", "", "", "", "", int64(0), uint8(1), uint8(3))
 	f.Fuzz(func(t *testing.T, origin, cf, tf, rule, actor, recipeHash string, ordering int64, sc, tc uint8) {
-		e := ReleaseEvent{
+		e := record.ReleaseEvent{
 			SubjectClass:    trust.TrustClass(sc % 4),
 			SubjectOrigin:   origin,
 			CollectedField:  cf,

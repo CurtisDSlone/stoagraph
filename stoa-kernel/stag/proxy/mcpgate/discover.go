@@ -49,17 +49,17 @@ type DiscoveredTool struct {
 // operation that populates the config store. kind "stdio" runs `target` as a command
 // and speaks MCP over its stdio; kind "http" connects to the target URL (with auth).
 func DiscoverTools(ctx context.Context, kind, target string, a Auth) ([]DiscoveredTool, error) {
-	t, err := transportFor(kind, target, a)
+	t, err := TransportFor(kind, target, a)
 	if err != nil {
 		return nil, err
 	}
 	return Discover(ctx, t)
 }
 
-// transportFor builds the client transport for a downstream server config. For an HTTP downstream it
+// TransportFor builds the client transport for a downstream server config. For an HTTP downstream it
 // injects the configured credential (bearer/header) — FAIL CLOSED: a scheme that needs a credential
 // which is empty returns an error, so the proxy never silently connects unauthenticated.
-func transportFor(kind, target string, a Auth) (mcp.Transport, error) {
+func TransportFor(kind, target string, a Auth) (mcp.Transport, error) {
 	switch kind {
 	case "stdio":
 		fields := strings.Fields(target)
@@ -154,7 +154,7 @@ func httpAuth(target string, a Auth) (endpoint string, client *http.Client, err 
 // lists then closes), the gating proxy keeps this session open to forward cleared calls. Fail-closed:
 // any connect/list-tools error returns no session.
 func Connect(ctx context.Context, kind, target string, a Auth) (*mcp.ClientSession, []*mcp.Tool, []*mcp.Resource, error) {
-	t, err := transportFor(kind, target, a)
+	t, err := TransportFor(kind, target, a)
 	if err != nil {
 		return nil, nil, nil, err
 	}

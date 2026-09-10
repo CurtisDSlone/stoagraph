@@ -1,4 +1,4 @@
-package oauth
+package oauth_test
 
 // kw-test: token-endpoint client auth is PER-PROVIDER — basic vs post, negotiated from metadata + fallback
 
@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/oauth"
 )
 
 // asServing stands up an authorization server that advertises `methods` and accepts ONLY `accept`.
@@ -33,11 +35,11 @@ func asServing(t *testing.T, methods []string, accept string, used *string) *htt
 		var method string
 		switch {
 		case hasBasic:
-			method = authBasic
+			method = oauth.AuthBasic
 		case r.Form.Get("client_secret") != "":
-			method = authPost
+			method = oauth.AuthPost
 		default:
-			method = authNone
+			method = oauth.AuthNone
 		}
 		*used = method
 
@@ -47,7 +49,7 @@ func asServing(t *testing.T, methods []string, accept string, used *string) *htt
 			writeJSON(w, map[string]any{"error": "invalid_client"})
 			return
 		}
-		if method == authBasic && (id == "" || secret == "") {
+		if method == oauth.AuthBasic && (id == "" || secret == "") {
 			w.WriteHeader(http.StatusUnauthorized)
 			writeJSON(w, map[string]any{"error": "invalid_client"})
 			return
@@ -65,27 +67,27 @@ func asServing(t *testing.T, methods []string, accept string, used *string) *htt
 // would have been rejected with invalid_client and never recovered.
 func TestTokenAuthBasicOnlyProvider(t *testing.T) {
 	var used string
-	srv := asServing(t, []string{authBasic}, authBasic, &used)
+	srv := asServing(t, []string{oauth.AuthBasic}, oauth.AuthBasic, &used)
 	defer srv.Close()
 	ctx := context.Background()
 
-	cfg, err := Discover(ctx, srv.Client(), srv.URL)
+	cfg, err := oauth.Discover(ctx, srv.Client(), srv.URL)
 	if err != nil {
 		t.Fatalf("discover: %v", err)
 	}
-	if cfg.TokenAuthMethod != authBasic {
+	if cfg.TokenAuthMethod != oauth.AuthBasic {
 		t.Fatalf("discovery must adopt the provider's advertised method, got %q", cfg.TokenAuthMethod)
 	}
 	cfg.ClientID, cfg.ClientSecret = "cid", "csecret"
 
-	tok, err := cfg.Exchange(ctx, srv.Client(), "http://localhost:8080"+CallbackPath, "code", "verifier")
+	tok, err := cfg.Exchange(ctx, srv.Client(), "http://localhost:8080"+oauth.CallbackPath, "code", "verifier")
 	if err != nil {
 		t.Fatalf("a Basic-only provider must be handled: %v", err)
 	}
-	if used != authBasic {
+	if used != oauth.AuthBasic {
 		t.Fatalf("expected Basic auth on the token request, used %q", used)
 	}
-	if tok.AccessToken != "at-"+authBasic {
+	if tok.AccessToken != "at-"+oauth.AuthBasic {
 		t.Fatalf("unexpected token: %q", tok.AccessToken)
 	}
 }
@@ -93,19 +95,19 @@ func TestTokenAuthBasicOnlyProvider(t *testing.T) {
 // TestTokenAuthPostProvider — the other side: a provider that takes the secret in the body.
 func TestTokenAuthPostProvider(t *testing.T) {
 	var used string
-	srv := asServing(t, []string{authPost}, authPost, &used)
+	srv := asServing(t, []string{oauth.AuthPost}, oauth.AuthPost, &used)
 	defer srv.Close()
 	ctx := context.Background()
 
-	cfg, err := Discover(ctx, srv.Client(), srv.URL)
+	cfg, err := oauth.Discover(ctx, srv.Client(), srv.URL)
 	if err != nil {
 		t.Fatalf("discover: %v", err)
 	}
 	cfg.ClientID, cfg.ClientSecret = "cid", "csecret"
-	if _, err := cfg.Exchange(ctx, srv.Client(), "http://x"+CallbackPath, "code", "v"); err != nil {
+	if _, err := cfg.Exchange(ctx, srv.Client(), "http://x"+oauth.CallbackPath, "code", "v"); err != nil {
 		t.Fatalf("post provider: %v", err)
 	}
-	if used != authPost {
+	if used != oauth.AuthPost {
 		t.Fatalf("expected form-body auth, used %q", used)
 	}
 }
@@ -114,11 +116,11 @@ func TestTokenAuthPostProvider(t *testing.T) {
 // the body first, get invalid_client, and must recover by retrying with Basic rather than giving up.
 func TestTokenAuthUndeclaredFallsBack(t *testing.T) {
 	var used string
-	srv := asServing(t, nil, authBasic, &used) // no metadata about auth methods
+	srv := asServing(t, nil, oauth.AuthBasic, &used) // no metadata about auth methods
 	defer srv.Close()
 	ctx := context.Background()
 
-	cfg, err := Discover(ctx, srv.Client(), srv.URL)
+	cfg, err := oauth.Discover(ctx, srv.Client(), srv.URL)
 	if err != nil {
 		t.Fatalf("discover: %v", err)
 	}
@@ -127,11 +129,11 @@ func TestTokenAuthUndeclaredFallsBack(t *testing.T) {
 	}
 	cfg.ClientID, cfg.ClientSecret = "cid", "csecret"
 
-	tok, err := cfg.Exchange(ctx, srv.Client(), "http://x"+CallbackPath, "code", "v")
+	tok, err := cfg.Exchange(ctx, srv.Client(), "http://x"+oauth.CallbackPath, "code", "v")
 	if err != nil {
 		t.Fatalf("must fall back to Basic when the body form is refused: %v", err)
 	}
-	if used != authBasic {
+	if used != oauth.AuthBasic {
 		t.Fatalf("fallback should have landed on Basic, used %q", used)
 	}
 	if tok.AccessToken == "" {
@@ -152,8 +154,8 @@ func TestTokenAuthNoRetryOnBadGrant(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	cfg := Config{TokenEndpoint: srv.URL + "/token", ClientID: "cid", ClientSecret: "csecret"}
-	if _, err := cfg.Exchange(context.Background(), srv.Client(), "http://x"+CallbackPath, "spent", "v"); err == nil {
+	cfg := oauth.Config{TokenEndpoint: srv.URL + "/token", ClientID: "cid", ClientSecret: "csecret"}
+	if _, err := cfg.Exchange(context.Background(), srv.Client(), "http://x"+oauth.CallbackPath, "spent", "v"); err == nil {
 		t.Fatal("an invalid_grant must fail")
 	}
 	if attempts != 1 {

@@ -77,7 +77,34 @@ func main() {
 	defer st.Close()
 	ctx := context.Background()
 
-	recipes := recipestore.Store{Dir: *recipesDir}
+	recipes := recipestore.Store{
+		Dir: *recipesDir,
+		// Plumbing for a future tools:/providers: validation step — not yet called by Validate/Save.
+		// Real closures over the already-open config store, not stubs, so the capability is proven
+		// live the moment something calls it.
+		Servers: func(name string) (recipestore.Server, error) {
+			sv, err := st.GetMCPServer(ctx, name)
+			if err != nil {
+				return recipestore.Server{}, err
+			}
+			names := make([]string, len(sv.Tools))
+			for i, t := range sv.Tools {
+				names[i] = t.Name
+			}
+			return recipestore.Server{Name: sv.Name, Tools: names}, nil
+		},
+		Providers: func() ([]string, error) {
+			provs, err := st.ListProviders(ctx)
+			if err != nil {
+				return nil, err
+			}
+			names := make([]string, len(provs))
+			for i, p := range provs {
+				names[i] = p.Name
+			}
+			return names, nil
+		},
+	}
 	// Only an explicit -recipe seed authors a policy and a route. With no seed the store and the route
 	// table stay EMPTY: the gate governs nothing and forwards nothing. Fail-closed is the fresh-install
 	// default too — a security control must not arrive already permitting something you never wrote.

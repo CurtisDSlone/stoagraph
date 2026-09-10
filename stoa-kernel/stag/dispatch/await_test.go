@@ -1,4 +1,4 @@
-package dispatch
+package dispatch_test
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/dispatch"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
 )
 
@@ -50,7 +51,7 @@ func (p *pollTransport) Call(_ context.Context, _ proxy.ToolCall) (string, error
 func TestAwaitStopsWhenTheConditionHolds(t *testing.T) {
 	g := &stubGate{decide: allowAll}
 	tr := &pollTransport{settleAt: 3}
-	res := Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(6, 1)})
+	res := dispatch.Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(6, 1)})
 	if !res.Complete {
 		t.Fatalf("a converging poll must complete: %+v", res)
 	}
@@ -67,7 +68,7 @@ func TestAwaitStopsWhenTheConditionHolds(t *testing.T) {
 func TestAwaitExhaustionHalts(t *testing.T) {
 	g := &stubGate{decide: allowAll}
 	tr := &pollTransport{settleAt: 999} // never settles
-	res := Execute(context.Background(), g, tr, []stag.AuthorizedCall{
+	res := dispatch.Execute(context.Background(), g, tr, []stag.AuthorizedCall{
 		awaitCall(4, 1),
 		{StepID: "after", Tool: "later", Args: map[string]string{"a": "b"}},
 	})
@@ -90,7 +91,7 @@ func TestAwaitExhaustionHalts(t *testing.T) {
 func TestEveryAttemptReCrossesTheGate(t *testing.T) {
 	g := &stubGate{decide: allowAll}
 	tr := &pollTransport{settleAt: 3}
-	Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(6, 1)})
+	dispatch.Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(6, 1)})
 	if len(g.seen) != 3 {
 		t.Errorf("each attempt must re-cross the gate: %d crossings for 3 attempts", len(g.seen))
 	}
@@ -109,7 +110,7 @@ func TestGateRefusalMidPollHaltsImmediately(t *testing.T) {
 		return allowAll(c)
 	}}
 	tr := &pollTransport{settleAt: 999}
-	res := Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(8, 1)})
+	res := dispatch.Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(8, 1)})
 	if res.Complete || res.HaltedAt != "settle" {
 		t.Errorf("a refusal mid-poll must halt: %+v", res)
 	}
@@ -123,7 +124,7 @@ func TestGateRefusalMidPollHaltsImmediately(t *testing.T) {
 func TestTransportFailureMidPollHalts(t *testing.T) {
 	g := &stubGate{decide: allowAll}
 	tr := &pollTransport{err: errors.New("downstream gone")}
-	res := Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(5, 1)})
+	res := dispatch.Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(5, 1)})
 	if res.Complete {
 		t.Fatal("a failing poll must halt")
 	}
@@ -137,7 +138,7 @@ func TestAwaitHonoursItsInterval(t *testing.T) {
 	g := &stubGate{decide: allowAll}
 	tr := &pollTransport{settleAt: 3}
 	start := time.Now()
-	Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(6, 40)})
+	dispatch.Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(6, 40)})
 	// 3 attempts => 2 waits
 	if el := time.Since(start); el < 60*time.Millisecond {
 		t.Errorf("the interval must be honoured between attempts: %v", el)
@@ -151,7 +152,7 @@ func TestAwaitStopsOnCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	res := Execute(ctx, g, tr, []stag.AuthorizedCall{awaitCall(32, 1000)})
+	res := dispatch.Execute(ctx, g, tr, []stag.AuthorizedCall{awaitCall(32, 1000)})
 	if res.Complete {
 		t.Error("a cancelled poll is not complete")
 	}
@@ -164,7 +165,7 @@ func TestAwaitStopsOnCancellation(t *testing.T) {
 func TestOrdinaryCallIsStillOneAttempt(t *testing.T) {
 	g := &stubGate{decide: allowAll}
 	tr := &pollTransport{settleAt: 999}
-	res := Execute(context.Background(), g, tr, []stag.AuthorizedCall{
+	res := dispatch.Execute(context.Background(), g, tr, []stag.AuthorizedCall{
 		{StepID: "one", Tool: "t", Args: map[string]string{"a": "b"}}})
 	if !res.Complete || tr.calls != 1 {
 		t.Errorf("an invoke is one call: complete=%v calls=%d", res.Complete, tr.calls)

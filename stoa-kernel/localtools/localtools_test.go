@@ -1,4 +1,4 @@
-package localtools
+package localtools_test
 
 // kw-test: no shell, no injection, declared args only, secrets scrubbed, timeouts enforced
 
@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/localtools"
 )
 
 func write(t *testing.T, dir, name, body string) string {
@@ -31,7 +33,7 @@ func TestRefusesShellEvaluation(t *testing.T) {
 		"tools:\n  - name: run\n    command: [pwsh, -Command, \"{cmd}\"]\n    args: {cmd: {}}\n",
 	} {
 		p := write(t, dir, "tools.yaml", src)
-		_, err := Load(p)
+		_, err := localtools.Load(p)
 		if err == nil {
 			t.Fatalf("a shell with a placeholder in its script argument must be REFUSED:\n%s", src)
 		}
@@ -44,7 +46,7 @@ func TestRefusesShellEvaluation(t *testing.T) {
 func TestRefusesModelChosenCommand(t *testing.T) {
 	p := write(t, t.TempDir(), "tools.yaml",
 		"tools:\n  - name: run\n    command: [\"{prog}\", --version]\n    args: {prog: {}}\n")
-	_, err := Load(p)
+	_, err := localtools.Load(p)
 	if err == nil || !strings.Contains(err.Error(), "argv[0]") {
 		t.Fatalf("a placeholder in argv[0] lets the model pick the program; must be refused. got: %v", err)
 	}
@@ -53,11 +55,11 @@ func TestRefusesModelChosenCommand(t *testing.T) {
 func TestRefusesUndeclaredAndUnusedArgs(t *testing.T) {
 	dir := t.TempDir()
 	p := write(t, dir, "a.yaml", "tools:\n  - name: t\n    command: [echo, \"{ghost}\"]\n    args: {}\n")
-	if _, err := Load(p); err == nil || !strings.Contains(err.Error(), "does not declare") {
+	if _, err := localtools.Load(p); err == nil || !strings.Contains(err.Error(), "does not declare") {
 		t.Fatalf("an undeclared placeholder must be refused, got: %v", err)
 	}
 	p = write(t, dir, "b.yaml", "tools:\n  - name: t\n    command: [echo, hi]\n    args: {unused: {}}\n")
-	if _, err := Load(p); err == nil || !strings.Contains(err.Error(), "never uses") {
+	if _, err := localtools.Load(p); err == nil || !strings.Contains(err.Error(), "never uses") {
 		t.Fatalf("a declared-but-unused arg must be refused, got: %v", err)
 	}
 }
@@ -72,7 +74,7 @@ func TestInjectionPayloadsAreOneArgument(t *testing.T) {
 	// `printf %s` echoes its argument back EXACTLY, so whatever we see is precisely what execve received.
 	p := write(t, dir, "tools.yaml",
 		"tools:\n  - name: echo_arg\n    command: [printf, \"%s\", \"{value}\"]\n    args: {value: {}}\n")
-	cfg, err := Load(p)
+	cfg, err := localtools.Load(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +106,7 @@ func TestInjectionPayloadsAreOneArgument(t *testing.T) {
 func TestRejectsUndeclaredArgAtRun(t *testing.T) {
 	p := write(t, t.TempDir(), "tools.yaml",
 		"tools:\n  - name: t\n    command: [printf, \"%s\", \"{a}\"]\n    args: {a: {}}\n")
-	cfg, _ := Load(p)
+	cfg, _ := localtools.Load(p)
 	tool, _ := cfg.Find("t")
 	if _, err := cfg.Run(context.Background(), tool, map[string]string{"a": "x", "b": "y"}); err == nil {
 		t.Fatal("the model must not be able to invent parameters")
@@ -127,7 +129,7 @@ func TestSecretsAreScrubbedFromTheEnvironment(t *testing.T) {
 	p := write(t, t.TempDir(), "tools.yaml",
 		"env_allow: [MY_TOOL_KEY]\n"+
 			"tools:\n  - name: dump\n    command: [env]\n    args: {}\n")
-	cfg, err := Load(p)
+	cfg, err := localtools.Load(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +158,7 @@ func TestSecretsAreScrubbedFromTheEnvironment(t *testing.T) {
 func TestTimeoutKillsAHangingTool(t *testing.T) {
 	p := write(t, t.TempDir(), "tools.yaml",
 		"timeout: 300ms\ntools:\n  - name: hang\n    command: [sleep, \"30\"]\n    args: {}\n")
-	cfg, err := Load(p)
+	cfg, err := localtools.Load(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +177,7 @@ func TestTimeoutKillsAHangingTool(t *testing.T) {
 func TestNonZeroExitIsAResultNotAnError(t *testing.T) {
 	p := write(t, t.TempDir(), "tools.yaml",
 		"tools:\n  - name: fail\n    command: [sh, -c, \"exit 3\"]\n    args: {}\n") // no placeholder => allowed
-	cfg, err := Load(p)
+	cfg, err := localtools.Load(p)
 	if err != nil {
 		t.Fatalf("a shell with NO placeholder is operator-authored and fine: %v", err)
 	}

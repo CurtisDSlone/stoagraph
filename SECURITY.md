@@ -133,7 +133,11 @@ Being explicit here is the point.
 - **A permissive recipe.** StoaGraph enforces *your* policy faithfully; it does not invent policy. A
   recipe that allows a dangerous action will allow it. **Review recipes like firewall rules.**
 - **A compromised host or config store.** Anyone who can write the config store (recipes, routes) or the
-  host running the gate can change policy. Protect them as trusted infrastructure.
+  host running the gate can change policy. Protect them as trusted infrastructure. A recipe edit at
+  least changes `RecipeHash`, which rides every decision into the signed log — a route edit does not:
+  the tool name, the recipe, and the gateArg can all stay identical while the `server` a cleared call
+  is actually forwarded to changes underneath them. The audit then reads as unchanged for a change
+  that is not. See [routes.md](docs/routes.md#what-lands-in-the-record).
 - **A compromised downstream tool server.** The gate controls *which calls* reach a downstream and *with
   what arguments*; it does not sandbox what that server does with a cleared call.
 - **Audit tampering (prevention).** The log is tamper-**evident** (detectable), not tamper-**proof**.

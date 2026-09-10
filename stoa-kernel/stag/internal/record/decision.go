@@ -32,6 +32,11 @@ type DecisionRecord struct {
 	RecipeHash string
 	Fault      string         // why it was not allowed ("" when allowed)
 	Events     []ReleaseEvent // crossings actually released; ALWAYS empty unless Forwarded
+	// Sinks is every sink the recipe evaluated on this call — benign sinks included, which never
+	// produce a ReleaseEvent (a benign sink never releases) but still have a Field/Actor worth
+	// auditing. Same invariant as Events: ALWAYS empty unless Forwarded, since a sink on a call
+	// that never reached the tool did not happen.
+	Sinks []SinkOutcome
 }
 
 // kw: decision canonical hash tamper-evident leaf payload

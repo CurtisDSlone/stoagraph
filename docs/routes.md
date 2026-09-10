@@ -203,6 +203,19 @@ fails while `repo=stoagraph` passes), and recording that as a release would put 
 tamper-evident log **that never happened** — the audit would assert the agent read a repo the gate
 actually blocked. The record states what *happened*, never what merely *evaluated*.
 
+**What the record does not distinguish: which route produced the release.** A leaf carries the tool
+name and the recipe that cleared it — it does not carry the route's `server`/`tool` binding as it
+stood at the time. Change which server a route points at (swap the downstream, keep the tool name
+and the recipe the same), and the record for the next cleared call looks identical to the one
+before the change: same recipe, same hash, same gateArg passing, same tool name. **The policy reads
+as unchanged; where the call actually goes is not.** This is not a gap in the gate's enforcement —
+the recipe's rule still governs the value, and the value still has to clear it — it is a gap in what
+the audit trail alone can tell a reader about *routing* changes, as opposed to *policy* changes.
+Routes are config-store rows, protected the same way recipes are (see
+[SECURITY.md](../SECURITY.md#non-goals-what-stoagraph-does-not-protect-against) — "a compromised
+host or config store"), and a route edit is a security-relevant change for exactly this reason: read
+it like a firewall rule, not like a comment.
+
 ## Sequenced routes: bound, but not offered
 
 A route normally does two things at once — it makes a tool *reachable*, and it makes it *visible* in

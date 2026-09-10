@@ -128,7 +128,9 @@ steps:
   - {id: s, kind: sink, in: target, field: infra.reroute, sensitivity: authoritative, rule: tgt.ok, actor: "policy:reroute"}`)
 	route("scale_deployment", "namespace", `recipe: scale
 version: 1
-passthrough: ["replicas"]
+tools:
+  infra:
+    scale_deployment: {passthrough: ["replicas"]}
 rules:
   ns.safe: {kind: set_membership, set: ["staging", "dev"]}
 steps:

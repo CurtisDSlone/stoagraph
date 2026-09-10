@@ -58,6 +58,12 @@ type Event struct {
 	Args    string `json:"args,omitempty"`
 	Allowed bool   `json:"allowed"`
 	Result  string `json:"result,omitempty"`
+	// Sinks carries the recipe's emit sinks from the gate's _meta, on `verdict` events only.
+	// It rides the transcript rather than a widened CallGated signature because the harness
+	// already consumes this stream — and because the AGENT never reads Events. The model sees
+	// tool RESULTS; the transcript is the harness's channel, so orchestration data travelling
+	// here is not reachable by the untrusted proposer.
+	Sinks []map[string]any `json:"sinks,omitempty"`
 }
 
 // Run drives the model<->gate loop. emit streams transcript events. maxTurns bounds it. appr (may
@@ -81,36 +87,36 @@ func Run(ctx context.Context, model ToolModel, sess *mcp.ClientSession, maxTurns
 		results = nil
 		for _, c := range t.Calls {
 			emit(Event{Kind: "propose", Tool: c.Name, Args: compact(c.Input)})
-			out, isErr := callGated(ctx, sess, c, appr, emit)
-			emit(Event{Kind: "verdict", Tool: c.Name, Allowed: !isErr, Result: out})
+			out, isErr, sinks := CallGated(ctx, sess, c, appr, emit)
+			emit(Event{Kind: "verdict", Tool: c.Name, Allowed: !isErr, Result: out, Sinks: sinks})
 			results = append(results, ToolResult{CallID: c.ID, Content: out, IsError: isErr})
 		}
 	}
 	emit(Event{Kind: "done", Text: fmt.Sprintf("stopped after %d turns", maxTurns)})
 }
 
-// callGated routes one proposed call through the MCP session (stag-proxy). A gate denial comes back
+// CallGated routes one proposed call through the MCP session (stag-proxy). A gate denial comes back
 // as IsError; the call never reached the real downstream tool. When the gate ESCALATES an
 // approval-gated call and appr is set, the call is held: await a human decision, then replay it
 // VERBATIM (plus the signed token) on approval — the model does not re-decide.
-func callGated(ctx context.Context, sess *mcp.ClientSession, c ToolCall, appr *ApprovalConfig, emit func(Event)) (string, bool) {
+func CallGated(ctx context.Context, sess *mcp.ClientSession, c ToolCall, appr *ApprovalConfig, emit func(Event)) (string, bool, []map[string]any) {
 	var args map[string]any
 	_ = json.Unmarshal(c.Input, &args)
 	res, err := sess.CallTool(ctx, &mcp.CallToolParams{Name: c.Name, Arguments: args})
 	if err != nil {
-		return fmt.Sprintf("transport error: %v", err), true
+		return fmt.Sprintf("transport error: %v", err), true, nil
 	}
 
 	if appr != nil {
-		if id, ok := escalationID(res); ok {
+		if id, ok := EscalationID(res); ok {
 			emit(Event{Kind: "await", Tool: c.Name, Result: "escalated — awaiting human approval (" + id + ")"})
-			token, status, werr := appr.await(ctx, id)
+			token, status, werr := appr.Await(ctx, id)
 			if werr != nil {
-				return "approval wait error: " + werr.Error(), true
+				return "approval wait error: " + werr.Error(), true, nil
 			}
 			if status != "approved" {
 				emit(Event{Kind: "await", Tool: c.Name, Allowed: false, Result: "approval " + status})
-				return fmt.Sprintf("action not performed — approval %s", status), true
+				return fmt.Sprintf("action not performed — approval %s", status), true, nil
 			}
 			emit(Event{Kind: "retry", Tool: c.Name, Allowed: true, Result: "approved — replaying with signed release"})
 			retry := make(map[string]any, len(args)+1)
@@ -120,12 +126,45 @@ func callGated(ctx context.Context, sess *mcp.ClientSession, c ToolCall, appr *A
 			retry["approval_token"] = token
 			res2, err2 := sess.CallTool(ctx, &mcp.CallToolParams{Name: c.Name, Arguments: retry})
 			if err2 != nil {
-				return "retry transport error: " + err2.Error(), true
+				return "retry transport error: " + err2.Error(), true, nil
 			}
-			return textOf(res2), res2.IsError
+			return textOf(res2), res2.IsError, sinksOf(res2)
 		}
 	}
-	return textOf(res), res.IsError
+	return textOf(res), res.IsError, sinksOf(res)
+}
+
+// sinksOf reads the gate's emit sinks out of a tool result's protocol-reserved _meta.
+// Absent or malformed metadata yields NO sinks — an unreadable stamp is not an emit.
+// kw: sinks meta emit orchestration read-back fail-closed
+func sinksOf(res *mcp.CallToolResult) []map[string]any {
+	if res == nil || res.Meta == nil {
+		return nil
+	}
+	stagMeta, ok := res.Meta["stag"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	raw, ok := stagMeta["sinks"]
+	if !ok {
+		return nil
+	}
+	// The value survives JSON transport as []any of map[string]any; accept the native
+	// shape too, so an in-process gate and a wire gate behave identically.
+	if direct, ok := raw.([]map[string]any); ok {
+		return direct
+	}
+	list, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(list))
+	for _, item := range list {
+		if m, ok := item.(map[string]any); ok {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // textOf concatenates the text content blocks of a tool result.
@@ -151,7 +190,7 @@ func Connect(ctx context.Context, proxyCmd string) (*mcp.ClientSession, []Tool, 
 	if err != nil {
 		return nil, nil, err
 	}
-	tools, err := listTools(ctx, sess)
+	tools, err := ListTools(ctx, sess)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -166,15 +205,15 @@ func Connect(ctx context.Context, proxyCmd string) (*mcp.ClientSession, []Tool, 
 // fork/exec the URL as a program — it fails with "no such file or directory", which reads as a missing
 // binary rather than the transport mismatch it is. One entry point, so a caller cannot pick wrong.
 func ConnectAuto(ctx context.Context, target string) (*mcp.ClientSession, []Tool, error) {
-	if isHTTPEndpoint(target) {
+	if IsHTTPEndpoint(target) {
 		return ConnectHTTP(ctx, target)
 	}
 	return Connect(ctx, target)
 }
 
 // kw: http endpoint detect url scheme transport-choice
-// isHTTPEndpoint reports whether target names a daemon endpoint rather than a command to spawn.
-func isHTTPEndpoint(target string) bool {
+// IsHTTPEndpoint reports whether target names a daemon endpoint rather than a command to spawn.
+func IsHTTPEndpoint(target string) bool {
 	t := strings.TrimSpace(target)
 	return strings.HasPrefix(t, "http://") || strings.HasPrefix(t, "https://")
 }
@@ -188,15 +227,15 @@ func ConnectHTTP(ctx context.Context, endpoint string) (*mcp.ClientSession, []To
 	if err != nil {
 		return nil, nil, err
 	}
-	tools, err := listTools(ctx, sess)
+	tools, err := ListTools(ctx, sess)
 	if err != nil {
 		return nil, nil, err
 	}
 	return sess, tools, nil
 }
 
-// listTools reads the session's tools/list into the agent's Tool shape; closes the session on error.
-func listTools(ctx context.Context, sess *mcp.ClientSession) ([]Tool, error) {
+// ListTools reads the session's tools/list into the agent's Tool shape; closes the session on error.
+func ListTools(ctx context.Context, sess *mcp.ClientSession) ([]Tool, error) {
 	lt, err := sess.ListTools(ctx, nil)
 	if err != nil {
 		_ = sess.Close()

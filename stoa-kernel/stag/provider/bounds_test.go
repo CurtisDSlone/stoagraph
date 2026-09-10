@@ -1,8 +1,10 @@
-package provider
+package provider_test
 
 import (
 	"os"
 	"testing"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
 )
 
 // HOW MUCH untrusted content may enter the model's context is a bound the GATE owns, not a
@@ -13,19 +15,19 @@ import (
 // rest of the corpus arriving because nobody chose.
 
 func TestReadBoundsDefault(t *testing.T) {
-	b := Bounds()
-	if b.K != DefaultK {
-		t.Errorf("default k: %d, want %d", b.K, DefaultK)
+	b := provider.Bounds()
+	if b.K != provider.DefaultK {
+		t.Errorf("default k: %d, want %d", b.K, provider.DefaultK)
 	}
-	if b.MaxChars != DefaultMaxChars {
-		t.Errorf("default max_chars: %d, want %d", b.MaxChars, DefaultMaxChars)
+	if b.MaxChars != provider.DefaultMaxChars {
+		t.Errorf("default max_chars: %d, want %d", b.MaxChars, provider.DefaultMaxChars)
 	}
 }
 
 func TestReadBoundsFromEnv(t *testing.T) {
 	t.Setenv("STOA_READ_K", "5")
 	t.Setenv("STOA_READ_MAX_CHARS", "8000")
-	b := Bounds()
+	b := provider.Bounds()
 	if b.K != 5 || b.MaxChars != 8000 {
 		t.Errorf("env override: %+v", b)
 	}
@@ -53,8 +55,8 @@ func TestReadBoundsFailSafe(t *testing.T) {
 			if c.mc != "" {
 				t.Setenv("STOA_READ_MAX_CHARS", c.mc)
 			}
-			b := Bounds()
-			if b.K != DefaultK || b.MaxChars != DefaultMaxChars {
+			b := provider.Bounds()
+			if b.K != provider.DefaultK || b.MaxChars != provider.DefaultMaxChars {
 				t.Errorf("%s: must fall back to the defaults, got %+v", c.name, b)
 			}
 		})
@@ -64,10 +66,10 @@ func TestReadBoundsFailSafe(t *testing.T) {
 // The ceiling is reachable, so an operator who genuinely needs more can have it — up to a point
 // the gate sets, not the configuration.
 func TestReadBoundsCeilingIsInclusive(t *testing.T) {
-	t.Setenv("STOA_READ_K", itoa(MaxK))
-	t.Setenv("STOA_READ_MAX_CHARS", itoa(MaxMaxChars))
-	b := Bounds()
-	if b.K != MaxK || b.MaxChars != MaxMaxChars {
+	t.Setenv("STOA_READ_K", itoa(provider.MaxK))
+	t.Setenv("STOA_READ_MAX_CHARS", itoa(provider.MaxMaxChars))
+	b := provider.Bounds()
+	if b.K != provider.MaxK || b.MaxChars != provider.MaxMaxChars {
 		t.Errorf("ceiling must be reachable: %+v", b)
 	}
 }

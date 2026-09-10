@@ -79,7 +79,34 @@ func main() {
 	st, err := store.Open(*storePath)
 	die(err)
 	defer st.Close()
-	recipes := recipestore.Store{Dir: *recipesDir}
+	recipes := recipestore.Store{
+		Dir: *recipesDir,
+		// Plumbing for a future tools:/providers: validation step — not yet called by Validate/Save.
+		// Same wiring as cmd/stag-serve/main.go; kept in lockstep since both processes share the
+		// same config store and both construct a recipestore.Store from it.
+		Servers: func(name string) (recipestore.Server, error) {
+			sv, serr := st.GetMCPServer(ctx, name)
+			if serr != nil {
+				return recipestore.Server{}, serr
+			}
+			names := make([]string, len(sv.Tools))
+			for i, t := range sv.Tools {
+				names[i] = t.Name
+			}
+			return recipestore.Server{Name: sv.Name, Tools: names}, nil
+		},
+		Providers: func() ([]string, error) {
+			provs, perr := st.ListProviders(ctx)
+			if perr != nil {
+				return nil, perr
+			}
+			names := make([]string, len(provs))
+			for i, p := range provs {
+				names[i] = p.Name
+			}
+			return names, nil
+		},
+	}
 	oauthStore := oauth.Store{Dir: *oauthDir}
 
 	// egress sink (SHARED): resume the hash chain; refuse to append to a tampered log. One process
@@ -266,7 +293,7 @@ func awaitFleet(ctx context.Context, st *store.Store, oauthStore oauth.Store, on
 			return mcpgate.NewFleet(downs), downs
 		}
 		if attempt == 0 {
-			log.Printf("no MCP server reachable yet — waiting. Register one in the console (Adapters). Retrying every %s.", retry)
+			log.Printf("no MCP server reachable yet — waiting. Register one: POST /api/mcp-servers. Retrying every %s.", retry)
 		}
 		time.Sleep(retry)
 	}

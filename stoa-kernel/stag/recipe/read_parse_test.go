@@ -1,13 +1,16 @@
-package recipe
+package recipe_test
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipe"
 )
 
 const readSrc = `
 recipe: maint_brief
 version: 1
+providers: ["runbooks"]
 rules:
   topic.allowed: {kind: set_membership, set: ["drain", "rollout"]}
   node.worker:   {kind: set_membership, set: ["kind-worker"]}
@@ -20,7 +23,7 @@ steps:
 `
 
 func TestReadParses(t *testing.T) {
-	p, err := Parse([]byte(readSrc))
+	p, err := recipe.Parse([]byte(readSrc))
 	if err != nil {
 		t.Fatalf("a valid read recipe must parse: %v", err)
 	}
@@ -35,12 +38,12 @@ func TestReadParses(t *testing.T) {
 
 // WHICH source and WHAT may be asked are both part of the policy's identity.
 func TestReadRidesInSemanticHash(t *testing.T) {
-	base, err := Parse([]byte(readSrc))
+	base, err := recipe.Parse([]byte(readSrc))
 	if err != nil {
 		t.Fatal(err)
 	}
 	// a different SOURCE, gated identically
-	other, err := Parse([]byte(strings.Replace(readSrc, "provider: runbooks", "provider: incidents", 1)))
+	other, err := recipe.Parse([]byte(strings.ReplaceAll(readSrc, "runbooks", "incidents")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,6 +56,7 @@ func TestReadRidesInSemanticHash(t *testing.T) {
 	const narrow = `
 recipe: q
 version: 1
+providers: ["runbooks"]
 rules:
   narrow: {kind: set_membership, set: ["drain"]}
   wide:   {kind: set_membership, set: ["drain", "anything"]}
@@ -61,11 +65,11 @@ steps:
   - {id: rd, kind: read, provider: runbooks, query: {slot: t, rule: narrow}}
   - {id: s, kind: sink, in: t, field: f, sensitivity: authoritative, rule: wide, actor: x}
 `
-	pn, err := Parse([]byte(narrow))
+	pn, err := recipe.Parse([]byte(narrow))
 	if err != nil {
 		t.Fatal(err)
 	}
-	pw, err := Parse([]byte(strings.Replace(
+	pw, err := recipe.Parse([]byte(strings.Replace(
 		strings.Replace(narrow, "rule: narrow}}", "rule: wide}}", 1),
 		"rule: wide, actor", "rule: narrow, actor", 1)))
 	if err != nil {
@@ -88,7 +92,7 @@ func TestReadRejectsMalformed(t *testing.T) {
 		{"illegal key", strings.Replace(readSrc, "provider: runbooks,", "provider: runbooks, sensitivity: authoritative,", 1)},
 	}
 	for _, c := range cases {
-		if _, err := Parse([]byte(c.src)); err == nil {
+		if _, err := recipe.Parse([]byte(c.src)); err == nil {
 			t.Errorf("%s: must be rejected", c.name)
 		}
 	}
@@ -100,6 +104,7 @@ func TestReadInsideForeachRejected(t *testing.T) {
 	src := `
 recipe: r
 version: 1
+providers: ["x"]
 rules:
   ok: {kind: set_membership, set: ["a"]}
 steps:
@@ -107,7 +112,7 @@ steps:
   - {id: fe, kind: foreach, in: list, as: item}
   - {id: rd, kind: read, provider: x, query: {slot: item, rule: ok}}
 `
-	_, err := Parse([]byte(src))
+	_, err := recipe.Parse([]byte(src))
 	if err == nil {
 		t.Fatal("a read inside a foreach must be rejected")
 	}
@@ -122,6 +127,7 @@ func TestDuplicateProviderRejected(t *testing.T) {
 	src := `
 recipe: r
 version: 1
+providers: ["runbooks"]
 rules:
   ok: {kind: set_membership, set: ["a"]}
 steps:
@@ -129,7 +135,7 @@ steps:
   - {id: r1, kind: read, provider: runbooks, query: {slot: t, rule: ok}}
   - {id: r2, kind: read, provider: runbooks, query: {slot: t, rule: ok}}
 `
-	if _, err := Parse([]byte(src)); err == nil {
+	if _, err := recipe.Parse([]byte(src)); err == nil {
 		t.Error("two reads of one provider must be rejected")
 	}
 }

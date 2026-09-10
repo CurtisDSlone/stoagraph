@@ -1,4 +1,4 @@
-package provider
+package provider_test
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
 )
 
 // A `read` step GATES the outbound query, so a provider that silently discards it would make the
@@ -29,7 +31,7 @@ func staticDir(t *testing.T) string {
 
 // An EMPTY query returns the whole bundle — the existing behaviour, unchanged.
 func TestStaticEmptyQueryReturnsEverything(t *testing.T) {
-	s, err := NewStatic("rb", staticDir(t))
+	s, err := provider.NewStatic("rb", staticDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +47,7 @@ func TestStaticEmptyQueryReturnsEverything(t *testing.T) {
 // A query SELECTS. Whole-bundle-always makes a gated query meaningless and puts an entire corpus
 // into the model's context on every read.
 func TestStaticQuerySelects(t *testing.T) {
-	s, err := NewStatic("rb", staticDir(t))
+	s, err := provider.NewStatic("rb", staticDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +71,7 @@ func TestStaticQuerySelects(t *testing.T) {
 // A query matching NOTHING is an honest empty read, not a silent whole-bundle fallback: falling
 // back would return everything precisely when the policy narrowed the question most.
 func TestStaticNoMatchIsEmptyNotEverything(t *testing.T) {
-	s, err := NewStatic("rb", staticDir(t))
+	s, err := provider.NewStatic("rb", staticDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +86,7 @@ func TestStaticNoMatchIsEmptyNotEverything(t *testing.T) {
 
 // Matching is case-insensitive: an author writing "Drain" in a rule should not miss "drain".
 func TestStaticMatchIsCaseInsensitive(t *testing.T) {
-	s, err := NewStatic("rb", staticDir(t))
+	s, err := provider.NewStatic("rb", staticDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}

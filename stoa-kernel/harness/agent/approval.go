@@ -48,9 +48,9 @@ func NewApprovalConfig(baseURL, token string) *ApprovalConfig {
 	}
 }
 
-// escalationID returns the approval id if this gate result is an approval-gated ESCALATE (i.e. the
+// EscalationID returns the approval id if this gate result is an approval-gated ESCALATE (i.e. the
 // call is held awaiting a human). It reads the structured gate metadata the proxy set in _meta.
-func escalationID(res *mcp.CallToolResult) (string, bool) {
+func EscalationID(res *mcp.CallToolResult) (string, bool) {
 	if res == nil || res.Meta == nil {
 		return "", false
 	}
@@ -75,9 +75,9 @@ type approvalStatus struct {
 	Token  string `json:"token"`  // present only when approved
 }
 
-// await polls until the approval is decided. It returns the signed token on approval, or a status
+// Await polls until the approval is decided. It returns the signed token on approval, or a status
 // ("denied" | "timeout" | "consumed") with an empty token otherwise.
-func (a *ApprovalConfig) await(ctx context.Context, id string) (token, status string, err error) {
+func (a *ApprovalConfig) Await(ctx context.Context, id string) (token, status string, err error) {
 	deadline := time.Now().Add(a.Timeout)
 	for {
 		st, gerr := a.get(ctx, id)

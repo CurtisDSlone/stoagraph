@@ -1,4 +1,4 @@
-package agent
+package agent_test
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/agent"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -20,7 +21,7 @@ import (
 //	httptest stag-serve: pending until "approved", handing back the token;
 //	an auto-approver flips the row after a beat.
 //
-// callGated must hold the escalated call, await approval, replay it VERBATIM + token, and return the
+// CallGated must hold the escalated call, await approval, replay it VERBATIM + token, and return the
 // downstream success — never re-proposing.
 func TestCallGatedApprovalLoop(t *testing.T) {
 	const approvalID = "appr-xyz"
@@ -70,12 +71,12 @@ func TestCallGatedApprovalLoop(t *testing.T) {
 	defer serve.Close()
 	go func() { time.Sleep(30 * time.Millisecond); approved.Store(true) }() // "a human approves"
 
-	appr := &ApprovalConfig{BaseURL: serve.URL, Poll: 5 * time.Millisecond, Timeout: 3 * time.Second, HTTP: serve.Client()}
+	appr := &agent.ApprovalConfig{BaseURL: serve.URL, Poll: 5 * time.Millisecond, Timeout: 3 * time.Second, HTTP: serve.Client()}
 
-	// --- drive the real callGated with the held call ---
-	var events []Event
-	call := ToolCall{ID: "c1", Name: "scale_deployment", Input: json.RawMessage(`{"namespace":"prod","replicas":"4","deployment":"web"}`)}
-	out, isErr := callGated(ctx, sess, call, appr, func(e Event) { events = append(events, e) })
+	// --- drive the real CallGated with the held call ---
+	var events []agent.Event
+	call := agent.ToolCall{ID: "c1", Name: "scale_deployment", Input: json.RawMessage(`{"namespace":"prod","replicas":"4","deployment":"web"}`)}
+	out, isErr, _ := agent.CallGated(ctx, sess, call, appr, func(e agent.Event) { events = append(events, e) })
 
 	if isErr {
 		t.Fatalf("approved retry must succeed, got error result: %q", out)

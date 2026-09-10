@@ -1,0 +1,55 @@
+# SCAN → EMIT — the first half of an orchestration chain.
+#
+# This policy judges a scan verdict and ANNOUNCES what it found. It does not fix anything:
+# the fixing is another recipe's job, under another recipe's policy, in another session.
+#
+# The announcement is a benign sink to `lifecycle.emit.<kind>`. The harness watches that
+# prefix, turns the sunk value into an event {source: orchestration, kind: <kind>}, and
+# re-routes it through the SAME event map an external webhook uses. So this recipe names
+# no successor and holds no authority over one — whether anything listens is a routing
+# decision in event_map.json, not a policy decision here.
+#
+# WHY A BENIGN SINK. gate.GateSink returns Allow for benign unconditionally: an emit can
+# never breach, because announcing is not acting. The value it carries is bounded by the
+# rule below (a closed set), which is what makes it safe to hand to the harness — the same
+# line proxy.redactedValue draws for an Allow verdict.
+#
+# The gated value is the FINDING CLASS, not free text, and BOTH arms are enumerated. A
+# scanner reporting anything outside these sets falls to a default that emits nothing —
+# unknown is not clean, and a chain that would have started on a value nobody enumerated
+# does not start. (An earlier draft made `clean` the default; the linter caught it as an
+# unreferenced rule, which is exactly the mistake that check is for.)
+recipe: scan_emit_policy
+version: 1
+rules:
+  finding.needs_fix: {kind: set_membership, set: ["sql_injection", "hardcoded_secret"]}
+  finding.clean:     {kind: set_membership, set: ["clean"]}
+steps:
+  - {id: propose_finding, kind: propose, out: finding}
+
+  # Branch on what the scan found. Each arm emits a DIFFERENT event kind, so the routing
+  # decision is made by the finding itself rather than by the agent that triggered this.
+  - id: route_finding
+    kind: branch
+    in: finding
+    cases:
+      - {rule: finding.needs_fix, goto: emit_fix_required}
+      - {rule: finding.clean, goto: emit_clean}
+    default: exit_unknown
+
+  # Something to fix: announce it. The next recipe (see event_map) reads this kind.
+  - {id: emit_fix_required, kind: sink, in: finding,
+     field: lifecycle.emit.code_fix_required, sensitivity: benign, goto: exit_emitted}
+  - {id: exit_emitted, kind: exit}
+
+  # Nothing to fix: announce THAT too, and let the map decide if anyone cares. An emit
+  # nothing routes to ends the chain quietly — silence and "no route" stay distinguishable
+  # in the audit, which they would not be if the clean path simply fell through.
+  - {id: emit_clean, kind: sink, in: finding,
+     field: lifecycle.emit.scan_clean, sensitivity: benign, goto: exit_clean}
+  - {id: exit_clean, kind: exit}
+
+  # A finding class nobody enumerated announces NOTHING. Falling through to the clean
+  # emit would have told the chain "all good" about a value the policy did not recognize,
+  # which is the failure mode this arm exists to avoid: unknown is not clean.
+  - {id: exit_unknown, kind: exit}

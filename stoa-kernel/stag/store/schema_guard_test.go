@@ -1,10 +1,12 @@
-package store
+package store_test
 
 import (
 	"context"
 	"database/sql"
 	"path/filepath"
 	"testing"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/store"
 )
 
 // The store is explicitly NO-MIGRATIONS ("edit the DDL and re-init"). Adding a column to an
@@ -31,7 +33,7 @@ func TestOpenRefusesARouteTableMissingSequenced(t *testing.T) {
 	}
 	db.Close()
 
-	s, err := Open(path)
+	s, err := store.Open(path)
 	if err == nil {
 		s.Close()
 		t.Fatal("Open must refuse a database whose route table predates `sequenced`")
@@ -44,7 +46,7 @@ func TestOpenRefusesARouteTableMissingSequenced(t *testing.T) {
 
 // A fresh database is unaffected.
 func TestOpenAcceptsAFreshDatabase(t *testing.T) {
-	s, err := Open(filepath.Join(t.TempDir(), "new.db"))
+	s, err := store.Open(filepath.Join(t.TempDir(), "new.db"))
 	if err != nil {
 		t.Fatalf("a fresh database must open: %v", err)
 	}

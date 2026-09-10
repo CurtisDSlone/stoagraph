@@ -116,14 +116,14 @@ type Sink interface {
 	Record(ctx context.Context, d stag.DecisionRecord) error
 }
 
-// kw: decision tool verdict forward value events fault approval-id
+// kw: decision tool verdict forward value events fault approval-id sinks emit orchestration
 type Decision struct {
-	Tool       string
-	Verdict    stag.Verdict
-	Forward    bool
-	Value      string
-	Events     []stag.ReleaseEvent
-	Fault      string
+	Tool    string
+	Verdict stag.Verdict
+	Forward bool
+	Value   string
+	Events  []stag.ReleaseEvent
+	Fault   string
 	// RuleFault: see stag.EvalResult.RuleFault. Distinct from Fault — a structural halt vs. a
 	// clean rule denial an agent could retry with a different value.
 	RuleFault  string
@@ -137,6 +137,9 @@ type Decision struct {
 	// refused decision authorizes nothing. Authorizing a call is not authority to make
 	// it — the executor re-crosses every one of these against that tool's own route.
 	Authorized []stag.AuthorizedCall
+	// Sinks from the recipe's evaluation (used for emit-as-sink detection). Only populated when
+	// the decision forwards (verdict Allow). Empty for deny/escalate/fault.
+	Sinks []stag.SinkOutcome
 }
 
 // Grant is a ONE-SHOT authorization for exactly one call: the tool, the arguments, and what
@@ -395,7 +398,7 @@ func (g Gate) Decide(ctx context.Context, call ToolCall) Decision {
 	// is currently approved; we ALWAYS substitute (token or "") so the placeholder never evals.
 	recipe := route.Recipe
 	fingerprint, approvedID := "", ""
-	needsApproval := g.Approvals != nil && recipeHasApprovalGate(route.Recipe)
+	needsApproval := g.Approvals != nil && RecipeHasApprovalGate(route.Recipe)
 	if needsApproval {
 		// fingerprint binds the WHOLE action (all call args, minus the token), not just the gated
 		// subset — so an approval authorizes exactly this call, not every call sharing a gated value.
@@ -404,7 +407,7 @@ func (g Gate) Decide(ctx context.Context, call ToolCall) Decision {
 		if tok, id, okA, err := g.Approvals.LookupApproved(ctx, fingerprint); err == nil && okA {
 			token, approvedID = tok, id
 		}
-		recipe = resolveApproved(route.Recipe, token)
+		recipe = ResolveApproved(route.Recipe, token)
 	}
 
 	res, everr := evalSlots(recipe, slots, route.RecipeHash, strings.Contains(route.GateArg, ","))
@@ -451,6 +454,7 @@ func (g Gate) Decide(ctx context.Context, call ToolCall) Decision {
 	d.Reads = res.Reads
 	if forward {
 		d.Authorized = res.Authorized
+		d.Sinks = res.Sinks // include sinks for emit-as-sink detection
 		// The grant was already claimed (removed) at the start; forwarding KEEPS it spent.
 	} else {
 		// a refused call did not happen, so the authorization is still owed
@@ -483,8 +487,11 @@ func (g Gate) record(ctx context.Context, d Decision, recipeName, recipeHash str
 		RecipeHash: recipeHash,
 		Fault:      d.Fault,
 	}
-	if d.Forward { // released iff forwarded
+	if d.Forward { // released, and sunk, iff forwarded — a call that never happened logged nothing
 		rec.Events = d.Events
+		for _, so := range d.Sinks {
+			rec.Sinks = append(rec.Sinks, so.Record())
+		}
 	}
 	_ = g.Sink.Record(ctx, rec)
 }
@@ -502,13 +509,21 @@ func (g Gate) RecordDenied(ctx context.Context, call ToolCall, fault string) Dec
 }
 
 // Covered reports the set of TOP-LEVEL argument names a route accounts for: the head segment of
-// every gated path, plus the recipe's declared passthrough list, plus the gate-only approval token
-// (which is never forwarded downstream).
+// every gated path, plus the recipe's declared passthrough list for THIS route's own (server,
+// tool), plus the gate-only approval token (which is never forwarded downstream).
 //
 // A path may reach into the payload — `files[].path` gates the *contents* of `files`, and the
 // top-level argument it accounts for is `files`. That is the right granularity for coverage: the
 // question is whether the argument was JUDGED at all, and a path into it means it was.
-// kw: coverage accounted gated passthrough top-level heads
+//
+// The passthrough lookup is a plain nested-map read against route.Server/route.Tool — both already
+// part of Route — so no server/tool parsing is needed here. If the recipe's tools: map never
+// declares an entry for this exact (server, tool) pair, the lookup is simply a map miss and
+// contributes nothing: the same fail-closed "argument neither gated nor declared" denial an author
+// would get from omitting passthrough entirely. Validating that every route a recipe is actually
+// bound to HAS a matching tools: entry is a separate, author-time concern (recipestore/store-backed
+// validation), not this function's job — Covered only answers what the recipe currently declares.
+// kw: coverage accounted gated passthrough top-level heads per-route
 func Covered(route Route) map[string]bool {
 	acc := map[string]bool{MetaApprovalToken: true}
 	for _, p := range splitGateArg(route.GateArg) {
@@ -516,8 +531,10 @@ func Covered(route Route) map[string]bool {
 			acc[h] = true
 		}
 	}
-	for _, a := range route.Recipe.PassThrough {
-		acc[a] = true
+	if byTool, ok := route.Recipe.Tools[route.Server]; ok {
+		for _, a := range byTool[route.Tool].PassThrough {
+			acc[a] = true
+		}
 	}
 	return acc
 }
@@ -836,9 +853,9 @@ func idFor(fingerprint string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
-// recipeHasApprovalGate reports whether any rule in the recipe is a signed_equality "$approved"
+// RecipeHasApprovalGate reports whether any rule in the recipe is a signed_equality "$approved"
 // placeholder — i.e. this recipe participates in the human-approval loop. Cheap; walks steps once.
-func recipeHasApprovalGate(r stag.Recipe) bool {
+func RecipeHasApprovalGate(r stag.Recipe) bool {
 	for i := range r.Steps {
 		if isApprovedRule(r.Steps[i].Rule) {
 			return true
@@ -872,11 +889,11 @@ func isApprovedRule(rule *stag.ReleaseRule) bool {
 	return rule != nil && rule.Kind == stag.RuleSignedEquality && rule.Signed == signedPlaceholder
 }
 
-// resolveApproved returns a shallow clone of the recipe with every signed_equality "$approved"
+// ResolveApproved returns a shallow clone of the recipe with every signed_equality "$approved"
 // rule's expected value set to token (which is "" when the action is not currently approved, so
 // the rule fails closed). Only rules that need substituting get fresh pointers — the shared
 // parsed recipe (held by the router across calls) is never mutated.
-func resolveApproved(r stag.Recipe, token string) stag.Recipe {
+func ResolveApproved(r stag.Recipe, token string) stag.Recipe {
 	steps := make([]stag.Step, len(r.Steps))
 	copy(steps, r.Steps) // Step is a value; its *Rule pointers are shared until we replace them
 	for i := range steps {

@@ -1,4 +1,4 @@
-package proxy
+package proxy_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
 )
 
 // GRANT LIFECYCLE. A grant is runtime state with a lifetime, not configuration — so the
@@ -13,15 +14,15 @@ import (
 // happens when two sequences want the same one. None of these are reachable by editing a
 // recipe, and all three are ways a one-shot authorization could quietly become a standing one.
 
-func lifecycleGate(az Authorizations, session string) Gate {
+func lifecycleGate(az proxy.Authorizations, session string) proxy.Gate {
 	rule := stag.ReleaseRule{Kind: stag.RuleSetMembership, Set: []string{"badport"}}
 	r := stag.Recipe{Steps: []stag.Step{
 		{Id: "p", Kind: stag.NodePropose, Out: "image"},
 		{Id: "s", Kind: stag.NodeSink, In: "image", Field: "lab.image",
 			Sensitivity: stag.SinkAuthoritative, Rule: &rule, RuleID: "image.this", Actor: "a"},
 	}}
-	return Gate{
-		Routes:         Router{"lab__fix": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "image", Sequenced: true}},
+	return proxy.Gate{
+		Routes:         proxy.Router{"lab__fix": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "image", Sequenced: true}},
 		Authorizations: az,
 		Session:        session,
 	}
@@ -37,17 +38,17 @@ func TestGrantIsNotSpendableByAnotherSession(t *testing.T) {
 
 	// session A's executor mints a grant for its own sequence
 	gA := lifecycleGate(az, "session-A")
-	_ = az.Mint(context.Background(), Grant{
-		Fingerprint: Fingerprint("lab__fix", args), Tool: "lab__fix",
+	_ = az.Mint(context.Background(), proxy.Grant{
+		Fingerprint: proxy.Fingerprint("lab__fix", args), Tool: "lab__fix",
 		Source: "policy:seq", Session: "session-A"})
 
 	// session B — a different bound agent — makes the identical call
 	gB := lifecycleGate(az, "session-B")
-	if d := gB.Decide(context.Background(), ToolCall{Tool: "lab__fix", Args: args}); d.Forward {
+	if d := gB.Decide(context.Background(), proxy.ToolCall{Tool: "lab__fix", Args: args}); d.Forward {
 		t.Fatal("session B must not spend a grant minted for session A")
 	}
 	// and A's grant must still be intact: B's refusal may not consume it
-	if d := gA.Decide(context.Background(), ToolCall{Tool: "lab__fix", Args: args}); !d.Forward {
+	if d := gA.Decide(context.Background(), proxy.ToolCall{Tool: "lab__fix", Args: args}); !d.Forward {
 		t.Fatal("session A's own grant must survive another session's attempt")
 	}
 }
@@ -59,8 +60,8 @@ func TestConcurrentSequencesSpendAGrantOnce(t *testing.T) {
 	az := newMemAuthz()
 	args := map[string]string{"image": "badport"}
 	g := lifecycleGate(az, "s1")
-	_ = az.Mint(context.Background(), Grant{
-		Fingerprint: Fingerprint("lab__fix", args), Tool: "lab__fix", Source: "policy:seq", Session: "s1"})
+	_ = az.Mint(context.Background(), proxy.Grant{
+		Fingerprint: proxy.Fingerprint("lab__fix", args), Tool: "lab__fix", Source: "policy:seq", Session: "s1"})
 
 	const n = 16
 	var wg sync.WaitGroup
@@ -69,7 +70,7 @@ func TestConcurrentSequencesSpendAGrantOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			forwards <- g.Decide(context.Background(), ToolCall{Tool: "lab__fix", Args: args}).Forward
+			forwards <- g.Decide(context.Background(), proxy.ToolCall{Tool: "lab__fix", Args: args}).Forward
 		}()
 	}
 	wg.Wait()
@@ -91,10 +92,10 @@ func TestConcurrentSequencesSpendAGrantOnce(t *testing.T) {
 func TestGrantDoesNotOutliveItsSequence(t *testing.T) {
 	az := newMemAuthz()
 	args := map[string]string{"image": "badport"}
-	fp := Fingerprint("lab__fix", args)
+	fp := proxy.Fingerprint("lab__fix", args)
 
 	// a sequence mints a grant and then never uses it (the process died)
-	_ = az.Mint(context.Background(), Grant{
+	_ = az.Mint(context.Background(), proxy.Grant{
 		Fingerprint: fp, Tool: "lab__fix", Source: "policy:seq", Session: "s1", Run: "run-1"})
 
 	// the sequence is over. Whatever ends it must have released the grant.
@@ -102,7 +103,7 @@ func TestGrantDoesNotOutliveItsSequence(t *testing.T) {
 		t.Fatal(err)
 	}
 	g := lifecycleGate(az, "s1")
-	if d := g.Decide(context.Background(), ToolCall{Tool: "lab__fix", Args: args}); d.Forward {
+	if d := g.Decide(context.Background(), proxy.ToolCall{Tool: "lab__fix", Args: args}); d.Forward {
 		t.Fatal("an abandoned grant must not still authorize a call")
 	}
 }
@@ -112,11 +113,11 @@ func TestGrantDoesNotOutliveItsSequence(t *testing.T) {
 func TestSessionlessGrantIsNotAWildcard(t *testing.T) {
 	az := newMemAuthz()
 	args := map[string]string{"image": "badport"}
-	_ = az.Mint(context.Background(), Grant{
-		Fingerprint: Fingerprint("lab__fix", args), Tool: "lab__fix", Source: "policy:seq"}) // no Session
+	_ = az.Mint(context.Background(), proxy.Grant{
+		Fingerprint: proxy.Fingerprint("lab__fix", args), Tool: "lab__fix", Source: "policy:seq"}) // no Session
 
 	g := lifecycleGate(az, "session-A")
-	if d := g.Decide(context.Background(), ToolCall{Tool: "lab__fix", Args: args}); d.Forward {
+	if d := g.Decide(context.Background(), proxy.ToolCall{Tool: "lab__fix", Args: args}); d.Forward {
 		t.Fatal("a grant with no session must not satisfy a session-bound call")
 	}
 }
@@ -131,19 +132,19 @@ func TestSweepDoesNotDisturbAConcurrentRun(t *testing.T) {
 	argsB := map[string]string{"image": "toolchain"}
 
 	// two runs on the SAME session, each with an outstanding grant
-	_ = az.Mint(ctx, Grant{Fingerprint: Fingerprint("lab__fix", argsA), Tool: "lab__fix",
+	_ = az.Mint(ctx, proxy.Grant{Fingerprint: proxy.Fingerprint("lab__fix", argsA), Tool: "lab__fix",
 		Source: "policy:seq", Session: "s1", Run: "run-A"})
-	_ = az.Mint(ctx, Grant{Fingerprint: Fingerprint("lab__fix", argsB), Tool: "lab__fix",
+	_ = az.Mint(ctx, proxy.Grant{Fingerprint: proxy.Fingerprint("lab__fix", argsB), Tool: "lab__fix",
 		Source: "policy:seq", Session: "s1", Run: "run-B"})
 
 	// run A finishes and sweeps ITS OWN grants
 	if err := az.Sweep(ctx, "s1", "run-A"); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok, _ := az.Redeem(ctx, Fingerprint("lab__fix", argsA), "s1"); ok {
+	if _, ok, _ := az.Redeem(ctx, proxy.Fingerprint("lab__fix", argsA), "s1"); ok {
 		t.Error("run A's own grant must be swept")
 	}
-	if _, ok, _ := az.Redeem(ctx, Fingerprint("lab__fix", argsB), "s1"); !ok {
+	if _, ok, _ := az.Redeem(ctx, proxy.Fingerprint("lab__fix", argsB), "s1"); !ok {
 		t.Fatal("run B's grant must survive run A's sweep: they share a session, not a run")
 	}
 }
@@ -163,22 +164,22 @@ func TestTwoRunsWithIdenticalArgumentsDoNotStealEachOthersGrant(t *testing.T) {
 	ctx := context.Background()
 	// no arguments: the fingerprint is the tool name, so both runs produce the SAME key
 	args := map[string]string{}
-	fp := Fingerprint("k8s__restart_workload", args)
+	fp := proxy.Fingerprint("k8s__restart_workload", args)
 
-	_ = az.Mint(ctx, Grant{Fingerprint: GrantKey(fp, "run-A"), Tool: "k8s__restart_workload",
+	_ = az.Mint(ctx, proxy.Grant{Fingerprint: proxy.GrantKey(fp, "run-A"), Tool: "k8s__restart_workload",
 		Source: "policy:seq", Session: "s1", Run: "run-A"})
-	_ = az.Mint(ctx, Grant{Fingerprint: GrantKey(fp, "run-B"), Tool: "k8s__restart_workload",
+	_ = az.Mint(ctx, proxy.Grant{Fingerprint: proxy.GrantKey(fp, "run-B"), Tool: "k8s__restart_workload",
 		Source: "policy:seq", Session: "s1", Run: "run-B"})
 
 	// each run must be able to redeem ITS OWN grant
-	if _, ok, _ := az.Redeem(ctx, GrantKey(fp, "run-A"), "s1"); !ok {
+	if _, ok, _ := az.Redeem(ctx, proxy.GrantKey(fp, "run-A"), "s1"); !ok {
 		t.Error("run A must redeem its own grant")
 	}
-	if _, ok, _ := az.Redeem(ctx, GrantKey(fp, "run-B"), "s1"); !ok {
+	if _, ok, _ := az.Redeem(ctx, proxy.GrantKey(fp, "run-B"), "s1"); !ok {
 		t.Error("run B must redeem its own grant — a concurrent run must not consume it")
 	}
 	// and neither may redeem twice
-	if _, ok, _ := az.Redeem(ctx, GrantKey(fp, "run-A"), "s1"); ok {
+	if _, ok, _ := az.Redeem(ctx, proxy.GrantKey(fp, "run-A"), "s1"); ok {
 		t.Error("a spent grant must not be redeemable again")
 	}
 }
@@ -187,12 +188,12 @@ func TestTwoRunsWithIdenticalArgumentsDoNotStealEachOthersGrant(t *testing.T) {
 func TestARunCannotRedeemAnotherRunsGrant(t *testing.T) {
 	az := newMemAuthz()
 	ctx := context.Background()
-	fp := Fingerprint("t", map[string]string{})
-	_ = az.Mint(ctx, Grant{Fingerprint: GrantKey(fp, "mine"), Tool: "t", Source: "p", Session: "s1", Run: "mine"})
-	if _, ok, _ := az.Redeem(ctx, GrantKey(fp, "theirs"), "s1"); ok {
+	fp := proxy.Fingerprint("t", map[string]string{})
+	_ = az.Mint(ctx, proxy.Grant{Fingerprint: proxy.GrantKey(fp, "mine"), Tool: "t", Source: "p", Session: "s1", Run: "mine"})
+	if _, ok, _ := az.Redeem(ctx, proxy.GrantKey(fp, "theirs"), "s1"); ok {
 		t.Fatal("a run must not redeem a grant another run minted")
 	}
-	if _, ok, _ := az.Redeem(ctx, GrantKey(fp, "mine"), "s1"); !ok {
+	if _, ok, _ := az.Redeem(ctx, proxy.GrantKey(fp, "mine"), "s1"); !ok {
 		t.Error("and the owner's grant must survive the attempt")
 	}
 }

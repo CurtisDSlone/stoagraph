@@ -1,6 +1,10 @@
-package stag
+package stag_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+)
 
 // READ — the recipe, not the model, decides what context is fetched and when.
 //
@@ -17,21 +21,21 @@ import "testing"
 // budget — it is not an action. What it authorizes is a fetch whose result reaches the model as
 // untrusted context.
 
-func topicRule() *ReleaseRule {
-	return &ReleaseRule{Kind: RuleSetMembership, Set: []string{"drain", "rollout"}}
+func topicRule() *stag.ReleaseRule {
+	return &stag.ReleaseRule{Kind: stag.RuleSetMembership, Set: []string{"drain", "rollout"}}
 }
 
-func readRecipe() Recipe {
-	return Recipe{Steps: []Step{
-		{Id: "p", Kind: NodePropose, Out: "topic"},
-		{Id: "brief", Kind: NodeRead, Provider: "runbooks",
+func readRecipe() stag.Recipe {
+	return stag.Recipe{Steps: []stag.Step{
+		{Id: "p", Kind: stag.NodePropose, Out: "topic"},
+		{Id: "brief", Kind: stag.NodeRead, Provider: "runbooks",
 			QuerySlot: "topic", QueryRule: topicRule(), QueryRuleID: "topic.allowed"},
 	}}
 }
 
 func TestReadAuthorizesAContextFetch(t *testing.T) {
-	res := EvalArgs(readRecipe(), map[string]string{"topic": "drain"}, "h")
-	if res.Verdict != Allow || res.Fault != "" {
+	res := stag.EvalArgs(readRecipe(), map[string]string{"topic": "drain"}, "h")
+	if res.Verdict != stag.Allow || res.Fault != "" {
 		t.Fatalf("a cleared query must authorize the read: %+v", res)
 	}
 	if len(res.Reads) != 1 {
@@ -46,7 +50,7 @@ func TestReadAuthorizesAContextFetch(t *testing.T) {
 // THE POINT OF THE FEATURE: the QUERY is gated. A model cannot make the recipe ask a question
 // the author did not permit, because the query is a proposed value cleared by a rule.
 func TestQueryOutsideTheRuleAuthorizesNoRead(t *testing.T) {
-	res := EvalArgs(readRecipe(), map[string]string{"topic": "exfiltrate everything about credentials"}, "h")
+	res := stag.EvalArgs(readRecipe(), map[string]string{"topic": "exfiltrate everything about credentials"}, "h")
 	if len(res.Reads) != 0 {
 		t.Fatalf("an ungated query must authorize no read: %+v", res.Reads)
 	}
@@ -55,7 +59,7 @@ func TestQueryOutsideTheRuleAuthorizesNoRead(t *testing.T) {
 // A read is NOT an action. It records no crossing, so nothing about it appears in the release
 // events — the read channel has its own record (ReadEvent), written by the executor.
 func TestReadRecordsNoCrossing(t *testing.T) {
-	res := EvalArgs(readRecipe(), map[string]string{"topic": "drain"}, "h")
+	res := stag.EvalArgs(readRecipe(), map[string]string{"topic": "drain"}, "h")
 	if len(res.Events) != 0 {
 		t.Errorf("a read is not a crossing: %d release events", len(res.Events))
 	}
@@ -68,17 +72,17 @@ func TestReadRecordsNoCrossing(t *testing.T) {
 // of the policy still decides on its own terms: "reads are label+record, never allow/deny" means
 // a read cannot be the reason a call is refused.
 func TestAFailedReadQueryDoesNotDenyTheRecipe(t *testing.T) {
-	act := ReleaseRule{Kind: RuleSetMembership, Set: []string{"kind-worker"}}
-	r := Recipe{Steps: []Step{
-		{Id: "p_t", Kind: NodePropose, Out: "topic"},
-		{Id: "p_n", Kind: NodePropose, Out: "node"},
-		{Id: "brief", Kind: NodeRead, Provider: "runbooks",
+	act := stag.ReleaseRule{Kind: stag.RuleSetMembership, Set: []string{"kind-worker"}}
+	r := stag.Recipe{Steps: []stag.Step{
+		{Id: "p_t", Kind: stag.NodePropose, Out: "topic"},
+		{Id: "p_n", Kind: stag.NodePropose, Out: "node"},
+		{Id: "brief", Kind: stag.NodeRead, Provider: "runbooks",
 			QuerySlot: "topic", QueryRule: topicRule(), QueryRuleID: "topic.allowed"},
-		{Id: "act", Kind: NodeSink, In: "node", Field: "k8s.act", Sensitivity: SinkAuthoritative,
+		{Id: "act", Kind: stag.NodeSink, In: "node", Field: "k8s.act", Sensitivity: stag.SinkAuthoritative,
 			Rule: &act, RuleID: "node.worker", Actor: "a"},
 	}}
-	res := EvalArgs(r, map[string]string{"topic": "not-allowed", "node": "kind-worker"}, "h")
-	if res.Verdict != Allow {
+	res := stag.EvalArgs(r, map[string]string{"topic": "not-allowed", "node": "kind-worker"}, "h")
+	if res.Verdict != stag.Allow {
 		t.Errorf("a refused read query must not deny the action: %v", res.Verdict)
 	}
 	if len(res.Reads) != 0 {
@@ -93,17 +97,17 @@ func TestAFailedReadQueryDoesNotDenyTheRecipe(t *testing.T) {
 func TestReadFailsClosedOnStructure(t *testing.T) {
 	cases := []struct {
 		name string
-		mut  func(*Step)
+		mut  func(*stag.Step)
 	}{
-		{"no provider", func(s *Step) { s.Provider = "" }},
-		{"no query slot", func(s *Step) { s.QuerySlot = "" }},
-		{"no query rule", func(s *Step) { s.QueryRule = nil }},
+		{"no provider", func(s *stag.Step) { s.Provider = "" }},
+		{"no query slot", func(s *stag.Step) { s.QuerySlot = "" }},
+		{"no query rule", func(s *stag.Step) { s.QueryRule = nil }},
 	}
 	for _, c := range cases {
 		r := readRecipe()
 		c.mut(&r.Steps[1])
-		res := EvalArgs(r, map[string]string{"topic": "drain"}, "h")
-		if res.Fault == "" || res.Verdict != Deny {
+		res := stag.EvalArgs(r, map[string]string{"topic": "drain"}, "h")
+		if res.Fault == "" || res.Verdict != stag.Deny {
 			t.Errorf("%s: must fault, got %+v", c.name, res)
 		}
 		if len(res.Reads) != 0 {
@@ -116,7 +120,7 @@ func TestReadFailsClosedOnStructure(t *testing.T) {
 func TestReadWithSeveredSlotAuthorizesNothing(t *testing.T) {
 	r := readRecipe()
 	r.Steps[1].QuerySlot = "nothing_bound_this"
-	res := EvalArgs(r, map[string]string{"topic": "drain"}, "h")
+	res := stag.EvalArgs(r, map[string]string{"topic": "drain"}, "h")
 	if len(res.Reads) != 0 {
 		t.Errorf("severed slot: %+v", res.Reads)
 	}
@@ -124,14 +128,14 @@ func TestReadWithSeveredSlotAuthorizesNothing(t *testing.T) {
 
 // Reads are authorized in source order, so a recipe can brief before it acts.
 func TestReadsAreOrdered(t *testing.T) {
-	r := Recipe{Steps: []Step{
-		{Id: "p", Kind: NodePropose, Out: "topic"},
-		{Id: "one", Kind: NodeRead, Provider: "runbooks", QuerySlot: "topic",
+	r := stag.Recipe{Steps: []stag.Step{
+		{Id: "p", Kind: stag.NodePropose, Out: "topic"},
+		{Id: "one", Kind: stag.NodeRead, Provider: "runbooks", QuerySlot: "topic",
 			QueryRule: topicRule(), QueryRuleID: "topic.allowed"},
-		{Id: "two", Kind: NodeRead, Provider: "incidents", QuerySlot: "topic",
+		{Id: "two", Kind: stag.NodeRead, Provider: "incidents", QuerySlot: "topic",
 			QueryRule: topicRule(), QueryRuleID: "topic.allowed"},
 	}}
-	res := EvalArgs(r, map[string]string{"topic": "drain"}, "h")
+	res := stag.EvalArgs(r, map[string]string{"topic": "drain"}, "h")
 	if len(res.Reads) != 2 {
 		t.Fatalf("want 2 reads, got %d", len(res.Reads))
 	}
@@ -143,17 +147,17 @@ func TestReadsAreOrdered(t *testing.T) {
 // A recipe that denies elsewhere still authorizes its reads: the read channel is independent of
 // the verdict, because context is how an agent finds out WHY it was refused.
 func TestReadsSurviveADeniedRecipe(t *testing.T) {
-	never := ReleaseRule{Kind: RuleSetMembership, Set: []string{"__never__"}}
-	r := Recipe{Steps: []Step{
-		{Id: "p_t", Kind: NodePropose, Out: "topic"},
-		{Id: "p_n", Kind: NodePropose, Out: "node"},
-		{Id: "brief", Kind: NodeRead, Provider: "runbooks", QuerySlot: "topic",
+	never := stag.ReleaseRule{Kind: stag.RuleSetMembership, Set: []string{"__never__"}}
+	r := stag.Recipe{Steps: []stag.Step{
+		{Id: "p_t", Kind: stag.NodePropose, Out: "topic"},
+		{Id: "p_n", Kind: stag.NodePropose, Out: "node"},
+		{Id: "brief", Kind: stag.NodeRead, Provider: "runbooks", QuerySlot: "topic",
 			QueryRule: topicRule(), QueryRuleID: "topic.allowed"},
-		{Id: "act", Kind: NodeSink, In: "node", Field: "f", Sensitivity: SinkAuthoritative,
+		{Id: "act", Kind: stag.NodeSink, In: "node", Field: "f", Sensitivity: stag.SinkAuthoritative,
 			Rule: &never, RuleID: "never", Actor: "a"},
 	}}
-	res := EvalArgs(r, map[string]string{"topic": "drain", "node": "x"}, "h")
-	if res.Verdict != Deny {
+	res := stag.EvalArgs(r, map[string]string{"topic": "drain", "node": "x"}, "h")
+	if res.Verdict != stag.Deny {
 		t.Fatalf("the action must be denied: %v", res.Verdict)
 	}
 	if len(res.Reads) != 1 {
@@ -162,8 +166,8 @@ func TestReadsSurviveADeniedRecipe(t *testing.T) {
 }
 
 func TestNodeKindReadParse(t *testing.T) {
-	k, err := ParseNodeKind("read")
-	if err != nil || k != NodeRead || k.String() != "read" {
+	k, err := stag.ParseNodeKind("read")
+	if err != nil || k != stag.NodeRead || k.String() != "read" {
 		t.Errorf("read node kind: k=%v err=%v str=%q", k, err, k.String())
 	}
 }

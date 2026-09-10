@@ -1,10 +1,11 @@
-package proxy
+package proxy_test
 
 import (
 	"context"
 	"testing"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
 )
 
 // THE HUMAN-APPROVAL LOOP ACROSS EVERY STEP KIND.
@@ -67,7 +68,7 @@ func TestApprovalGateIsDetectedOnEveryStepKind(t *testing.T) {
 	}
 	for _, c := range cases {
 		r := stag.Recipe{Steps: []stag.Step{{Id: "p", Kind: stag.NodePropose, Out: "v"}, c.step}}
-		if !recipeHasApprovalGate(r) {
+		if !proxy.RecipeHasApprovalGate(r) {
 			t.Errorf("%s: a $approved rule here must put the recipe in the approval loop", c.name)
 		}
 	}
@@ -83,7 +84,7 @@ func TestApprovedTokenIsSubstitutedOnEveryStepKind(t *testing.T) {
 		{Id: "rd", Kind: stag.NodeRead, Provider: "p", QuerySlot: "v",
 			QueryRule: approvedRule(), QueryRuleID: "r"},
 	}}
-	got := resolveApproved(r, tok)
+	got := proxy.ResolveApproved(r, tok)
 	if s := got.Steps[1].ArgRules["x"].Rule.Signed; s != tok {
 		t.Errorf("invoke argument: expected value is %q, want the minted token", s)
 	}
@@ -113,11 +114,11 @@ func TestInvokeApprovalLoop(t *testing.T) {
 		{Id: "act", Kind: stag.NodeInvoke, Tool: "srv__danger", Actor: "policy:x",
 			ArgRules: map[string]stag.ArgRule{"target": {Slot: "v", Rule: &safe, RuleID: "ok"}}},
 	}}
-	call := ToolCall{Tool: "t", Args: map[string]string{"v": "prod-db"}}
+	call := proxy.ToolCall{Tool: "t", Args: map[string]string{"v": "prod-db"}}
 
 	// 1. no approval on file -> escalate, and a human is asked
 	unapproved := &stubApprovals{}
-	g := Gate{Routes: Router{"t": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "v"}},
+	g := proxy.Gate{Routes: proxy.Router{"t": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "v"}},
 		Approvals: unapproved}
 	d := g.Decide(context.Background(), call)
 	if d.Forward {
@@ -138,7 +139,7 @@ func TestInvokeApprovalLoop(t *testing.T) {
 
 	// 2. a human approves this EXACT action -> the retried call forwards
 	approved := &stubApprovals{token: "prod-db", id: "ap-1", approved: true}
-	g2 := Gate{Routes: Router{"t": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "v"}},
+	g2 := proxy.Gate{Routes: proxy.Router{"t": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "v"}},
 		Approvals: approved}
 	d2 := g2.Decide(context.Background(), call)
 	if !d2.Forward {
@@ -162,8 +163,8 @@ func TestApprovedRuleOffAGateNeverAsksAnyone(t *testing.T) {
 			ArgRules: map[string]stag.ArgRule{"target": {Slot: "v", Rule: approvedRule(), RuleID: "r"}}},
 	}}
 	appr := &stubApprovals{}
-	g := Gate{Routes: Router{"t": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "v"}}, Approvals: appr}
-	d := g.Decide(context.Background(), ToolCall{Tool: "t", Args: map[string]string{"v": "prod-db"}})
+	g := proxy.Gate{Routes: proxy.Router{"t": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "v"}}, Approvals: appr}
+	d := g.Decide(context.Background(), proxy.ToolCall{Tool: "t", Args: map[string]string{"v": "prod-db"}})
 	if d.Forward {
 		t.Fatal("it must not forward")
 	}
@@ -186,8 +187,8 @@ func TestApprovalDoesNotCoverADifferentAction(t *testing.T) {
 	}}
 	// the human approved "staging-db"; the agent now asks for "prod-db"
 	appr := &stubApprovals{token: "staging-db", id: "ap-1", approved: true}
-	g := Gate{Routes: Router{"t": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "v"}}, Approvals: appr}
-	d := g.Decide(context.Background(), ToolCall{Tool: "t", Args: map[string]string{"v": "prod-db"}})
+	g := proxy.Gate{Routes: proxy.Router{"t": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "v"}}, Approvals: appr}
+	d := g.Decide(context.Background(), proxy.ToolCall{Tool: "t", Args: map[string]string{"v": "prod-db"}})
 	if d.Forward {
 		t.Fatal("an approval for one action must not clear a different one")
 	}

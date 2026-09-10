@@ -62,7 +62,7 @@ func (r modelRouter) Route(ctx context.Context, event Event, candidates []Recipe
 	if err != nil {
 		return RouteResult{}, err
 	}
-	return parseRoute(prop.Value), nil
+	return ParseRoute(prop.Value), nil
 }
 
 func routePrompt(event Event, candidates []Recipe) string {
@@ -84,9 +84,9 @@ func routePrompt(event Event, candidates []Recipe) string {
 	return b.String()
 }
 
-// parseRoute extracts {recipe_id, confidence} from the model reply, tolerating surrounding prose or
+// ParseRoute extracts {recipe_id, confidence} from the model reply, tolerating surrounding prose or
 // code fences. Defaults are the fail-closed values (none/low).
-func parseRoute(content string) RouteResult {
+func ParseRoute(content string) RouteResult {
 	rr := RouteResult{RecipeID: "none", Confidence: "low"}
 	obj := firstJSONObject(content)
 	if obj == "" {

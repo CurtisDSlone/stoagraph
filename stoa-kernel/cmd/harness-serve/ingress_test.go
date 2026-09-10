@@ -60,7 +60,7 @@ func TestWebhookAttributedEventDispatches(t *testing.T) {
 func TestWebhookTriggersGovernedRun(t *testing.T) {
 	dir := t.TempDir()
 	emap := filepath.Join(dir, "event_map.json")
-	writeFile(t, emap, `[{"id":"drift","match":{"source":"prooflayer","type":"posture.drifted"},"recipe":"remediate","tools":["fix"],"context":["logs"]}]`)
+	writeFile(t, emap, `[{"id":"drift","match":{"source":"prooflayer","type":"posture.drifted"},"recipe":"remediate"}]`)
 
 	secret := []byte("shared")
 	ran := make(chan dispatch.Decision, 1)
@@ -81,7 +81,7 @@ func TestWebhookTriggersGovernedRun(t *testing.T) {
 
 	select {
 	case dec := <-ran:
-		if dec.RecipeID != "remediate" || len(dec.Tools) != 1 || dec.Tools[0] != "fix" || len(dec.Context) != 1 {
+		if dec.RecipeID != "remediate" {
 			t.Fatalf("the run got the wrong decision: %+v", dec)
 		}
 	case <-time.After(2 * time.Second):

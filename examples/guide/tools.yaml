@@ -1,0 +1,12 @@
+# The guide's smallest possible tool declaration. One script, one argument.
+root: .
+timeout: 10s
+env_allow: []
+
+tools:
+  - name: greet
+    description: Print a message. The mood argument picks which one.
+    script: greet.sh
+    args:
+      mood:
+        description: calm or urgent — picks the printed message

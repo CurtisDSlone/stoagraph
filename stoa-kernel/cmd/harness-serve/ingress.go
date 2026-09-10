@@ -12,6 +12,7 @@ import (
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/agent"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/dispatch"
+	emitpkg "github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/emit"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/ingress"
 )
 
@@ -67,7 +68,7 @@ func (s *Server) webhook(w http.ResponseWriter, r *http.Request) {
 	disposition := "dropped:no-route"
 	status := http.StatusAccepted
 	switch {
-	case matched && def.RequireAttribution && !env.Attributed:
+	case matched && !s.allowUnattributed && !env.Attributed:
 		// The governing rule: an unattributed event may not be dispatched directly. (Lane 2 —
 		// validation workflow — is future; today it is refused and recorded.)
 		disposition = "dropped:unattributed"
@@ -81,10 +82,33 @@ func (s *Server) webhook(w http.ResponseWriter, r *http.Request) {
 		// resolves + records but does not execute — resolve-only).
 		if s.runEvent != nil {
 			dec := dispatch.Decision{
-				RecipeID: def.Recipe, Tools: def.Tools, Context: def.Context,
+				RecipeID:   def.Recipe,
 				Confidence: "high", Mode: "deterministic", Definition: def.ID,
 			}
-			go s.runEvent(dec, event, env)
+			// SINGLE-FLIGHT first: if this recipe is already working, a second event asking for
+			// the same policy is duplicate work, not more work. Checked before the cap so a
+			// duplicate does not consume a slot a genuinely different incident needs.
+			if !s.claimRecipe(def.Recipe) {
+				disposition = "dropped:already-running"
+				log.Printf("ingress[%s/%s]: %s already running — collapsed (source %s)",
+					env.Source, env.ID, def.Recipe, env.Source)
+			} else if s.acquireRun() {
+				// Reserve an in-flight slot BEFORE launching. A full cap sheds the run rather than
+				// queueing it: the sender is told (disposition), the ingress chain records it, and the
+				// operator can see the cap biting. A silently queued burst looks identical to a healthy
+				// system right up until it is not.
+				go func() {
+					defer s.releaseRun() // deferred so a panicking run cannot leak its slot
+					defer s.releaseRecipe(def.Recipe)
+					s.runEvent(dec, event, env)
+				}()
+			} else {
+				s.releaseRecipe(def.Recipe) // shed at the cap: the claim was never used
+				disposition = "dropped:at-capacity"
+				status = http.StatusAccepted
+				log.Printf("ingress[%s/%s]: at capacity (%d in flight) — run shed, event recorded",
+					env.Source, env.ID, cap(s.runSem))
+			}
 		}
 	}
 	_ = s.ingressChain.Append(ingress.RecordOf(env, disposition))
@@ -94,6 +118,57 @@ func (s *Server) webhook(w http.ResponseWriter, r *http.Request) {
 		"attributed": env.Attributed, "disposition": disposition,
 		"recipe": routedRecipe(matched, def, disposition),
 	})
+}
+
+// claimRecipe takes the single-flight claim for a recipe. false => a run for it is already in
+// flight and this event is duplicate work. A nil map (no ingress model configured) always claims.
+func (s *Server) claimRecipe(recipe string) bool {
+	if s.inFlight == nil {
+		return true
+	}
+	s.inFlightMu.Lock()
+	defer s.inFlightMu.Unlock()
+	if s.inFlight[recipe] {
+		return false
+	}
+	s.inFlight[recipe] = true
+	return true
+}
+
+// releaseRecipe drops the claim. Deferred inside the run goroutine, so a panicking run cannot
+// leave a recipe permanently claimed — that would silently stop it running ever again.
+func (s *Server) releaseRecipe(recipe string) {
+	if s.inFlight == nil {
+		return
+	}
+	s.inFlightMu.Lock()
+	defer s.inFlightMu.Unlock()
+	delete(s.inFlight, recipe)
+}
+
+// acquireRun reserves one in-flight governed-run slot. It never blocks: false means the cap is
+// full and the caller must shed. A nil semaphore means unbounded (no cap configured).
+func (s *Server) acquireRun() bool {
+	if s.runSem == nil {
+		return true
+	}
+	select {
+	case s.runSem <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
+// releaseRun returns a slot. Safe on a nil semaphore so the unbounded path needs no special case.
+func (s *Server) releaseRun() {
+	if s.runSem == nil {
+		return
+	}
+	select {
+	case <-s.runSem:
+	default: // never block on release; a spurious release is not worth deadlocking over
+	}
 }
 
 // runIngressEvent runs the governed agent loop for a webhook-dispatched event, in the background. The
@@ -119,7 +194,7 @@ func (s *Server) runIngressEvent(dec dispatch.Decision, event dispatch.Event, en
 		case "done":
 			log.Printf("ingress[%s]: done. %s", tag, e.Text)
 		}
-	})
+	}, emitpkg.NewOrchestrationContext(env.ID))
 }
 
 func verdictWord(allowed bool) string {

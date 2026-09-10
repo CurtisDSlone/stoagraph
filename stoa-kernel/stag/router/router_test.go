@@ -37,7 +37,9 @@ steps:
 func passthroughPolicy(name, tool, arg string) string {
 	return fmt.Sprintf(`recipe: %s
 version: 1
-passthrough: ["free"]
+tools:
+  srv:
+    %s: {passthrough: ["free"]}
 rules:
   r.allowed:
     kind: set_membership
@@ -53,7 +55,7 @@ steps:
     sensitivity: authoritative
     rule: r.allowed
     actor: "policy:x"
-`, name, tool, arg)
+`, name, tool, tool, arg)
 }
 
 func loaderFrom(m map[string]string) func(string) ([]byte, error) {
@@ -119,14 +121,14 @@ func TestBuildFailsClosed(t *testing.T) {
 func TestBuildStrictGatesUnbounded(t *testing.T) {
 	load := loaderFrom(map[string]string{
 		"bounded":   policy("bounded", "reroute", "target"),
-		"unbounded": passthroughPolicy("unbounded", "notify", "channel"),
+		"unbounded": passthroughPolicy("unbounded", "send", "channel"),
 	})
 	specs := []router.Spec{
 		{Tool: "reroute", Server: "srv", Recipe: "bounded", GateArg: "target"},
-		{Tool: "notify", Server: "srv", Recipe: "unbounded", GateArg: "channel"},
+		{Tool: "send", Server: "srv", Recipe: "unbounded", GateArg: "channel"},
 	}
 	bounded := proxy.AdvertisedName("srv", "reroute")
-	unbounded := proxy.AdvertisedName("srv", "notify")
+	unbounded := proxy.AdvertisedName("srv", "send")
 
 	// default (non-strict): both bind; the unbounded one is a WARNING, not an error.
 	def := router.Build(specs, load)

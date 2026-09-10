@@ -1,4 +1,4 @@
-package mcpgate
+package mcpgate_test
 
 // kw-test: query-param auth appends the key to the runtime endpoint, not the stored target
 
@@ -6,12 +6,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/mcpgate"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestQuerySchemeAppendsKeyToEndpoint(t *testing.T) {
-	tr, err := transportFor("http", "https://api.example.com/mcp?v=1",
-		Auth{Scheme: "query", Header: "apikey", Credential: "SECRET123"})
+	tr, err := mcpgate.TransportFor("http", "https://api.example.com/mcp?v=1",
+		mcpgate.Auth{Scheme: "query", Header: "apikey", Credential: "SECRET123"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,13 +29,13 @@ func TestQuerySchemeAppendsKeyToEndpoint(t *testing.T) {
 }
 
 func TestQuerySchemeRequiresParamName(t *testing.T) {
-	if _, err := transportFor("http", "https://x/mcp", Auth{Scheme: "query", Credential: "k"}); err == nil {
+	if _, err := mcpgate.TransportFor("http", "https://x/mcp", mcpgate.Auth{Scheme: "query", Credential: "k"}); err == nil {
 		t.Fatal("expected error when query param name is missing")
 	}
 }
 
 func TestQuerySchemeRequiresCredential(t *testing.T) {
-	if _, err := transportFor("http", "https://x/mcp", Auth{Scheme: "query", Header: "apikey"}); err == nil {
+	if _, err := mcpgate.TransportFor("http", "https://x/mcp", mcpgate.Auth{Scheme: "query", Header: "apikey"}); err == nil {
 		t.Fatal("expected error when credential is empty")
 	}
 }

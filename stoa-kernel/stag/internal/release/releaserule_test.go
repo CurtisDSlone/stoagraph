@@ -1,12 +1,14 @@
-package release
+package release_test
 
 import (
 	"strconv"
 	"testing"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/internal/release"
 )
 
 func TestReleaseRule(t *testing.T) {
-	set := ReleaseRule{Kind: RuleSetMembership, Set: []string{"restart", "isolate", "notify"}}
+	set := release.ReleaseRule{Kind: release.RuleSetMembership, Set: []string{"restart", "isolate", "notify"}}
 	setCases := []struct {
 		v    string
 		want bool
@@ -19,11 +21,11 @@ func TestReleaseRule(t *testing.T) {
 			t.Errorf("set.Release(%q) = %v, want %v", c.v, got, c.want)
 		}
 	}
-	if (ReleaseRule{Kind: RuleSetMembership}).Release("restart") {
+	if (release.ReleaseRule{Kind: release.RuleSetMembership}).Release("restart") {
 		t.Errorf("empty set should release nothing")
 	}
 
-	signed := ReleaseRule{Kind: RuleSignedEquality, Signed: "v1.2.3"}
+	signed := release.ReleaseRule{Kind: release.RuleSignedEquality, Signed: "v1.2.3"}
 	signedCases := []struct {
 		v    string
 		want bool
@@ -35,11 +37,11 @@ func TestReleaseRule(t *testing.T) {
 			t.Errorf("signed.Release(%q) = %v, want %v", c.v, got, c.want)
 		}
 	}
-	if (ReleaseRule{Kind: RuleSignedEquality}).Release("") {
+	if (release.ReleaseRule{Kind: release.RuleSignedEquality}).Release("") {
 		t.Errorf("empty signed should release nothing")
 	}
 
-	rng := ReleaseRule{Kind: RuleNumericRange, Min: 1, Max: 10}
+	rng := release.ReleaseRule{Kind: release.RuleNumericRange, Min: 1, Max: 10}
 	rngCases := []struct {
 		v    string
 		want bool
@@ -54,31 +56,31 @@ func TestReleaseRule(t *testing.T) {
 			t.Errorf("range.Release(%q) = %v, want %v", c.v, got, c.want)
 		}
 	}
-	if (ReleaseRule{Kind: RuleNumericRange, Min: 10, Max: 1}).Release("5") {
+	if (release.ReleaseRule{Kind: release.RuleNumericRange, Min: 10, Max: 1}).Release("5") {
 		t.Errorf("empty range should release nothing")
 	}
 
-	if RuleSetMembership.String() != "set_membership" || RuleSignedEquality.String() != "signed_equality" ||
-		RuleNumericRange.String() != "numeric_range" || RuleKind(99).String() != "unknown" {
+	if release.RuleSetMembership.String() != "set_membership" || release.RuleSignedEquality.String() != "signed_equality" ||
+		release.RuleNumericRange.String() != "numeric_range" || release.RuleKind(99).String() != "unknown" {
 		t.Errorf("RuleKind.String mismatch")
 	}
 
 	// ParseRuleKind is the exact inverse of String over the three kinds; fail closed off it.
-	for _, k := range []RuleKind{RuleSetMembership, RuleSignedEquality, RuleNumericRange} {
-		if got, err := ParseRuleKind(k.String()); err != nil || got != k {
+	for _, k := range []release.RuleKind{release.RuleSetMembership, release.RuleSignedEquality, release.RuleNumericRange} {
+		if got, err := release.ParseRuleKind(k.String()); err != nil || got != k {
 			t.Errorf("round-trip: ParseRuleKind(%q) = %v, %v; want %v, nil", k.String(), got, err, k)
 		}
 	}
 	for _, s := range []string{"set", "signed-equality", "numeric-range", "unknown", "", " set_membership ", "SET_MEMBERSHIP"} {
-		if got, err := ParseRuleKind(s); err == nil || got != RuleKind(-1) {
+		if got, err := release.ParseRuleKind(s); err == nil || got != release.RuleKind(-1) {
 			t.Errorf("fail-closed: ParseRuleKind(%q) = %v, %v; want -1, error", s, got, err)
 		}
 	}
 
-	if (ReleaseRule{Kind: RuleKind(99), Set: []string{"restart"}}).Release("restart") {
+	if (release.ReleaseRule{Kind: release.RuleKind(99), Set: []string{"restart"}}).Release("restart") {
 		t.Errorf("unknown kind should release nothing")
 	}
-	if (ReleaseRule{Kind: RuleKind(-1), Set: []string{"restart"}}).Release("restart") {
+	if (release.ReleaseRule{Kind: release.RuleKind(-1), Set: []string{"restart"}}).Release("restart") {
 		t.Errorf("sentinel kind should release nothing")
 	}
 }
@@ -104,26 +106,26 @@ func FuzzReleaseRule(f *testing.F) {
 				isMember = true
 			}
 		}
-		if got := (ReleaseRule{Kind: RuleSetMembership, Set: members}).Release(value); got != isMember {
+		if got := (release.ReleaseRule{Kind: release.RuleSetMembership, Set: members}).Release(value); got != isMember {
 			t.Errorf("LAUNDERING set: Release(%q) = %v, want %v", value, got, isMember)
 		}
 
 		// range: release iff value is a canonical in-range string (independent oracle).
-		if got := (ReleaseRule{Kind: RuleNumericRange, Min: 1, Max: 10}).Release(value); got != rangeMembers[value] {
+		if got := (release.ReleaseRule{Kind: release.RuleNumericRange, Min: 1, Max: 10}).Release(value); got != rangeMembers[value] {
 			t.Errorf("LAUNDERING range: Release(%q) = %v, want %v", value, got, rangeMembers[value])
 		}
 
 		// signed: release iff exact match to the non-empty reference.
-		if got := (ReleaseRule{Kind: RuleSignedEquality, Signed: signedRef}).Release(value); got != (value == signedRef) {
+		if got := (release.ReleaseRule{Kind: release.RuleSignedEquality, Signed: signedRef}).Release(value); got != (value == signedRef) {
 			t.Errorf("LAUNDERING signed: Release(%q) = %v, want %v", value, got, value == signedRef)
 		}
 
 		// string/parse inverse: parse only ever accepts a canonical spelling and round-trips it exactly.
-		if k, err := ParseRuleKind(value); err == nil {
+		if k, err := release.ParseRuleKind(value); err == nil {
 			if k.String() != value {
 				t.Errorf("PARSE non-inverse: ParseRuleKind(%q) accepted but String()=%q", value, k.String())
 			}
-		} else if k != RuleKind(-1) {
+		} else if k != release.RuleKind(-1) {
 			t.Errorf("PARSE fail-open: ParseRuleKind(%q) errored but returned %v, want sentinel -1", value, k)
 		}
 	})

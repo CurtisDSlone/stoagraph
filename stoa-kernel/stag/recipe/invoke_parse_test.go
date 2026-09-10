@@ -1,8 +1,11 @@
-package recipe
+package recipe_test
 
-import "strings"
+import (
+	"strings"
+	"testing"
 
-import "testing"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipe"
+)
 
 // The recipe boundary for `invoke`: an authored step that AUTHORIZES a tool call. The
 // linter's job is that a recipe which could authorize something unreviewable is a
@@ -20,7 +23,7 @@ steps:
 `
 
 func TestInvokeParses(t *testing.T) {
-	p, err := Parse([]byte(invokeSrc))
+	p, err := recipe.Parse([]byte(invokeSrc))
 	if err != nil {
 		t.Fatalf("valid invoke recipe must parse: %v", err)
 	}
@@ -42,12 +45,12 @@ func TestInvokeParses(t *testing.T) {
 // The tool and args ride in the SEMANTIC hash: changing which tool a recipe authorizes,
 // or which slot feeds an argument, is a different policy and the audit must say so.
 func TestInvokeRidesInSemanticHash(t *testing.T) {
-	base, err := Parse([]byte(invokeSrc))
+	base, err := recipe.Parse([]byte(invokeSrc))
 	if err != nil {
 		t.Fatal(err)
 	}
 	// same shape, different tool
-	other, err := Parse([]byte(strings.Replace(invokeSrc, "tool: k8s.drain", "tool: k8s.delete", 1)))
+	other, err := recipe.Parse([]byte(strings.Replace(invokeSrc, "tool: k8s.drain", "tool: k8s.delete", 1)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +59,7 @@ func TestInvokeRidesInSemanticHash(t *testing.T) {
 	}
 	// same tool, different source slot
 	argSwap := strings.Replace(invokeSrc, "args: {node: {slot: ns, rule: ns.safe}}, actor: \"policy:platform\"}\n  - {id: check", "args: {host: {slot: ns, rule: ns.safe}}, actor: \"policy:platform\"}\n  - {id: check", 1)
-	swapped, err := Parse([]byte(argSwap))
+	swapped, err := recipe.Parse([]byte(argSwap))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +121,7 @@ steps:
 `},
 	}
 	for _, c := range cases {
-		if _, err := Parse([]byte(c.src)); err == nil {
+		if _, err := recipe.Parse([]byte(c.src)); err == nil {
 			t.Errorf("%s: must be rejected", c.name)
 		}
 	}
@@ -135,7 +138,7 @@ steps:
   - {id: p, kind: propose, out: ns}
   - {id: i, kind: invoke, tool: t, args: {node: {slot: undeclared, rule: ok}}, actor: a}
 `
-	if _, err := Parse([]byte(src)); err == nil {
+	if _, err := recipe.Parse([]byte(src)); err == nil {
 		t.Error("an invoke arg fed by an undeclared slot must be rejected")
 	}
 }
@@ -152,7 +155,7 @@ steps:
   - {id: fe, kind: foreach, in: list, as: item}
   - {id: i, kind: invoke, tool: t, args: {node: {slot: item, rule: ok}}, actor: a}
 `
-	_, err := Parse([]byte(src))
+	_, err := recipe.Parse([]byte(src))
 	if err == nil {
 		t.Fatal("invoke inside a foreach body must be rejected")
 	}
@@ -173,7 +176,7 @@ steps:
   - {id: a, kind: invoke, tool: k8s.drain, args: {node: {slot: ns, rule: ok}}, actor: a}
   - {id: b, kind: invoke, tool: k8s.drain, args: {node: {slot: ns, rule: ok}}, actor: a}
 `
-	if _, err := Parse([]byte(src)); err == nil {
+	if _, err := recipe.Parse([]byte(src)); err == nil {
 		t.Error("two invokes authorizing the same tool must be rejected")
 	}
 }
@@ -183,7 +186,7 @@ steps:
 func TestInvokeCap(t *testing.T) {
 	var b strings.Builder
 	b.WriteString("recipe: r\nversion: 1\nrules: {ok: {kind: set_membership, set: [\"dev\"]}}\nsteps:\n  - {id: p, kind: propose, out: ns}\n")
-	for i := 0; i <= invokeCap; i++ {
+	for i := 0; i <= recipe.InvokeCap; i++ {
 		b.WriteString("  - {id: i")
 		b.WriteString(string(rune('a' + i%26)))
 		b.WriteString(string(rune('a' + i/26)))
@@ -192,8 +195,8 @@ func TestInvokeCap(t *testing.T) {
 		b.WriteString(string(rune('a' + i/26)))
 		b.WriteString(", args: {node: {slot: ns, rule: ok}}, actor: a}\n")
 	}
-	if _, err := Parse([]byte(b.String())); err == nil {
-		t.Errorf("a recipe over the invoke cap (%d) must be rejected", invokeCap)
+	if _, err := recipe.Parse([]byte(b.String())); err == nil {
+		t.Errorf("a recipe over the invoke cap (%d) must be rejected", recipe.InvokeCap)
 	}
 }
 
@@ -208,11 +211,11 @@ steps:
   - {id: p, kind: propose, out: ns}
   - {id: i, kind: invoke, tool: k8s.delete_namespace, args: {node: {slot: ns, rule: ok}}, actor: a}
 `
-	p, err := Parse([]byte(src))
+	p, err := recipe.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("a cautioned recipe must still parse: %v", err)
 	}
-	cs := Cautions(p)
+	cs := recipe.Cautions(p)
 	found := false
 	for _, c := range cs {
 		if strings.Contains(c, "k8s.delete_namespace") {
@@ -244,11 +247,11 @@ steps:
 		"args: {image: {slot: image, rule: img}, value: {slot: value, rule: port}}",
 		"args: {image: {slot: image, rule: port}, value: {slot: value, rule: img}}", 1)
 
-	a, err := Parse([]byte(base))
+	a, err := recipe.Parse([]byte(base))
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := Parse([]byte(swapped))
+	b, err := recipe.Parse([]byte(swapped))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +277,7 @@ steps:
   - {id: p, kind: propose, out: ns}
   - {id: i, kind: invoke, tool: t, args: {node: {slot: ns}}, actor: a}
 `
-	if _, err := Parse([]byte(src)); err == nil {
+	if _, err := recipe.Parse([]byte(src)); err == nil {
 		t.Error("an argument with no rule must be rejected")
 	}
 }
@@ -290,7 +293,7 @@ steps:
   - {id: p, kind: propose, out: ns}
   - {id: i, kind: invoke, tool: t, args: {node: {slot: ns, rule: ok}}, rule: ok, actor: a}
 `
-	if _, err := Parse([]byte(src)); err == nil {
+	if _, err := recipe.Parse([]byte(src)); err == nil {
 		t.Error("a step-level rule on an invoke must be rejected")
 	}
 }
@@ -310,7 +313,7 @@ steps:
      attempts: 4, every_ms: 1000, actor: "policy:x"}
   - {id: s, kind: sink, in: v, field: f, sensitivity: authoritative, rule: done, actor: a}
 `
-	p, err := Parse([]byte(src))
+	p, err := recipe.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("an argumentless invoke and await must parse: %v", err)
 	}
@@ -334,7 +337,7 @@ steps:
   - {id: i, kind: invoke, tool: t, args: {}, actor: a}
   - {id: s, kind: sink, in: v, field: f, sensitivity: authoritative, rule: ok, actor: a}
 `
-	if _, err := Parse([]byte(src)); err == nil {
+	if _, err := recipe.Parse([]byte(src)); err == nil {
 		t.Error("an empty args mapping must be rejected — omit the key instead")
 	}
 }

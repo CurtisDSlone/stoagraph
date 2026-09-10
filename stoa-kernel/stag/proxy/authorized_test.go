@@ -1,10 +1,11 @@
-package proxy
+package proxy_test
 
 import (
 	"context"
 	"testing"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
 )
 
 // A Decision must carry the calls its recipe AUTHORIZED, so a caller can hand them to the
@@ -23,8 +24,8 @@ func invokeRecipeFor(t *testing.T, tool string) (stag.Recipe, string) {
 
 func TestDecisionCarriesAuthorizedCalls(t *testing.T) {
 	r, h := invokeRecipeFor(t, "k8s.drain")
-	g := Gate{Routes: Router{"plan": {Recipe: r, RecipeHash: h, RecipeName: "p", GateArg: "ns"}}}
-	d := g.Decide(context.Background(), ToolCall{Tool: "plan", Args: map[string]string{"ns": "dev"}})
+	g := proxy.Gate{Routes: proxy.Router{"plan": {Recipe: r, RecipeHash: h, RecipeName: "p", GateArg: "ns"}}}
+	d := g.Decide(context.Background(), proxy.ToolCall{Tool: "plan", Args: map[string]string{"ns": "dev"}})
 	if !d.Forward {
 		t.Fatalf("allowed call must forward: %+v", d)
 	}
@@ -40,8 +41,8 @@ func TestDecisionCarriesAuthorizedCalls(t *testing.T) {
 // enforced again at the boundary so a caller can never read a plan off a refused decision.
 func TestNonForwardedDecisionAuthorizesNothing(t *testing.T) {
 	r, h := invokeRecipeFor(t, "k8s.drain")
-	g := Gate{Routes: Router{"plan": {Recipe: r, RecipeHash: h, RecipeName: "p", GateArg: "ns"}}}
-	d := g.Decide(context.Background(), ToolCall{Tool: "plan", Args: map[string]string{"ns": "prod"}})
+	g := proxy.Gate{Routes: proxy.Router{"plan": {Recipe: r, RecipeHash: h, RecipeName: "p", GateArg: "ns"}}}
+	d := g.Decide(context.Background(), proxy.ToolCall{Tool: "plan", Args: map[string]string{"ns": "prod"}})
 	if d.Forward {
 		t.Fatal("prod must not forward")
 	}
@@ -52,8 +53,8 @@ func TestNonForwardedDecisionAuthorizesNothing(t *testing.T) {
 
 // An unrouted tool authorizes nothing (and is still recorded).
 func TestUnroutedAuthorizesNothing(t *testing.T) {
-	g := Gate{Routes: Router{}}
-	d := g.Decide(context.Background(), ToolCall{Tool: "nope", Args: map[string]string{"a": "b"}})
+	g := proxy.Gate{Routes: proxy.Router{}}
+	d := g.Decide(context.Background(), proxy.ToolCall{Tool: "nope", Args: map[string]string{"a": "b"}})
 	if len(d.Authorized) != 0 || d.Forward {
 		t.Errorf("unrouted: %+v", d)
 	}
@@ -68,8 +69,8 @@ func TestFanOutDoesNotMultiplyAuthorizations(t *testing.T) {
 		{Id: "p", Kind: stag.NodePropose, Out: "ns"},
 		{Id: "one", Kind: stag.NodeInvoke, Tool: "k8s.drain", ArgRules: map[string]stag.ArgRule{"node": {Slot: "ns", Rule: &rule, RuleID: "ns.safe"}}, Actor: "policy:test"},
 	}}
-	g := Gate{Routes: Router{"plan": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "items[].ns"}}}
-	call := ToolCall{Tool: "plan", Raw: []byte(`{"items":[{"ns":"dev"},{"ns":"staging"}]}`)}
+	g := proxy.Gate{Routes: proxy.Router{"plan": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "items[].ns"}}}
+	call := proxy.ToolCall{Tool: "plan", Raw: []byte(`{"items":[{"ns":"dev"},{"ns":"staging"}]}`)}
 	d := g.Decide(context.Background(), call)
 	if !d.Forward {
 		t.Fatalf("both values clear, so the call forwards: %+v", d)
@@ -87,8 +88,8 @@ func TestFanOutOneRefusedAuthorizesNothing(t *testing.T) {
 		{Id: "p", Kind: stag.NodePropose, Out: "ns"},
 		{Id: "one", Kind: stag.NodeInvoke, Tool: "k8s.drain", ArgRules: map[string]stag.ArgRule{"node": {Slot: "ns", Rule: &rule, RuleID: "ns.safe"}}, Actor: "policy:test"},
 	}}
-	g := Gate{Routes: Router{"plan": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "items[].ns"}}}
-	call := ToolCall{Tool: "plan", Raw: []byte(`{"items":[{"ns":"dev"},{"ns":"prod"}]}`)}
+	g := proxy.Gate{Routes: proxy.Router{"plan": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "items[].ns"}}}
+	call := proxy.ToolCall{Tool: "plan", Raw: []byte(`{"items":[{"ns":"dev"},{"ns":"prod"}]}`)}
 	d := g.Decide(context.Background(), call)
 	if d.Forward {
 		t.Fatal("one refused element must refuse the decision")
@@ -106,8 +107,8 @@ func TestOrdinaryRecipeAuthorizesNothing(t *testing.T) {
 		{Id: "s", Kind: stag.NodeSink, In: "ns", Field: "k8s.f", Sensitivity: stag.SinkAuthoritative,
 			Rule: &rule, RuleID: "r", Actor: "a"},
 	}}
-	g := Gate{Routes: Router{"t": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "ns"}}}
-	d := g.Decide(context.Background(), ToolCall{Tool: "t", Args: map[string]string{"ns": "dev"}})
+	g := proxy.Gate{Routes: proxy.Router{"t": {Recipe: r, RecipeHash: "h", RecipeName: "p", GateArg: "ns"}}}
+	d := g.Decide(context.Background(), proxy.ToolCall{Tool: "t", Args: map[string]string{"ns": "dev"}})
 	if !d.Forward || len(d.Authorized) != 0 {
 		t.Errorf("ordinary recipe: %+v", d)
 	}

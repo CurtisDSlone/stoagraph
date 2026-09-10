@@ -1,6 +1,6 @@
 package serve
 
-// file-kw: recipe authoring endpoints validate list get save delete admin console
+// file-kw: recipe authoring endpoints validate list get save delete admin api
 
 import (
 	"io"

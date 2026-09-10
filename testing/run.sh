@@ -42,8 +42,13 @@ echo "== stag-serve (:8080) config store =="
 sleep 3
 curl -sf -m5 localhost:8080/health >/dev/null || { echo "stag-serve failed"; cat "$LOG/serve.log"; exit 1; }
 
-echo "== register ops server, recipes, routes, providers =="
+echo "== register ops server, providers, recipes, routes =="
 curl -s -XPOST localhost:8080/api/mcp-servers -d '{"name":"ops","transport":"http","target":"http://localhost:9400/mcp"}' >/dev/null
+# Providers BEFORE recipes: reroute_policy/fixvuln_policy declare providers: [runbook, edge-logs],
+# and the gate now validates a recipe's tools:/providers: against what's actually registered at
+# SAVE time (fail closed) — a recipe naming an unregistered provider is refused, not just warned.
+curl -s -XPOST localhost:8080/api/providers -d '{"name":"runbook","kind":"static","config":"{\"path\":\"'"$T"'/fixtures/runbooks\"}","enabled":true}' >/dev/null
+curl -s -XPOST localhost:8080/api/providers -d '{"name":"edge-logs","kind":"http","config":"{\"url\":\"http://localhost:9500/logs/eu-west-edge\"}","enabled":true}' >/dev/null
 for r in recipes/*.yaml; do curl -s -XPOST localhost:8080/api/recipes --data-binary @"$r" >/dev/null; done
 rt(){ curl -s -XPOST localhost:8080/api/routes -d "$1" >/dev/null; }
 rt '{"tool":"reroute_traffic","server":"ops","recipe":"reroute_policy","gateArg":"target"}'
@@ -51,8 +56,6 @@ rt '{"tool":"notify_soc","server":"ops","recipe":"notify_policy","gateArg":"chan
 rt '{"tool":"open_ticket","server":"ops","recipe":"ticket_policy","gateArg":"system"}'
 rt '{"tool":"fix_vulnerability","server":"ops","recipe":"fixvuln_policy","gateArg":"cve"}'
 # NOTE: wipe_database, isolate_host, disable_user are intentionally UNROUTED -> denied if named.
-curl -s -XPOST localhost:8080/api/providers -d '{"name":"runbook","kind":"static","config":"{\"path\":\"'"$T"'/fixtures/runbooks\"}","enabled":true}' >/dev/null
-curl -s -XPOST localhost:8080/api/providers -d '{"name":"edge-logs","kind":"http","config":"{\"url\":\"http://localhost:9500/logs/eu-west-edge\"}","enabled":true}' >/dev/null
 
 echo "== stag-proxy gate (:8091) =="
 "$BIN/stag-proxy" -http :8091 -downstream ops -store "$DATA/config.db" -recipes-dir "$DATA/recipes" \

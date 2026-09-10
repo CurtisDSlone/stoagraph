@@ -1,9 +1,9 @@
 // Your tool server. Copy this folder, add your tools, put StoaGraph in front of it.
 //
-// This is a normal MCP server — nothing StoaGraph-specific. You register it with the gate (console →
-// Adapters, or POST /api/mcp-servers), write a recipe that gates one of its arguments, and route the
-// tool to that recipe. From then on the agent can only call your tool through the gate, on the values
-// your policy allows.
+// This is a normal MCP server — nothing StoaGraph-specific. You register it with the gate
+// (POST /api/mcp-servers), write a recipe that gates one of its arguments, and route the tool to that
+// recipe. From then on the agent can only call your tool through the gate, on the values your policy
+// allows.
 //
 // Two transports, same code:
 //   go run .                 stdio — an agent host (or a host-run gate) spawns it

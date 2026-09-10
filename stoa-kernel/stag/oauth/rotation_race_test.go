@@ -1,4 +1,4 @@
-package oauth
+package oauth_test
 
 // kw-test: concurrent refresh + rotation — two gate processes must not spend the same single-use token
 
@@ -9,29 +9,31 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/oauth"
 )
 
 // freshTokens runs the real flow (discover -> DCR -> PKCE -> authorize -> exchange) and returns a live
 // config plus a valid token pair. Each call mints a NEW client + code, so tests never share a token.
-func freshTokens(t *testing.T, ctx context.Context) (Config, Tokens) {
+func freshTokens(t *testing.T, ctx context.Context) (oauth.Config, oauth.Tokens) {
 	t.Helper()
 	base := liveIdP(t)
-	redirect := "http://localhost:8080" + CallbackPath
+	redirect := "http://localhost:8080" + oauth.CallbackPath
 
-	cfg, err := Discover(ctx, nil, base)
+	cfg, err := oauth.Discover(ctx, nil, base)
 	if err != nil {
 		t.Fatalf("discover: %v", err)
 	}
-	cfg, err = Register(ctx, nil, cfg, redirect, "stoagraph-race")
+	cfg, err = oauth.Register(ctx, nil, cfg, redirect, "stoagraph-race")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	verifier, challenge := PKCE()
+	verifier, challenge := oauth.PKCE()
 	noRedirect := &http.Client{
 		Timeout:       5 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
-	resp, err := noRedirect.Get(cfg.AuthCodeURL(redirect, NewState(), challenge))
+	resp, err := noRedirect.Get(cfg.AuthCodeURL(redirect, oauth.NewState(), challenge))
 	if err != nil {
 		t.Fatalf("authorize: %v", err)
 	}
@@ -62,8 +64,8 @@ func TestConcurrentRefreshDoesNotLockOut(t *testing.T) {
 	ctx := context.Background()
 	cfg, tok := freshTokens(t, ctx)
 
-	st := Store{Dir: t.TempDir()}
-	if err := st.Save("racy", State{Config: cfg, Tokens: Tokens{
+	st := oauth.Store{Dir: t.TempDir()}
+	if err := st.Save("racy", oauth.State{Config: cfg, Tokens: oauth.Tokens{
 		AccessToken:  tok.AccessToken,
 		RefreshToken: tok.RefreshToken,
 		Expiry:       time.Now().Add(-time.Second), // expired: every caller wants to refresh

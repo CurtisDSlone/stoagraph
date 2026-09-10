@@ -80,7 +80,9 @@ func TestLeakageMoreOptionsMoreBits(t *testing.T) {
 func TestLeakagePassthroughVoidsBound(t *testing.T) {
 	p := mustParse(t, `recipe: leaky
 version: 1
-passthrough: ["reason"]
+tools:
+  notify_svc:
+    send: {passthrough: ["reason"]}
 rules:
   chan.ok: {kind: set_membership, set: ["a", "b"]}
 steps:
@@ -232,7 +234,9 @@ steps:
 func TestSessionBoundUnboundedIfAnyRecipeIs(t *testing.T) {
 	leaky := mustParse(t, `recipe: leaky
 version: 1
-passthrough: ["reason"]
+tools:
+  notify_svc:
+    send: {passthrough: ["reason"]}
 steps:
   - {id: p1, kind: propose, out: channel}`)
 	if _, unbounded, _ := recipe.SessionBound([]stag.Recipe{leaky.Recipe}, 6); !unbounded {

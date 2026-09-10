@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# stoa — run the StoaGraph backend as LOCAL BINARIES out of ~/.stoagraph. No Docker, no console.
+# stoa — run the StoaGraph backend as LOCAL BINARIES out of ./.stoagraph. No Docker, no console.
 #
 #   stag-serve    :8080   the GATE — policy, approvals, audit. No model, no keys.
 #   stag-proxy    :8091   the GATE — MCP gating proxy. Your agent connects HERE.
@@ -7,11 +7,14 @@
 #                         runs through StoaGraph's own agent loop; an external agent speaking MCP
 #                         does not need it, and it is the only process that holds model API keys.
 #
-# EVERYTHING LIVES IN $STOA_HOME (default ~/.stoagraph) — recipes, tools, config, audit logs, keys.
-# The source checkout is build-time only; deleting it does not touch your instance. Every path is
-# passed as an EXPLICIT FLAG rather than inherited from a working directory, so `ps` shows you
-# exactly which store a process opened. A daemon whose state depends on where it was launched from
-# is a daemon that will one day quietly open the wrong database.
+# EVERYTHING LIVES IN $STOA_HOME (default ./.stoagraph, next to this checkout) — recipes, tools,
+# config, audit logs, keys. Deliberately repo-local, not $HOME: your instance sits beside the code
+# it's gating, gitignored, so `ls` in the checkout shows you the whole picture — code and instance
+# together. The tradeoff, stated plainly: deleting the checkout deletes your instance with it,
+# including the audit log. Point STOA_HOME elsewhere first if you want the instance to outlive this
+# clone. Every path is passed as an EXPLICIT FLAG rather than inherited from a working directory,
+# so `ps` shows you exactly which store a process opened. A daemon whose state depends on where it
+# was launched from is a daemon that will one day quietly open the wrong database.
 #
 # ORDER IS LOAD-BEARING: stag-serve MINTS data/control.tokens (0600) on first start; every other
 # process only READS it. A consumer must never invent a secret nobody else knows.
@@ -28,7 +31,23 @@
 
 set -uo pipefail
 
-STOA_HOME="${STOA_HOME:-$HOME/.stoagraph}"
+# Resolve the CHECKOUT, not wherever this script was invoked from. `stoa` is normally reached
+# through a symlink on PATH (~/.local/bin/stoa), and $0 is then the symlink — so a plain dirname
+# lands in ~/.local, not the checkout. Follow the link first. This is what lets ./.stoagraph mean
+# "next to the checkout" no matter which directory you ran `stoa` from.
+STOA_SELF="$0"
+while [ -L "$STOA_SELF" ]; do
+  target="$(readlink "$STOA_SELF")"
+  case "$target" in
+    /*) STOA_SELF="$target" ;;
+    *)  STOA_SELF="$(dirname "$STOA_SELF")/$target" ;;
+  esac
+done
+STOA_CHECKOUT="$(cd "$(dirname "$STOA_SELF")/.." && pwd)"
+# STOA_SRC overrides for a checkout somewhere this cannot infer (e.g. a build pipeline).
+[ -n "${STOA_SRC:-}" ] && STOA_CHECKOUT="$STOA_SRC"
+
+STOA_HOME="${STOA_HOME:-$STOA_CHECKOUT/.stoagraph}"
 BIN="$STOA_HOME/bin"
 DATA="$STOA_HOME/data"
 LOGS="$STOA_HOME/logs"
@@ -76,20 +95,7 @@ start() { # name binary args...
 }
 
 cmd_install() {
-  # Resolve the CHECKOUT, not wherever this script was invoked from. `stoa` is normally reached through
-  # a symlink on PATH (~/.local/bin/stoa), and $0 is then the symlink — so a plain dirname lands in
-  # ~/.local and looks for ~/.local/stoa-kernel/bin, which does not exist. Follow the link first.
-  local self="$0"
-  while [ -L "$self" ]; do
-    local target; target="$(readlink "$self")"
-    case "$target" in
-      /*) self="$target" ;;
-      *)  self="$(dirname "$self")/$target" ;;
-    esac
-  done
-  local src; src="$(cd "$(dirname "$self")/.." && pwd)/stoa-kernel/bin"
-  # STOA_SRC overrides, for a checkout somewhere this cannot infer.
-  [ -n "${STOA_SRC:-}" ] && src="$STOA_SRC/stoa-kernel/bin"
+  local src="$STOA_CHECKOUT/stoa-kernel/bin"
   [ -d "$src" ] || die "no built binaries at $src — run tools/build.sh (or set STOA_SRC=/path/to/checkout)"
 
   # A running process holds its binary open: cp fails with "Text file busy". Say so plainly rather than

@@ -1,4 +1,4 @@
-package recipe
+package recipe_test
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipe"
 )
 
 // child sub-recipe, SEALED (ends in exit): gates a target against the escalation set.
@@ -66,7 +67,7 @@ steps:
     kind: exit
 `
 
-func mapResolver(m map[string]string) Resolver {
+func mapResolver(m map[string]string) recipe.Resolver {
 	return func(name string) ([]byte, error) {
 		s, ok := m[name]
 		if !ok {
@@ -88,7 +89,7 @@ func eventFields(r stag.EvalResult) []string {
 }
 
 func TestComposeInlinesChild(t *testing.T) {
-	p, w, err := Compose([]byte(parentSrc), stdResolve)
+	p, w, err := recipe.Compose([]byte(parentSrc), stdResolve)
 	if err != nil {
 		t.Fatalf("compose: %v (warns %v)", err, w)
 	}
@@ -158,7 +159,7 @@ steps:
 `
 
 func TestComposeDefaultRecipe(t *testing.T) {
-	p, _, err := Compose([]byte(defaultParentSrc), stdResolve)
+	p, _, err := recipe.Compose([]byte(defaultParentSrc), stdResolve)
 	if err != nil {
 		t.Fatalf("compose default_recipe: %v", err)
 	}
@@ -175,11 +176,11 @@ func TestComposeDefaultRecipe(t *testing.T) {
 }
 
 func TestComposeHashBindsExpansion(t *testing.T) {
-	p1, _, err := Compose([]byte(parentSrc), stdResolve)
+	p1, _, err := recipe.Compose([]byte(parentSrc), stdResolve)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p2, _, err := Compose([]byte(parentSrc), stdResolve) // deterministic
+	p2, _, err := recipe.Compose([]byte(parentSrc), stdResolve) // deterministic
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +189,7 @@ func TestComposeHashBindsExpansion(t *testing.T) {
 	}
 	// editing the child changes the PARENT hash (the hash binds the full expansion).
 	childB := strings.Replace(childSrc, `["delete_all", "shutdown"]`, `["delete_all"]`, 1)
-	pB, _, err := Compose([]byte(parentSrc), mapResolver(map[string]string{"escalate_policy": childB}))
+	pB, _, err := recipe.Compose([]byte(parentSrc), mapResolver(map[string]string{"escalate_policy": childB}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,11 +197,11 @@ func TestComposeHashBindsExpansion(t *testing.T) {
 		t.Errorf("editing the child did not change the parent hash")
 	}
 	// a no-composition recipe hashes identically whether via Parse or Compose (regression).
-	plain, err := Parse([]byte(childSrc))
+	plain, err := recipe.Parse([]byte(childSrc))
 	if err != nil {
 		t.Fatal(err)
 	}
-	cc, _, err := Compose([]byte(childSrc), stdResolve)
+	cc, _, err := recipe.Compose([]byte(childSrc), stdResolve)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +213,7 @@ func TestComposeHashBindsExpansion(t *testing.T) {
 func TestComposeFailClosed(t *testing.T) {
 	cases := map[string]struct {
 		src     string
-		resolve Resolver
+		resolve recipe.Resolver
 	}{
 		"missing child": {parentSrc, mapResolver(map[string]string{})},
 		"self reference": {strings.Replace(parentSrc,
@@ -229,7 +230,7 @@ func TestComposeFailClosed(t *testing.T) {
 			"escalate_policy": strings.Replace(childSrc, "  - id: done\n    kind: exit\n", "", 1)})},
 	}
 	for name, c := range cases {
-		p, _, err := Compose([]byte(c.src), c.resolve)
+		p, _, err := recipe.Compose([]byte(c.src), c.resolve)
 		if err == nil {
 			t.Errorf("%s: want error, got none", name)
 		}
@@ -244,29 +245,29 @@ func TestComposeGrammarAndRegression(t *testing.T) {
 	badSink := strings.Replace(parentSrc,
 		"    field: mcp.exec.normal\n",
 		"    field: mcp.exec.normal\n    goto_recipe: escalate_policy\n", 1)
-	if _, err := Parse([]byte(badSink)); err == nil {
+	if _, err := recipe.Parse([]byte(badSink)); err == nil {
 		t.Errorf("goto_recipe on a sink must be rejected")
 	}
 	// a case with BOTH goto and goto_recipe.
 	bothCase := strings.Replace(parentSrc,
 		"      - rule: route.esc\n        goto_recipe: escalate_policy",
 		"      - rule: route.esc\n        goto: noop\n        goto_recipe: escalate_policy", 1)
-	if _, err := Parse([]byte(bothCase)); err == nil {
+	if _, err := recipe.Parse([]byte(bothCase)); err == nil {
 		t.Errorf("case with both goto and goto_recipe must be rejected")
 	}
 	// a branch with BOTH default and default_recipe.
 	bothDef := strings.Replace(parentSrc,
 		"    default: noop",
 		"    default: noop\n    default_recipe: escalate_policy", 1)
-	if _, err := Parse([]byte(bothDef)); err == nil {
+	if _, err := recipe.Parse([]byte(bothDef)); err == nil {
 		t.Errorf("branch with both default and default_recipe must be rejected")
 	}
 	// Parse (no resolver) of a COMPOSED recipe errors clearly.
-	if _, err := Parse([]byte(parentSrc)); err == nil || !strings.Contains(err.Error(), "escalate_policy") {
+	if _, err := recipe.Parse([]byte(parentSrc)); err == nil || !strings.Contains(err.Error(), "escalate_policy") {
 		t.Errorf("Parse of a composed recipe must reject with the sub-recipe name, got %v", err)
 	}
 	// a plain recipe parses identically through Compose(reject) and Parse (regression).
-	if _, _, err := Compose([]byte(childSrc), rejectResolver); err != nil {
+	if _, _, err := recipe.Compose([]byte(childSrc), recipe.RejectResolver); err != nil {
 		t.Errorf("plain recipe must compose with no resolver: %v", err)
 	}
 }
@@ -277,7 +278,7 @@ func FuzzCompose(f *testing.F) {
 	f.Add("recipe: r\nversion: 1\nsteps:\n  - id: a\n    kind: exit\n", childSrc)
 	f.Fuzz(func(t *testing.T, parent, child string) {
 		resolve := mapResolver(map[string]string{"escalate_policy": child})
-		p, _, err := Compose([]byte(parent), resolve)
+		p, _, err := recipe.Compose([]byte(parent), resolve)
 		if err != nil {
 			if p.SemanticHash != "" {
 				t.Fatalf("error AND a non-zero Parsed leaked")
@@ -285,7 +286,7 @@ func FuzzCompose(f *testing.F) {
 			return
 		}
 		// determinism: re-Compose yields the same semantic hash.
-		p2, _, err2 := Compose([]byte(parent), resolve)
+		p2, _, err2 := recipe.Compose([]byte(parent), resolve)
 		if err2 != nil || p2.SemanticHash != p.SemanticHash {
 			t.Fatalf("non-deterministic compose: %v / %s vs %s", err2, p.SemanticHash, p2.SemanticHash)
 		}

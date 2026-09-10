@@ -1,4 +1,4 @@
-// Package store is the SQLite config store for the admin console's Adapters
+// Package store is the SQLite config store behind the gate's /api/mcp-servers and /api/routes
 // (Planning/18): the persisted, RELATIONAL config that the file-based recipes bind
 // to — MCP servers (+ their tools), context providers, and routes (tool → recipe →
 // gated arg). Persistence only, typed fail-closed CRUD, the whole schema in ONE
@@ -7,7 +7,7 @@
 // DB driver. All queries are parameterized — arbitrary strings are inert data.
 package store
 
-// file-kw: sqlite config store adapters mcp-server context-provider route ddl no-migrations quarantined
+// file-kw: sqlite config store mcp-server context-provider route ddl no-migrations quarantined
 
 import (
 	"context"

@@ -3,10 +3,11 @@
 // access tokens for OAuth-protected MCP servers.
 //
 // The security model is unchanged: the GATE holds the tokens and injects them at the proxy->tool hop;
-// the agent never sees them. A human operator runs the interactive sign-in from the console (stag-serve
-// builds the authorization URL and handles the callback); the enforcement proxy only READS the stored
-// tokens and refreshes them at connect. Non-secret config and the tokens persist per server as one JSON
-// file under a shared directory, so both processes can read the same state off the data volume.
+// the agent never sees them. A human operator runs the interactive sign-in by opening
+// GET /api/oauth/start?server=<name> in a browser (admin-only; stag-serve builds the authorization URL
+// and handles the callback); the enforcement proxy only READS the stored tokens and refreshes them at
+// connect. Non-secret config and the tokens persist per server as one JSON file under a shared
+// directory, so both processes can read the same state off the data volume.
 package oauth
 
 // file-kw: oauth downstream authorization-code pkce dcr discovery refresh token-store bearer
@@ -446,9 +447,9 @@ func (c Config) Refresh(ctx context.Context, hc *http.Client, refreshToken strin
 // Client authentication methods at the token endpoint (RFC 6749 §2.3). Which one a provider accepts is
 // PER-PROVIDER and advertised in `token_endpoint_auth_methods_supported`.
 const (
-	authBasic = "client_secret_basic" // secret in an HTTP Basic header. The RFC says servers MUST support it.
-	authPost  = "client_secret_post"  // secret in the form body. Optional per the RFC — but common.
-	authNone  = "none"                // public client: no secret, PKCE only.
+	AuthBasic = "client_secret_basic" // secret in an HTTP Basic header. The RFC says servers MUST support it.
+	AuthPost  = "client_secret_post"  // secret in the form body. Optional per the RFC — but common.
+	AuthNone  = "none"                // public client: no secret, PKCE only.
 )
 
 // tokenAuthOrder is the client-authentication methods to attempt, best first.
@@ -459,15 +460,15 @@ const (
 // you get an "OAuth works — except with Okta" bug.
 func (c Config) tokenAuthOrder() []string {
 	if c.ClientSecret == "" {
-		return []string{authNone}
+		return []string{AuthNone}
 	}
 	switch c.TokenAuthMethod {
-	case authBasic:
-		return []string{authBasic, authPost}
-	case authPost:
-		return []string{authPost, authBasic}
+	case AuthBasic:
+		return []string{AuthBasic, AuthPost}
+	case AuthPost:
+		return []string{AuthPost, AuthBasic}
 	default: // undeclared: try the body first (widely accepted), then Basic (the mandatory one)
-		return []string{authPost, authBasic}
+		return []string{AuthPost, AuthBasic}
 	}
 }
 
@@ -509,14 +510,14 @@ func (c Config) tokenRequestWith(ctx context.Context, hc *http.Client, form url.
 	for k, v := range c.TokenParams { // provider-specific (e.g. Auth0's audience)
 		f.Set(k, v)
 	}
-	if method == authPost && c.ClientSecret != "" {
+	if method == AuthPost && c.ClientSecret != "" {
 		f.Set("client_secret", c.ClientSecret)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.TokenEndpoint, strings.NewReader(f.Encode()))
 	if err != nil {
 		return Tokens{}, err
 	}
-	if method == authBasic && c.ClientSecret != "" {
+	if method == AuthBasic && c.ClientSecret != "" {
 		// RFC 6749 §2.3.1: the credentials are form-urlencoded before base64, and travel in the header.
 		req.SetBasicAuth(url.QueryEscape(c.ClientID), url.QueryEscape(c.ClientSecret))
 	}
@@ -645,10 +646,10 @@ func pickTokenAuth(supported []string) string {
 		return false
 	}
 	switch {
-	case has(authBasic):
-		return authBasic
-	case has(authPost):
-		return authPost
+	case has(AuthBasic):
+		return AuthBasic
+	case has(AuthPost):
+		return AuthPost
 	default:
 		return ""
 	}

@@ -1,9 +1,11 @@
-package store
+package store_test
 
 import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/store"
 )
 
 // A model behind a gateway can be slow — a queue, a proxy, an inference server under load — and
@@ -15,14 +17,14 @@ import (
 // slow one at once, and a single global value would have to be the max of the two.
 
 func TestTimeoutDefaultsWhenUnset(t *testing.T) {
-	m := Model{Name: "x", Kind: "openai"}
-	if got := m.RequestTimeout(); got != DefaultRequestTimeout {
-		t.Errorf("an unset timeout must default: %v, want %v", got, DefaultRequestTimeout)
+	m := store.Model{Name: "x", Kind: "openai"}
+	if got := m.RequestTimeout(); got != store.DefaultRequestTimeout {
+		t.Errorf("an unset timeout must default: %v, want %v", got, store.DefaultRequestTimeout)
 	}
 }
 
 func TestTimeoutFromConfig(t *testing.T) {
-	m := Model{Name: "x", Kind: "openai", TimeoutSeconds: 240}
+	m := store.Model{Name: "x", Kind: "openai", TimeoutSeconds: 240}
 	if got := m.RequestTimeout(); got != 240*time.Second {
 		t.Errorf("configured timeout: %v", got)
 	}
@@ -32,7 +34,7 @@ func TestTimeoutFromConfig(t *testing.T) {
 // config — the same escape hatch apiKeyEnv gives for secrets.
 func TestTimeoutEnvOverridesConfig(t *testing.T) {
 	t.Setenv("STOA_MODEL_TIMEOUT_SECONDS", "300")
-	m := Model{Name: "x", Kind: "openai", TimeoutSeconds: 60}
+	m := store.Model{Name: "x", Kind: "openai", TimeoutSeconds: 60}
 	if got := m.RequestTimeout(); got != 300*time.Second {
 		t.Errorf("env must win over the file: %v", got)
 	}
@@ -43,8 +45,8 @@ func TestTimeoutEnvOverridesConfig(t *testing.T) {
 func TestPerModelEnvBeatsGlobalEnv(t *testing.T) {
 	t.Setenv("STOA_MODEL_TIMEOUT_SECONDS", "300")
 	t.Setenv("STOA_MODEL_TIMEOUT_SECONDS_SLOWONE", "600")
-	fast := Model{Name: "fast", Kind: "openai"}
-	slow := Model{Name: "slowone", Kind: "openai"}
+	fast := store.Model{Name: "fast", Kind: "openai"}
+	slow := store.Model{Name: "slowone", Kind: "openai"}
 	if got := fast.RequestTimeout(); got != 300*time.Second {
 		t.Errorf("fast model takes the global env: %v", got)
 	}
@@ -57,7 +59,7 @@ func TestPerModelEnvBeatsGlobalEnv(t *testing.T) {
 // silently miss: "gpt-4o" would otherwise be unreachable by env.
 func TestPerModelEnvNormalizesTheName(t *testing.T) {
 	t.Setenv("STOA_MODEL_TIMEOUT_SECONDS_GPT_4O", "450")
-	m := Model{Name: "gpt-4o", Kind: "openai"}
+	m := store.Model{Name: "gpt-4o", Kind: "openai"}
 	if got := m.RequestTimeout(); got != 450*time.Second {
 		t.Errorf("a hyphenated model name must map to an env var: %v", got)
 	}
@@ -74,7 +76,7 @@ func TestOutOfRangeAndGarbageFallBackToTheDefault(t *testing.T) {
 	}{
 		{"negative", -1, ""},
 		{"zero is unset, not unlimited", 0, ""},
-		{"over the ceiling", int(MaxRequestTimeout/time.Second) + 1, ""},
+		{"over the ceiling", int(store.MaxRequestTimeout/time.Second) + 1, ""},
 		{"garbage env", 0, "not-a-number"},
 		{"negative env", 0, "-5"},
 		{"over-ceiling env", 0, "999999"},
@@ -86,8 +88,8 @@ func TestOutOfRangeAndGarbageFallBackToTheDefault(t *testing.T) {
 			} else {
 				os.Unsetenv("STOA_MODEL_TIMEOUT_SECONDS")
 			}
-			m := Model{Name: "x", Kind: "openai", TimeoutSeconds: c.cfg}
-			if got := m.RequestTimeout(); got != DefaultRequestTimeout {
+			m := store.Model{Name: "x", Kind: "openai", TimeoutSeconds: c.cfg}
+			if got := m.RequestTimeout(); got != store.DefaultRequestTimeout {
 				t.Errorf("%s: must fall back to the default, got %v", c.name, got)
 			}
 		})
@@ -96,8 +98,8 @@ func TestOutOfRangeAndGarbageFallBackToTheDefault(t *testing.T) {
 
 // The ceiling itself is usable: a value exactly at the limit is accepted.
 func TestCeilingIsInclusive(t *testing.T) {
-	m := Model{Name: "x", Kind: "openai", TimeoutSeconds: int(MaxRequestTimeout / time.Second)}
-	if got := m.RequestTimeout(); got != MaxRequestTimeout {
+	m := store.Model{Name: "x", Kind: "openai", TimeoutSeconds: int(store.MaxRequestTimeout / time.Second)}
+	if got := m.RequestTimeout(); got != store.MaxRequestTimeout {
 		t.Errorf("the ceiling must be reachable: %v", got)
 	}
 }

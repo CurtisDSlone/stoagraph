@@ -1,4 +1,4 @@
-package recipe
+package recipe_test
 
 import (
 	"crypto/sha256"
@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	stag "github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/recipe"
 )
 
 // the Planning/09 worked recipe, verbatim.
@@ -85,11 +86,11 @@ steps:
 `
 
 func TestRecipeParseFixture(t *testing.T) {
-	p, err := Parse([]byte(fixture))
+	p, err := recipe.Parse([]byte(fixture))
 	if err != nil {
 		t.Fatalf("fixture must parse: %v", err)
 	}
-	if _, w, derr := ParseDraft([]byte(fixture)); derr != nil || len(w) != 0 {
+	if _, w, derr := recipe.ParseDraft([]byte(fixture)); derr != nil || len(w) != 0 {
 		t.Fatalf("fixture draft: warnings=%v err=%v", w, derr)
 	}
 	if p.Header.Name != "cdn_remediation" || p.Header.Version != 1 {
@@ -183,7 +184,7 @@ func TestRecipeParseRejections(t *testing.T) {
 		{"invalid utf8", []byte("recipe: r\xff\xfe\nversion: 1\n"), "invalid UTF-8"},
 	}
 	for _, c := range byteCases {
-		if _, err := Parse(c.src); err == nil || !strings.Contains(err.Error(), c.want) {
+		if _, err := recipe.Parse(c.src); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: err=%v, want substring %q", c.name, err, c.want)
 		}
 	}
@@ -272,14 +273,15 @@ func TestRecipeParseRejections(t *testing.T) {
 		{"register", strings.Replace(skeleton, "    kind: propose\n", "    kind: propose\n    register: x\n", 1), "propose"},
 		{"vars", "vars: {x: 1}\n" + skeleton, "ingredients"},
 		{"on instead of in", poison("    in: plan\n    cases:", "    on: plan\n    cases:"), "use in:"},
+		{"notify at top level", "notify: x\n" + skeleton, "no handlers"},
 		{"templating", strings.Replace(skeleton, "field: log.x", `field: "{{ item }}"`, 1), "templating"},
 	}
 	for _, c := range cases {
-		p, err := Parse([]byte(c.src))
+		p, err := recipe.Parse([]byte(c.src))
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: err=%v, want substring %q", c.name, err, c.want)
 		}
-		if !reflect.DeepEqual(p, Parsed{}) {
+		if !reflect.DeepEqual(p, recipe.Parsed{}) {
 			t.Errorf("%s: rejected input leaked a non-zero Parsed (reject-before-hash)", c.name)
 		}
 	}
@@ -287,11 +289,34 @@ func TestRecipeParseRejections(t *testing.T) {
 	// exit is now a real terminal kind (implemented for composition); it parses. An unknown
 	// kind is still rejected as unknown — no recognized-but-rejected sentinel remains.
 	exitRecipe := "recipe: r\nversion: 1\nsteps:\n  - id: s0\n    kind: propose\n    out: p\n  - id: done\n    kind: exit\n"
-	if _, err := Parse([]byte(exitRecipe)); err != nil {
+	if _, err := recipe.Parse([]byte(exitRecipe)); err != nil {
 		t.Errorf("exit must parse as a terminal: %v", err)
 	}
-	if _, err := Parse([]byte(strings.Replace(skeleton, "kind: propose", "kind: frobnicate", 1))); err == nil {
+	if _, err := recipe.Parse([]byte(strings.Replace(skeleton, "kind: propose", "kind: frobnicate", 1))); err == nil {
 		t.Errorf("unknown kind must be rejected")
+	}
+}
+
+// TestTeachingScopedToClosedSchemas proves the fix for the hygiene check's over-broad blast
+// radius: tools:/providers: are OPEN schemas (operator-chosen server/tool/provider names), so a
+// name that happens to collide with a teaching keyword (like "notify") must parse cleanly there,
+// even though the identical bare word is still rejected in the two CLOSED-schema places the check
+// still runs: a step mapping key, and the top-level document key (both covered above).
+func TestTeachingScopedToClosedSchemas(t *testing.T) {
+	src := "recipe: r\nversion: 1\n" +
+		"tools:\n  notify:\n    when:\n      passthrough: [\"msg\"]\n" +
+		"providers: [\"register\"]\n" +
+		"steps:\n  - id: s0\n    kind: propose\n    out: p\n" +
+		"  - id: s1\n    kind: sink\n    in: p\n    field: log.x\n    sensitivity: benign\n"
+	p, err := recipe.Parse([]byte(src))
+	if err != nil {
+		t.Fatalf("server %q, tool %q, provider %q must parse (they are operator-chosen names, not step syntax): %v", "notify", "when", "register", err)
+	}
+	if _, ok := p.Recipe.Tools["notify"]["when"]; !ok {
+		t.Errorf("tools.notify.when not present in parsed recipe")
+	}
+	if len(p.Recipe.Providers) != 1 || p.Recipe.Providers[0] != "register" {
+		t.Errorf("providers = %v, want [register]", p.Recipe.Providers)
 	}
 }
 
@@ -321,7 +346,7 @@ steps:
     rule: used.rule
     actor: "a"
 `
-	_, w, err := ParseDraft([]byte(dead))
+	_, w, err := recipe.ParseDraft([]byte(dead))
 	if err != nil {
 		t.Fatalf("draft must succeed: %v", err)
 	}
@@ -329,24 +354,24 @@ steps:
 	if len(w) != 2 || !strings.Contains(joined, "unused ingredient") || !strings.Contains(joined, "unreferenced rule") {
 		t.Errorf("draft warnings: %v", w)
 	}
-	if _, err := Parse([]byte(dead)); err == nil {
+	if _, err := recipe.Parse([]byte(dead)); err == nil {
 		t.Errorf("strict must reject dead declarations")
 	}
 
 	emptyMember := strings.Replace(dead, `set: ["ok"]`, `set: ["", "ok"]`, 1)
 	emptyMember = strings.Replace(emptyMember, "ingredients:\n  spare:\n    origin: x\n    trust: untrusted\n", "", 1)
 	emptyMember = strings.Replace(emptyMember, "  dead.rule:\n    kind: set_membership\n    set: [\"never\"]\n", "", 1)
-	_, w2, err := ParseDraft([]byte(emptyMember))
+	_, w2, err := recipe.ParseDraft([]byte(emptyMember))
 	if err != nil || len(w2) != 1 || !strings.Contains(w2[0], "empty string") {
 		t.Errorf("empty member: warnings=%v err=%v", w2, err)
 	}
-	if _, err := Parse([]byte(emptyMember)); err == nil {
+	if _, err := recipe.Parse([]byte(emptyMember)); err == nil {
 		t.Errorf("strict must reject empty-string set member")
 	}
 }
 
 func TestRecipeParseHashes(t *testing.T) {
-	p1, err := Parse([]byte(fixture))
+	p1, err := recipe.Parse([]byte(fixture))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +382,7 @@ func TestRecipeParseHashes(t *testing.T) {
 
 	// comments move the artifact hash, never the semantic hash
 	commented := "# a comment\n" + fixture
-	p2, err := Parse([]byte(commented))
+	p2, err := recipe.Parse([]byte(commented))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +397,7 @@ func TestRecipeParseHashes(t *testing.T) {
 	reordered := strings.Replace(fixture,
 		`set: ["class:regional_fallback", "class:edge_only", "class:transcontinental"]`,
 		`set: ["class:transcontinental", "class:edge_only", "class:regional_fallback"]`, 1)
-	p3, err := Parse([]byte(reordered))
+	p3, err := recipe.Parse([]byte(reordered))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -386,7 +411,7 @@ func TestRecipeParseHashes(t *testing.T) {
 		{"on_fail: escalate", "on_fail: deny"},
 		{`actor: "policy:cache_budget"`, `actor: "policy:other"`},
 	} {
-		pe, err := Parse([]byte(strings.Replace(fixture, edit[0], edit[1], 1)))
+		pe, err := recipe.Parse([]byte(strings.Replace(fixture, edit[0], edit[1], 1)))
 		if err != nil {
 			t.Fatalf("edit %q: %v", edit[1], err)
 		}
@@ -396,7 +421,7 @@ func TestRecipeParseHashes(t *testing.T) {
 	}
 
 	// determinism
-	p4, err := Parse([]byte(fixture))
+	p4, err := recipe.Parse([]byte(fixture))
 	if err != nil || !reflect.DeepEqual(p1, p4) {
 		t.Errorf("determinism: parses differ (%v)", err)
 	}
@@ -416,15 +441,15 @@ func FuzzRecipeParse(f *testing.F) {
 				t.Fatalf("PANIC escaped Parse: %v", r)
 			}
 		}()
-		p, err := Parse(src)
+		p, err := recipe.Parse(src)
 		if err != nil {
-			if !reflect.DeepEqual(p, Parsed{}) {
+			if !reflect.DeepEqual(p, recipe.Parsed{}) {
 				t.Errorf("rejected input leaked a non-zero Parsed")
 			}
 			return
 		}
 		// accepted: deterministic, hashes well-formed, draft-clean, kernel-safe
-		p2, err2 := Parse(src)
+		p2, err2 := recipe.Parse(src)
 		if err2 != nil || !reflect.DeepEqual(p, p2) {
 			t.Errorf("DETERMINISM: second parse differs (%v)", err2)
 		}
@@ -435,7 +460,7 @@ func FuzzRecipeParse(f *testing.F) {
 		if len(p.SemanticHash) != 64 || p.Header.Version != 1 || len(p.Recipe.Steps) == 0 {
 			t.Errorf("accepted parse ill-formed: %+v", p.Header)
 		}
-		if _, w, derr := ParseDraft(src); derr != nil || len(w) != 0 {
+		if _, w, derr := recipe.ParseDraft(src); derr != nil || len(w) != 0 {
 			t.Errorf("strict acceptance implies draft-clean: %v %v", w, derr)
 		}
 		// an ACCEPTED recipe never trips a kernel Fault, on ANY proposal (the

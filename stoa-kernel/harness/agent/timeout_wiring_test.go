@@ -1,4 +1,4 @@
-package agent
+package agent_test
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/agent"
 )
 
 // The configured timeout must reach the WIRE. A value that is parsed, stored and displayed but
@@ -32,7 +34,7 @@ func slowServer(t *testing.T, delay time.Duration) *httptest.Server {
 // A short timeout gives up on a slow endpoint rather than hanging.
 func TestOpenAITimeoutIsApplied(t *testing.T) {
 	srv := slowServer(t, 3*time.Second)
-	m := NewOpenAI("k", "test-model", srv.URL, "sys", "in", nil, 150*time.Millisecond)
+	m := agent.NewOpenAI("k", "test-model", srv.URL, "sys", "in", nil, 150*time.Millisecond)
 
 	start := time.Now()
 	_, err := m.Propose(context.Background(), nil)
@@ -53,7 +55,7 @@ func TestOpenAITimeoutIsApplied(t *testing.T) {
 // being fixed: a model behind a gateway is slow, not broken.
 func TestGenerousTimeoutAllowsASlowModel(t *testing.T) {
 	srv := slowServer(t, 400*time.Millisecond)
-	m := NewOpenAI("k", "test-model", srv.URL, "sys", "in", nil, 5*time.Second)
+	m := agent.NewOpenAI("k", "test-model", srv.URL, "sys", "in", nil, 5*time.Second)
 
 	if _, err := m.Propose(context.Background(), nil); err != nil {
 		t.Fatalf("a slow endpoint within the timeout must succeed: %v", err)

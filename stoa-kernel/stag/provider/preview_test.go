@@ -1,10 +1,12 @@
-package provider
+package provider_test
 
 import (
 	"context"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
 )
 
 // A read is finite: one named source, and a closed set of permitted queries. So what it will
@@ -26,11 +28,11 @@ func previewDir(t *testing.T) string {
 }
 
 func TestPreviewEnumeratesEveryPermittedQuery(t *testing.T) {
-	s, err := NewStatic("rb", previewDir(t))
+	s, err := provider.NewStatic("rb", previewDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows := Preview(context.Background(), s, []string{"drain", "rollout"})
+	rows := provider.Preview(context.Background(), s, []string{"drain", "rollout"})
 	if len(rows) != 2 {
 		t.Fatalf("one row per permitted query: %d", len(rows))
 	}
@@ -44,11 +46,11 @@ func TestPreviewEnumeratesEveryPermittedQuery(t *testing.T) {
 // THE FAILURE THIS EXISTS FOR: a query the author permitted that retrieves nothing. The policy
 // promises context and silently delivers none, and nothing at runtime tells them apart.
 func TestPreviewSurfacesAPermittedQueryThatRetrievesNothing(t *testing.T) {
-	s, err := NewStatic("rb", previewDir(t))
+	s, err := provider.NewStatic("rb", previewDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows := Preview(context.Background(), s, []string{"drain", "backup-restore"})
+	rows := provider.Preview(context.Background(), s, []string{"drain", "backup-restore"})
 	var empty []string
 	for _, r := range rows {
 		if r.Empty {
@@ -64,11 +66,11 @@ func TestPreviewSurfacesAPermittedQueryThatRetrievesNothing(t *testing.T) {
 // agent would receive is worse than no preview.
 func TestPreviewAppliesTheReadBounds(t *testing.T) {
 	t.Setenv("STOA_READ_K", "1")
-	s, err := NewStatic("rb", previewDir(t))
+	s, err := provider.NewStatic("rb", previewDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	rows := Preview(context.Background(), s, []string{"drain"})
+	rows := provider.Preview(context.Background(), s, []string{"drain"})
 	if len(rows) != 1 || len(rows[0].Sources) != 1 {
 		t.Errorf("preview must apply k: %+v", rows)
 	}
@@ -79,12 +81,12 @@ func TestPreviewAppliesTheReadBounds(t *testing.T) {
 
 // Deterministic and de-duplicated, so two runs of the same recipe preview identically.
 func TestPreviewIsStable(t *testing.T) {
-	s, err := NewStatic("rb", previewDir(t))
+	s, err := provider.NewStatic("rb", previewDir(t))
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := Preview(context.Background(), s, []string{"rollout", "drain", "drain"})
-	b := Preview(context.Background(), s, []string{"drain", "rollout"})
+	a := provider.Preview(context.Background(), s, []string{"rollout", "drain", "drain"})
+	b := provider.Preview(context.Background(), s, []string{"drain", "rollout"})
 	if len(a) != 2 || len(b) != 2 {
 		t.Fatalf("duplicates must collapse: %d, %d", len(a), len(b))
 	}

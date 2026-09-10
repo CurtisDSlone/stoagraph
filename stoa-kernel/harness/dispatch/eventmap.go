@@ -24,17 +24,15 @@ type Definition struct {
 	Match  map[string]string `json:"match"`           // field(dotted) -> exact expected value; ALL must match
 	Recipe string            `json:"recipe"`          // the recipe to bind (ignored when route == "model")
 	Route  string            `json:"route,omitempty"` // "model" -> defer the recipe choice to the dispatch model
-	Tools  []string          `json:"tools,omitempty"` // multi-tool session: bind the config.db routes for THESE
-	//                                                    tools (each gated by its own recipe). Empty -> the
-	//                                                    single `recipe`'s routes (one-tool session).
-	Context []string `json:"context,omitempty"` // READ channel (Planning/30): the context providers this
-	//                                              session may read, by name (resolved to specs at bind).
-	//                                              Empty -> no READ channel.
-	RequireAttribution bool `json:"require_attribution,omitempty"` // ingress (Planning/32): only dispatch
-	//                                              this definition for an ATTRIBUTED event (verified channel).
-	//                                              An unattributed event that matches is NOT dispatched
-	//                                              (lane 2 validation is future) — the governing rule:
-	//                                              attribution upgrades routing, never content.
+	// RequireAttribution is RETAINED for compatibility with existing event maps but no longer
+	// decides anything on its own: attribution is enforced SERVER-SIDE for every definition
+	// (cmd/harness-serve: requireAttribution), so a route cannot open itself by omitting a field.
+	//
+	// It was an opt-in, and the safe state was therefore at the mercy of every author remembering:
+	// 12 of 17 live definitions omitted it, so an unsigned POST could start a CI triage run.
+	// Whether an unverified sender may trigger work is a deployment-wide question, not a per-route
+	// one — so the answer moved to the server, where there is exactly one of it to get right.
+	RequireAttribution bool `json:"require_attribution,omitempty"`
 }
 
 // EventMap is an ordered list of definitions; first match wins.

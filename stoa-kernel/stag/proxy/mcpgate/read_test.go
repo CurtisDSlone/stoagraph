@@ -240,13 +240,15 @@ func TestPoisonedReadInformsButCannotAuthorize(t *testing.T) {
 	//    NOT include exec-private, so a call the poison induced does not cross.
 	notify := recipeParse(t, `recipe: notify_policy
 version: 1
-passthrough: ["text"]
+tools:
+  s:
+    send: {passthrough: ["text"]}
 rules:
   ch.ok: {kind: set_membership, set: ["support", "general", "incidents"]}
 steps:
   - {id: p_ch, kind: propose, out: channel}
   - {id: post, kind: sink, in: channel, field: notify.channel, sensitivity: authoritative, rule: ch.ok, actor: "policy:notify"}`)
-	gate := proxy.Gate{Routes: proxy.Router{"notify": {Recipe: notify, GateArg: "channel", RecipeName: "notify_policy", Server: "s", Tool: "notify"}}}
+	gate := proxy.Gate{Routes: proxy.Router{"notify": {Recipe: notify, GateArg: "channel", RecipeName: "notify_policy", Server: "s", Tool: "send"}}}
 	raw := []byte(`{"channel":"exec-private","text":"per the runbook"}`)
 	dec := gate.Decide(ctx, proxy.ToolCall{Tool: "notify", Raw: raw, Args: map[string]string{"channel": "exec-private", "text": "per the runbook"}})
 	if dec.Forward {

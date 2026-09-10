@@ -1,4 +1,4 @@
-package dispatch
+package dispatch_test
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/dispatch"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
 )
 
@@ -50,7 +51,7 @@ func (f *flakyTransport) count() int {
 func TestAwaitToolFailingMidPollIsAnErrorNotUnmet(t *testing.T) {
 	g := &stubGate{decide: allowAll}
 	tr := &flakyTransport{failFrom: 3}
-	res := Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(8, 1)})
+	res := dispatch.Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(8, 1)})
 
 	if res.Complete {
 		t.Fatal("a poll whose tool failed must halt")
@@ -76,7 +77,7 @@ func TestAwaitRecoveryDoesNotReplenishAttempts(t *testing.T) {
 	g := &stubGate{decide: allowAll}
 	// settles on call 9, but only 4 attempts are authorized
 	tr := &flakyTransport{settleAt: 9, value: "settled"}
-	res := Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(4, 1)})
+	res := dispatch.Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(4, 1)})
 	if res.Complete {
 		t.Fatal("the condition is not reachable within the authorized attempts")
 	}
@@ -111,7 +112,7 @@ func TestRevocationMidPollStopsIt(t *testing.T) {
 		mu.Unlock()
 	}()
 	start := time.Now()
-	res := Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(32, 20)})
+	res := dispatch.Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(32, 20)})
 	if res.Complete {
 		t.Fatal("a revoked session must not complete a poll")
 	}
@@ -138,7 +139,7 @@ func TestConcurrentPollsEachHonourTheirOwnBound(t *testing.T) {
 			defer wg.Done()
 			g := &stubGate{decide: allowAll}
 			tr := &flakyTransport{settleAt: 999}
-			Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(4, 10)})
+			dispatch.Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(4, 10)})
 			counts[i] = tr.count()
 		}(i)
 	}
@@ -160,7 +161,7 @@ func TestCancellationBetweenAttemptsMakesNoFurtherCall(t *testing.T) {
 	tr := &flakyTransport{settleAt: 999}
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { time.Sleep(25 * time.Millisecond); cancel() }()
-	Execute(ctx, g, tr, []stag.AuthorizedCall{awaitCall(32, 20)})
+	dispatch.Execute(ctx, g, tr, []stag.AuthorizedCall{awaitCall(32, 20)})
 	n := tr.count()
 	time.Sleep(60 * time.Millisecond)
 	if tr.count() != n {
@@ -173,7 +174,7 @@ func TestCancellationBetweenAttemptsMakesNoFurtherCall(t *testing.T) {
 func TestAwaitSucceedsOnTheFinalAttempt(t *testing.T) {
 	g := &stubGate{decide: allowAll}
 	tr := &flakyTransport{settleAt: 4, value: "settled"}
-	res := Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(4, 1)})
+	res := dispatch.Execute(context.Background(), g, tr, []stag.AuthorizedCall{awaitCall(4, 1)})
 	if !res.Complete {
 		t.Fatalf("meeting the condition on the last attempt must succeed: %+v", res)
 	}
