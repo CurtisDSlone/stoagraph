@@ -20,7 +20,7 @@ func TestOrchestrationContext_CanEmit(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(string(rune(tt.depth + '0')), func(t *testing.T) {
+		t.Run(string(rune(tt.depth+'0')), func(t *testing.T) {
 			oc := emit.OrchestrationContext{EmitDepth: tt.depth}
 			if got := oc.CanEmit(); got != tt.want {
 				t.Errorf("CanEmit() = %v, want %v", got, tt.want)
@@ -66,14 +66,14 @@ func TestProcessEmits(t *testing.T) {
 	emits := []emit.Emit{
 		{
 			SinkOutcome: stag.SinkOutcome{
-				Field: "lifecycle.emit.code_fix_required",
+				Field:   "lifecycle.emit.code_fix_required",
 				Verdict: stag.Allow,
 			},
 			SlotValue: `{}`,
 		},
 		{
 			SinkOutcome: stag.SinkOutcome{
-				Field: "lifecycle.normal.field",  // not an emit
+				Field:   "lifecycle.normal.field", // not an emit
 				Verdict: stag.Allow,
 			},
 			SlotValue: `{}`,
@@ -105,7 +105,7 @@ func TestProcessEmits_DepthLimit(t *testing.T) {
 	emits := []emit.Emit{
 		{
 			SinkOutcome: stag.SinkOutcome{
-				Field: "lifecycle.emit.event",
+				Field:   "lifecycle.emit.event",
 				Verdict: stag.Allow,
 			},
 			SlotValue: `{}`,
@@ -115,8 +115,8 @@ func TestProcessEmits_DepthLimit(t *testing.T) {
 	// At depth limit
 	orchestrationCtx := emit.OrchestrationContext{
 		SourceEventID: "evt_001",
-		EmitDepth: emit.MaxEmitDepth,
-		EmissionPath: []string{"evt_001"},
+		EmitDepth:     emit.MaxEmitDepth,
+		EmissionPath:  []string{"evt_001"},
 	}
 
 	processed := emit.ProcessEmits(emits, orchestrationCtx)

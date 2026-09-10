@@ -26,7 +26,7 @@ if [ ! -x "$SYFT" ]; then
   SYFT="$BIN/syft"
 fi
 
-IMAGES="stag-serve stag-proxy harness-serve console"
+IMAGES="stag-serve stag-proxy harness-serve"
 missing=""
 for i in $IMAGES; do
   docker image inspect "stoagraph-$i:latest" >/dev/null 2>&1 || missing="$missing $i"

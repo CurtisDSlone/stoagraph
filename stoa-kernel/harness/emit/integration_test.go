@@ -10,19 +10,19 @@ import (
 
 func TestExtractSinksFromResult(t *testing.T) {
 	tests := []struct {
-		name     string
-		res      *mcp.CallToolResult
-		wantSink int
+		name      string
+		res       *mcp.CallToolResult
+		wantSink  int
 		wantField string
 	}{
 		{
-			name: "empty result",
-			res:  nil,
+			name:     "empty result",
+			res:      nil,
 			wantSink: 0,
 		},
 		{
-			name: "result with no meta",
-			res:  &mcp.CallToolResult{},
+			name:     "result with no meta",
+			res:      &mcp.CallToolResult{},
 			wantSink: 0,
 		},
 		{
@@ -40,7 +40,7 @@ func TestExtractSinksFromResult(t *testing.T) {
 					},
 				},
 			},
-			wantSink: 1,
+			wantSink:  1,
 			wantField: "lifecycle.emit.code_fix_required",
 		},
 		{

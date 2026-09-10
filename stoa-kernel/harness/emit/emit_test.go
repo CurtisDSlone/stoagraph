@@ -32,8 +32,8 @@ func TestDetectEmits(t *testing.T) {
 
 func TestValidateEmit_Valid(t *testing.T) {
 	tests := []struct {
-		name  string
-		emit  pkgemit.Emit
+		name string
+		emit pkgemit.Emit
 	}{
 		{
 			name: "simple emit",
