@@ -28,7 +28,7 @@ import (
 	"time"
 )
 
-// Version is stamped at build time (-ldflags "-X main.Version=v0.6.1"). It pins BOTH the images we pull
+// Version is stamped at build time (-ldflags "-X main.Version=v0.6.2"). It pins BOTH the images we pull
 // and the compose file we fetch, so an install is reproducible instead of "whatever main looked like".
 var Version = "latest"
 

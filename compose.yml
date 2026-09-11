@@ -31,7 +31,7 @@
 #
 # Generate the secrets once:  tools/gen-env.sh   (or: stoagraph up)
 #
-# Pin a version with STOAGRAPH_VERSION=v0.6.1; the default is :latest.
+# Pin a version with STOAGRAPH_VERSION=v0.6.2; the default is :latest.
 
 name: stoagraph
 
