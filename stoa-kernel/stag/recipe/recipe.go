@@ -153,7 +153,14 @@ type rawCase struct {
 	rule    string
 	gto     string
 	gtoReci string // composition: goto_recipe target (mutually exclusive with gto)
-	node    *yaml.Node
+	// with maps the CHILD's entry slot name -> the PARENT slot that feeds it, for a
+	// goto_recipe case. Composition namespaces a child's slots by splice position
+	// (node -> s0_node), and a route's gateArg can only name slots an author writes —
+	// so without an explicit mapping a composed child's slots are unbindable and its
+	// arc is unreachable. `with` is that mapping, written by the author and bound into
+	// the SemanticHash: which parent value reaches a child is part of the policy.
+	with map[string]string
+	node *yaml.Node
 }
 
 type rawStep struct {
@@ -285,12 +292,101 @@ func (fr *front) inline(resolve Resolver) error {
 			return err
 		}
 		if s.kase >= 0 {
-			fr.steps[s.step].cases[s.kase].gto, fr.steps[s.step].cases[s.kase].gtoReci = entry, ""
+			kase := &fr.steps[s.step].cases[s.kase]
+			kase.gto, kase.gtoReci = entry, ""
+			// `with` rewires the child's namespaced entry slots onto PARENT slots, so a route's
+			// gateArg can actually feed them. Applied AFTER splice (the child's names are already
+			// s<N>_-prefixed) and BEFORE lint, so declare-before-use sees the final wiring.
+			ne, werr := fr.applyWith(n, kase.with, s.node, entry)
+			if werr != nil {
+				return werr
+			}
+			kase.gto = ne
 		} else {
 			fr.steps[s.step].deflt, fr.steps[s.step].defltReci = entry, ""
 		}
 	}
 	return nil
+}
+
+// applyWith rewires a spliced child's ENTRY SLOTS onto parent slots, per the case's `with:`
+// mapping. Composition namespaces a child's slots by splice POSITION (node -> s0_node), and a
+// route's gateArg can only name slots an author actually wrote — so without this a composed
+// child's slots are unbindable and its arc is unreachable (it faults on a severed slot).
+//
+// The rewrite is deliberately narrow. It ONLY redirects the child's `propose` steps: a propose
+// whose out-slot is named in `with` is DROPPED, and every reference to that slot is repointed at
+// the parent's. The child keeps its own RULES — this feeds a parent's value into the child's
+// gate, it does not let the parent decide it. That distinction is the whole point: the capture
+// defect was the parent's RULE deciding the child's call, and nothing here reintroduces it.
+//
+// A `with` naming a slot the child does not propose is an ERROR, not a no-op: an author who
+// writes a mapping that binds nothing believes something false about their own policy.
+// kw: composition with entry-slot mapping reachability parent-feeds-child
+func (fr *front) applyWith(site int, with map[string]string, at *yaml.Node, entry string) (string, error) {
+	if len(with) == 0 {
+		return entry, nil
+	}
+	p := fmt.Sprintf("s%d_", site)
+	// child slot (namespaced) -> parent slot
+	remap := make(map[string]string, len(with))
+	for child, parent := range with {
+		remap[p+child] = parent
+	}
+	// Every mapped slot must be one this child actually proposes.
+	proposed := map[string]bool{}
+	for _, st := range fr.steps {
+		if st.kind == stag.NodePropose && strings.HasPrefix(st.id, p) {
+			proposed[st.out] = true
+		}
+	}
+	for ns, parent := range remap {
+		if !proposed[ns] {
+			return "", errf(at, "with: sub-recipe does not propose a slot %q (mapped to parent slot %q)",
+				strings.TrimPrefix(ns, p), parent)
+		}
+	}
+	// Dropping the child's entry propose moves the entry: the case must now jump to whatever
+	// step follows it, or the edge points at a step that no longer exists.
+	newEntry := entry
+	for i, st := range fr.steps {
+		if st.id != entry {
+			continue
+		}
+		for j := i; j < len(fr.steps); j++ {
+			cand := fr.steps[j]
+			if cand.kind == stag.NodePropose && remap[cand.out] != "" {
+				continue // this one is being dropped too
+			}
+			newEntry = cand.id
+			break
+		}
+		break
+	}
+	// Drop the child's propose for a mapped slot, and repoint every reference to it.
+	kept := fr.steps[:0]
+	for _, st := range fr.steps {
+		if st.kind == stag.NodePropose && remap[st.out] != "" {
+			continue // the parent supplies this value now
+		}
+		kept = append(kept, st)
+	}
+	fr.steps = kept
+	sub := func(v string) string {
+		if to, ok := remap[v]; ok {
+			return to
+		}
+		return v
+	}
+	for i := range fr.steps {
+		st := &fr.steps[i]
+		st.in, st.out, st.as = sub(st.in), sub(st.out), sub(st.as)
+		st.querySlot = sub(st.querySlot)
+		for arg, sl := range st.args {
+			st.args[arg] = sub(sl)
+		}
+	}
+	return newEntry, nil
 }
 
 // splice resolves, front-parses, and namespaces a child, then appends its steps/slots/
@@ -366,6 +462,22 @@ func (fr *front) namespace(p string) {
 		st.in, st.out, st.as = pre(st.in), pre(st.out), pre(st.as)
 		st.gto, st.deflt = pre(st.gto), pre(st.deflt)
 		st.ruleRef = pre(st.ruleRef)
+		// invoke/await: BOTH halves of each argument binding are child-scoped names — the slot
+		// that feeds the argument and the rule that clears it. Leaving either unprefixed lets a
+		// parent that happens to define the same name CAPTURE the child's argument: the child's
+		// own propose slot goes dead (orphaned under its s<N>_ name) and the parent's rule decides
+		// a call the child authored, so a child that denies a value standalone can authorize it
+		// once composed. Measured before this fix: a child bounded to "staging-only" drained
+		// "prod-db-master" under a parent whose same-named rule was wider.
+		for arg, sl := range st.args {
+			st.args[arg] = pre(sl)
+		}
+		for arg, rid := range st.argRules {
+			st.argRules[arg] = pre(rid)
+		}
+		// await's until-rule and read's query slot/rule are the same class of child-scoped name.
+		st.untilRef = pre(st.untilRef)
+		st.querySlot, st.queryRule = pre(st.querySlot), pre(st.queryRule)
 		for ci := range st.cases {
 			st.cases[ci].gto = pre(st.cases[ci].gto)
 			st.cases[ci].rule = pre(st.cases[ci].rule)
@@ -1515,6 +1627,29 @@ func parseStep(idx int, n *yaml.Node) (rawStep, error) {
 				case "goto_recipe": // composition: inline a sub-recipe on this case
 					if rc.gtoReci, err = strVal(cv, "case goto_recipe"); err != nil {
 						return rawStep{}, err
+					}
+				case "with": // composition: child entry slot -> parent slot that feeds it
+					if cv.Kind != yaml.MappingNode || len(cv.Content) == 0 {
+						return rawStep{}, errf(cv, "case with must be a non-empty mapping (child slot -> parent slot)")
+					}
+					rc.with = map[string]string{}
+					for j := 0; j < len(cv.Content); j += 2 {
+						ck2, cv2 := cv.Content[j], cv.Content[j+1]
+						child, perr := strVal(ck2, "with child slot")
+						if perr != nil {
+							return rawStep{}, perr
+						}
+						parent, perr := strVal(cv2, "with parent slot")
+						if perr != nil {
+							return rawStep{}, perr
+						}
+						if !nameOK(child) || !nameOK(parent) {
+							return rawStep{}, errf(ck2, "invalid with mapping %q: %q (grammar: lowercase ascii, digits, _, max 64)", child, parent)
+						}
+						if _, dup := rc.with[child]; dup {
+							return rawStep{}, errf(ck2, "duplicate with mapping for child slot %q", child)
+						}
+						rc.with[child] = parent
 					}
 				default:
 					return rawStep{}, errf(ck, "key %q not legal for a branch case", ck.Value)

@@ -307,18 +307,19 @@ Package recipe is the recipe boundary: the only door through which authored YAML
 - `nameOK` (:121) — name · grammar · ascii · closed
 - `ruleIdOK` (:135) — rule · id · grammar · dotted · segments
 - `rawCase` (:152) — raw · step · intermediate
-- `Resolver` (:188) — resolver · composition · sub-recipe · source · by · name
-- `frontParse` (:377) — front-parse · prelims · decode · hygiene · schema · (no · cross-step · lint · — · finish · does · that)
-- `lintTools` (:991) — passthrough · lint · contradiction · dead-declaration · per-tool
-- `Cautions` (:1080) — passthrough · caution · advisory · non-blocking · authoritative-looking
-- `hygiene` (:1121) — hygiene · walk · iterative · caps · anchors · aliases · merge · duplicate · keys
-- `strVal` (:1193) — scalar · string · raw · text · tag · allowlist · templating
-- `quotedStr` (:1212) — scalar · quoted · required · byte-exact
-- `intVal` (:1224) — scalar · canonical · integer · kernel · predicate
-- `parseIngredient` (:1236) — ingredient · origin · trust · closed · keys · value · unauthorable
-- `parseRule` (:1273) — rule · registry · per-kind · required · forbidden · sorted · set
-- `parseStep` (:1366) — step · per-kind · key · tables · vocabulary · foreach · exit · distinct
-- `lint` (:1712) — lint · declare-before-use · edges · reachability · guaranteed-deny · guarded · segment · dead · declarations
+- `Resolver` (:195) — resolver · composition · sub-recipe · source · by · name
+- `applyWith` (:326) — composition · with · entry-slot · mapping · reachability · parent-feeds-child
+- `frontParse` (:489) — front-parse · prelims · decode · hygiene · schema · (no · cross-step · lint · — · finish · does · that)
+- `lintTools` (:1103) — passthrough · lint · contradiction · dead-declaration · per-tool
+- `Cautions` (:1192) — passthrough · caution · advisory · non-blocking · authoritative-looking
+- `hygiene` (:1233) — hygiene · walk · iterative · caps · anchors · aliases · merge · duplicate · keys
+- `strVal` (:1305) — scalar · string · raw · text · tag · allowlist · templating
+- `quotedStr` (:1324) — scalar · quoted · required · byte-exact
+- `intVal` (:1336) — scalar · canonical · integer · kernel · predicate
+- `parseIngredient` (:1348) — ingredient · origin · trust · closed · keys · value · unauthorable
+- `parseRule` (:1385) — rule · registry · per-kind · required · forbidden · sorted · set
+- `parseStep` (:1478) — step · per-kind · key · tables · vocabulary · foreach · exit · distinct
+- `lint` (:1847) — lint · declare-before-use · edges · reachability · guaranteed-deny · guarded · segment · dead · declarations
 
 ### `stoa-kernel/stag/recipestore/recipestore.go`
 Package recipestore is the recipe-authoring core behind the gate's /api/recipes and the -recipes-dir a gate is started with: validate recipe YAML through the REAL parser + linter and persist valid recipes. Validate retur

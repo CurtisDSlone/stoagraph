@@ -3177,8 +3177,20 @@
             "by",
             "name"
           ],
-          "line": 188,
+          "line": 195,
           "name": "Resolver"
+        },
+        {
+          "kw": [
+            "composition",
+            "with",
+            "entry-slot",
+            "mapping",
+            "reachability",
+            "parent-feeds-child"
+          ],
+          "line": 326,
+          "name": "applyWith"
         },
         {
           "kw": [
@@ -3195,7 +3207,7 @@
             "does",
             "that)"
           ],
-          "line": 377,
+          "line": 489,
           "name": "frontParse"
         },
         {
@@ -3206,7 +3218,7 @@
             "dead-declaration",
             "per-tool"
           ],
-          "line": 991,
+          "line": 1103,
           "name": "lintTools"
         },
         {
@@ -3217,7 +3229,7 @@
             "non-blocking",
             "authoritative-looking"
           ],
-          "line": 1080,
+          "line": 1192,
           "name": "Cautions"
         },
         {
@@ -3232,7 +3244,7 @@
             "duplicate",
             "keys"
           ],
-          "line": 1121,
+          "line": 1233,
           "name": "hygiene"
         },
         {
@@ -3245,7 +3257,7 @@
             "allowlist",
             "templating"
           ],
-          "line": 1193,
+          "line": 1305,
           "name": "strVal"
         },
         {
@@ -3255,7 +3267,7 @@
             "required",
             "byte-exact"
           ],
-          "line": 1212,
+          "line": 1324,
           "name": "quotedStr"
         },
         {
@@ -3266,7 +3278,7 @@
             "kernel",
             "predicate"
           ],
-          "line": 1224,
+          "line": 1336,
           "name": "intVal"
         },
         {
@@ -3279,7 +3291,7 @@
             "value",
             "unauthorable"
           ],
-          "line": 1236,
+          "line": 1348,
           "name": "parseIngredient"
         },
         {
@@ -3292,7 +3304,7 @@
             "sorted",
             "set"
           ],
-          "line": 1273,
+          "line": 1385,
           "name": "parseRule"
         },
         {
@@ -3306,7 +3318,7 @@
             "exit",
             "distinct"
           ],
-          "line": 1366,
+          "line": 1478,
           "name": "parseStep"
         },
         {
@@ -3321,7 +3333,7 @@
             "dead",
             "declarations"
           ],
-          "line": 1712,
+          "line": 1847,
           "name": "lint"
         }
       ]
