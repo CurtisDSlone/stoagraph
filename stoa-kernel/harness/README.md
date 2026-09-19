@@ -1,8 +1,9 @@
-# event_harness — the orchestrator (the commercial half of StoaGraph)
+# harness — the orchestrator
 
-The agent-side of the deployment topology (see `../Planning/22-deployment-topology.md`). The **`stag`** gate is
-the passive gate/proxy; this is the **orchestrator** that lives on the far side of the MCP wire. Together they
-are the **StoaGraph** product (`stag` open-source + `event_harness` commercial). This half:
+The agent-side of StoaGraph. The **`stag`** gate is the passive gate/proxy; this is the **orchestrator** that
+lives on the far side of the MCP wire. Together they are the **StoaGraph** product — the whole thing,
+Apache-2.0, no held-back edition (see the main [README](../../README.md) and [docs/doctrine.md](../../docs/doctrine.md)).
+This half:
 
 - receives an event, picks the governing **recipe** (by choosing which `stag` session/endpoint to connect to),
 - runs the **model** as the (untrusted) proposer,
