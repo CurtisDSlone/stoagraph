@@ -11,10 +11,8 @@ Design space for a model-interpreted transition layer above StoaGraph's recipe g
 not weaken the recipe/kernel trust boundary. Status: design complete, nothing implemented. This
 branch exists so the work can happen in the open without touching `main`.
 
-The full design writeup (`scratch/idea-probabilistic-transition-static-topology.md`) and the six
-external reviews it was refined against (`notes/PROBABILISTIC-CONTROLLER-REVIEW-*.md`) are local
-working files and are not on this branch. This README is the complete, reviewable version; nothing
-below depends on either.
+This README is the complete, self-contained version of the design; nothing below depends on
+anything outside this document.
 
 Target: event-driven, autonomous, unattended operation. First shipping scope: investigative and
 reversible recipe arms only, where a wrong legal choice costs a wasted turn. Anything that reaches
@@ -122,15 +120,24 @@ Three layers, each a different kind of object, worth keeping strictly separate i
 Read plainly, this document is a statically closed policy machine with model-interpreted semantic
 control, not a probabilistic agent wrapped in a guardrail, and not an RL or shielding proposal.
 Ordinary LLM inference is sufficient. The genuinely interesting problem isn't "probabilities on
-transitions," which is well-trodden ground (probabilistic finite-state control, constrained
-structured prediction, probabilistic model checking, runtime enforcement and shielding all touch
-it, and SayCan scores a fixed skill set by LLM likelihood). It's the separation this document
-draws between semantic interpretation and policy topology, and in particular the fourth layer
-below: how much a semantic distinction the model draws is allowed to matter. The narrower
-prior-art question: has anyone studied a neural semantic interpreter whose output is constrained
-to a statically closed semantic vocabulary, where the resulting policy operates over a separately
-verified capability topology, with static analysis of the semantic claims' influence on
-capabilities?
+transitions," which is well-trodden ground, one lineage per layer:
+
+- **Neurosymbolic state abstraction.** A network learns only the map from evidence to a symbolic
+  state; the transition logic stays discrete. Layer 2.
+- **Probabilistic automata with fixed topology, variable transition weights**, and SayCan's
+  scoring of a fixed skill set by LLM likelihood. Layer 3.
+- **Parametric model checking.** PRISM and parametric MDPs, which compute how a transition
+  parameter moves the probability of reaching a state. Empirical sensitivity.
+- **Quantitative information flow.** Min-entropy leakage is what the density budget already
+  computes. Layer 2's bound.
+- **Runtime enforcement and shielding**, for the trap around all of it. Layer 1.
+
+It's the separation this document draws between semantic interpretation and policy topology, and
+in particular the fourth layer below: how much a semantic distinction the model draws is allowed
+to matter. The narrower prior-art question: has anyone studied a neural semantic interpreter
+whose output is constrained to a statically closed semantic vocabulary, where the resulting
+policy operates over a separately verified capability topology, with static analysis of the
+semantic claims' influence on capabilities?
 
 Restated with this vocabulary: the model performs semantic compression, the recipe performs
 capability compression. The model takes messy evidence (an incident report, CRM text, a ticket,
@@ -148,6 +155,13 @@ Semantic state:        what distinctions can the model represent?
 Probabilistic policy:  what does the model prefer?
 Claim influence:       how much does each semantic distinction matter?
 ```
+
+"Static" means three different times in this design, and each layer is fixed at a different one.
+Topology is fixed at validate for the recipe and at bind for the routes. Semantic state is fixed
+at validate, because a domain is a rule. The policy is never fixed; it is runtime behavior.
+Structural influence is fixed at bind, because it needs the triple. Empirical sensitivity is
+never fixed; it is telemetry. The two hashes follow the same split: the recipe hash is fixed at
+validate, the triple hash at bind.
 
 Claim influence is two different things and this document keeps them apart:
 
