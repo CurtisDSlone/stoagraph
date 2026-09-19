@@ -76,6 +76,54 @@ Confirmed still true on pushed `main` (verified 2026-09-18, not just asserted):
 
 Both are existing precedent this feature extends, not invents.
 
+## The formal model
+
+The core object is not a trained agent. It is a distribution `π(a | s, c, e)`, where the model
+supplies the distribution, subject to:
+
+```
+support(π) ⊆ A(s)
+```
+
+`A(s)` comes entirely from the compiled recipe. The model cannot enlarge it. This is the formal
+version of what the controller-shape section above already states in prose: `DELETE_DATABASE`
+isn't "probability zero," it isn't an element of the candidate set at all.
+
+Three layers, each a different kind of object, worth keeping strictly separate in any writeup:
+
+- **Layer 1, capability topology.** `G = (S, A, T)`, compiled from the recipe. The security
+  theorem: `a_t ∉ A(s_t) ⇒ execution rejected`. Model-independent. This is Claim A below.
+- **Layer 2, semantic state.** `C = C_1 × C_2 × ... × C_n`, where every `C_i` is recipe-declared
+  and finite. The model can select `customer_status ∈ {unknown, verified, blocked}` but cannot
+  introduce `customer_status = "probably-fraudulent-but-not-quite"` or invent a new dimension.
+  This is where the semantic-complexity problem lives (see "Context explosion" below).
+- **Layer 3, probabilistic behavior.** `π_θ(a | s, c, e)`. Runtime behavior, not policy identity.
+  This is why the `SemanticHash` position below is clean: hash the machine and its declared
+  semantic vocabulary, never the model's runtime probabilities.
+
+This puts the proposal closer to probabilistic finite-state control, constrained structured
+prediction, learned semantic/state abstraction, probabilistic model checking, and runtime
+enforcement (shielding as an architectural cousin) than to reinforcement learning. The genuinely
+interesting problem sits one level earlier than "probabilities on transitions," which is well
+trodden ground. The narrower, more useful question: has anyone studied a neural semantic
+interpreter whose output is constrained to a statically closed semantic vocabulary, where the
+resulting probabilistic policy operates over a separately verified capability topology, with
+static analysis of the semantic claims' influence on capabilities? That is the actual prior-art
+search: LLM semantic state abstraction, constrained structured prediction, finite-state
+controllers, probabilistic model checking, runtime enforcement, and capability/transition
+influence, intersected. Not "probabilistic RL shield."
+
+Restated with this vocabulary: the model performs semantic compression, the recipe performs
+capability compression. The model takes messy evidence (an incident report, CRM text, a ticket,
+a customer message) and compresses it into a small declared semantic space. The recipe then
+compresses the possible consequences into a closed action topology. The research question
+becomes: what is the maximum useful semantic compression achievable before the semantic
+representation becomes an implicit second policy language? That question is the actual research
+contribution of the "Context explosion" section below, not a restatement of it: the three
+constraints there (dimensional independence, information-density budgets, claim-to-transition
+sensitivity) are the concrete shape of an answer, not merely implementation safeguards protecting
+against one.
+
 ## Thesis
 
 The strongest case for this feature: the input is semantically rich enough that the right branch
@@ -372,6 +420,12 @@ itself, may be the most compelling reason to build this at all.
 
 ## Context explosion / semantic policy smuggling
 
+This is the research question from the formal model above, made concrete: what is the maximum
+useful semantic compression achievable before the semantic representation becomes an implicit
+second policy language? The three constraints below are a candidate answer to that question, not
+merely safeguards bolted on to prevent an edge case. If this feature has a genuine research
+contribution beyond "put probabilities on graph edges," it is most likely here.
+
 The problem, in one sentence: how much semantic complexity can the model absorb before the
 recipe becomes a disguised deterministic rules engine?
 
@@ -398,7 +452,7 @@ Five invariants together, the full checklist for any future implementation:
 5. Model-derived claims cannot bypass deterministic authority checks. (the equifinality
    restraint, above)
 
-### Three constraints, most direct first
+### Three constraints: the candidate answer, most direct first
 
 - **Dimensional independence, the strongest of the three.** Context domains are immutable and
   independent after compilation. A claim selects a value within a dimension. It cannot alter the
