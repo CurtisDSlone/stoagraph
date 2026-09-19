@@ -279,6 +279,34 @@ susceptibility; swap in `M2` against the same `R`, repeat — the graph hasn't c
 comparison is clean). Online RL breaks that comparison, because the measured thing changes in
 response to being measured.
 
+### Concrete mitigations, even though Claim B can't be proven
+
+"Outside the guarantee" doesn't mean "no mitigation" — it means the mitigation lives in topology
+design, not in a proof. The concrete attack shape: an attacker manipulates `read`-sourced content
+so a `model_claim` misclassifies a benign situation (a regular customer reads as `blocked`),
+maximizing the weight on a legal-but-undesirable transition — no capability escape, but a real bad
+outcome achieved entirely inside the declared action set. Two mitigations, both currently absent
+from the codebase and both real graph-shape constraints rather than new trust mechanisms:
+
+- **Equifinality restraint.** No automated path triggered solely by a `model_claim` should reach
+  an irreversible/destructive action without a separate, hard-coded checkpoint that is NOT itself
+  probability-derived — a `TrustClass = Authoritative` value the model didn't produce, or an
+  explicit human release. A `model_claim` may steer *which* investigation or review path gets
+  taken; the irreversible step at the end of that path must still require a fact the model doesn't
+  control. Likely expressible as a lint/validation rule on the recipe graph, the same way
+  `requireBounded` already refuses a route shape it doesn't like.
+- **Entropy trigger.** A near-uniform transition distribution (`APPROVE 0.34 /
+  REQUEST_MORE_CONTEXT 0.33 / ESCALATE 0.33`) is a structural failure signal, not harmless
+  uncertainty — it should force a fail-closed route to a default human-review path rather than
+  letting the controller take the barely-highest-weighted option. Same fail-closed instinct
+  `dispatch.Gate`'s confidence floor already applies to recipe selection, applied one level down
+  to the transition itself.
+
+Both belong in the probabilistic-controller layer's handling of a distribution, but what they
+enforce should be checkable statically too — e.g. a `stag analyze` line like "states reaching an
+irreversible action without a hard-coded checkpoint: 0" would make the equifinality restraint a
+verifiable property of the compiled policy, not just a runtime hope.
+
 ## `stag analyze` — likely the actual product story
 
 Deserves more weight than a line item. Two reports, kept visibly distinct, answering two
@@ -297,6 +325,41 @@ different questions:
 Never conflate the two in any report/UI. The guaranteed-capability bound and the observed
 behavioral tendency are different kinds of claim, and this separation — not the controller
 mechanism itself — may be the most compelling reason to build this at all.
+
+## A third invariant: an author cannot smuggle branch combinatorics through the context graph
+
+Everything above about Claim B assumes the risk is *adversarial* — an attacker manipulating
+`read` content. There's a second, *structural* risk: a well-intentioned author over-scoping the
+`context:` block itself until it quietly regrows the exact combinatorial-ruleset problem this
+feature exists to avoid, just moved from `branch` predicates into context domains and cross-slot
+interaction. The finite-domain constraint stops the MODEL from inventing states; nothing yet
+stops an AUTHOR from building an equivalent branching language back out of `context:`
+declarations. Worth naming as a third invariant alongside the two above:
+
+> **The context graph may not become a second branching language.**
+
+Three concrete constraints, most direct first:
+
+- **Information density caps — a direct extension of code that already exists.** A `context:`
+  slot's finite domain is structurally identical to a gated argument's admitted-value set —
+  `stag/recipe/leakage.go` already computes a per-call bit bound as `Σ log2(K_i)` over exactly
+  that shape, adversarially verified, and composes it across branches and sessions. The same
+  bound over context domains, capped the way `requireBounded` already caps forwarded-choice bits,
+  is likely the correct mechanism here — not a new idea, a reuse of one.
+- **Strict dimensional independence.** No context slot's declared domain or legality may depend on
+  another slot's value (e.g. "if `customer_status == verified`, `request_type` may additionally be
+  `security_sensitive`" is a cross-product rule — the same shape that made `branch`-only
+  combinatorics explode, just relocated). Likely a parse-time grammar restriction, not a runtime
+  check.
+- **Claim-to-transition sensitivity audits.** A recipe can satisfy both constraints above and
+  still concentrate outcome on a single claim's small fluctuation (one boolean-ish claim gating
+  the only path to `ESCALATE`). Worth a `stag analyze` line flagging any transition
+  disproportionately sensitive to one claim's perturbation — structurally derivable from the
+  graph and each claim's declared domain, no model execution required.
+
+All three are author-facing constraints, the same role `nameOK`'s grammar or `requireBounded`'s
+refusal already play elsewhere in a recipe — not new trust mechanisms, just closing a backdoor
+route to the problem this feature was built to avoid in the first place.
 
 ## Open design questions
 
