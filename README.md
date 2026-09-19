@@ -101,17 +101,22 @@ Three layers, each a different kind of object, worth keeping strictly separate i
   This is why the `SemanticHash` position below is clean: hash the machine and its declared
   semantic vocabulary, never the model's runtime probabilities.
 
-This puts the proposal closer to probabilistic finite-state control, constrained structured
-prediction, learned semantic/state abstraction, probabilistic model checking, and runtime
-enforcement (shielding as an architectural cousin) than to reinforcement learning. The genuinely
-interesting problem sits one level earlier than "probabilities on transitions," which is well
-trodden ground. The narrower, more useful question: has anyone studied a neural semantic
+Read plainly, this document is a statically closed policy machine with probabilistic semantic
+control, not a probabilistic agent wrapped in a guardrail and not primarily an RL/shielding
+proposal. Ordinary LLM inference is sufficient (see the concrete mechanism above); RL only ever
+appears as one possible later implementation of the same fixed interface, never as the center of
+the idea. The genuinely interesting problem isn't "probabilities on transitions," which is well
+trodden ground (probabilistic finite-state control, constrained structured prediction,
+probabilistic model checking, runtime enforcement/shielding all touch it already). It's the
+separation this document draws between semantic interpretation and policy topology, and in
+particular the fourth layer below: how much a semantic distinction the model draws is allowed to
+matter. The narrower, more useful prior-art question: has anyone studied a neural semantic
 interpreter whose output is constrained to a statically closed semantic vocabulary, where the
 resulting probabilistic policy operates over a separately verified capability topology, with
-static analysis of the semantic claims' influence on capabilities? That is the actual prior-art
-search: LLM semantic state abstraction, constrained structured prediction, finite-state
-controllers, probabilistic model checking, runtime enforcement, and capability/transition
-influence, intersected. Not "probabilistic RL shield."
+static analysis of the semantic claims' influence on capabilities? That's the actual search:
+LLM semantic state abstraction, constrained structured prediction, finite-state controllers,
+probabilistic model checking, runtime enforcement, and capability/transition influence,
+intersected. Not "probabilistic RL shield."
 
 Restated with this vocabulary: the model performs semantic compression, the recipe performs
 capability compression. The model takes messy evidence (an incident report, CRM text, a ticket,
@@ -123,6 +128,30 @@ contribution of the "Context explosion" section below, not a restatement of it: 
 constraints there (dimensional independence, information-density budgets, claim-to-transition
 sensitivity) are the concrete shape of an answer, not merely implementation safeguards protecting
 against one.
+
+### The four-layer hierarchy
+
+The three layers above already give topology, semantic state, and probabilistic policy. Claim
+influence deserves to stand as an explicit fourth layer, not sit as the third of three
+constraints under "Context explosion" below, because it asks a different kind of question than
+the other two constraints there (how big is the semantic space, how independent are its
+dimensions): it asks how much any one distinction actually matters once the space exists.
+
+```
+Topology:             what CAN happen?
+Semantic state:        what distinctions can the model represent?
+Probabilistic policy: what does the model prefer?
+Claim influence:       how much does each semantic distinction matter?
+```
+
+The first three are present in this document at least in embryonic form. Claim influence,
+`Sensitivity(claim, capability)` below, is the least explored and the one most worth
+investigating against prior research first: it's the layer that would tell you whether a
+declared-finite, dimensionally-independent, density-capped semantic space (the other two
+constraints) is actually sufficient to stop the semantic layer from becoming a hidden policy
+language, or merely necessary. A space can pass both of those checks and still let one claim swing
+outcomes disproportionately, which is exactly what claim influence measures and the other two
+don't.
 
 ## Thesis
 
@@ -470,13 +499,16 @@ Five invariants together, the full checklist for any future implementation:
   over context domains, capped the way `requireBounded` already caps forwarded-choice bits, is
   the likely mechanism. The recipe must pay for semantic complexity at compile time. An author
   should not be able to hide a giant state machine inside "the model understands the context."
-- **Claim-to-transition sensitivity, the most novel idea here.** Define an audit metric, not a
-  security guarantee: `Sensitivity(claim, capability)` equals the maximum change in a
-  capability-relevant transition probability caused by varying that claim, holding everything
-  else fixed. A `0` for a claim against an unreachable capability makes the topology guarantee
-  legible. A high sensitivity against something like `human_review` surfaces real operational
-  influence. This measures policy influence, explicitly not `TrustClass`, a new metric nothing in
-  the codebase currently produces.
+- **Claim-to-transition sensitivity, the most novel idea here, and the fourth layer above.**
+  Define an audit metric, not a security guarantee: `Sensitivity(claim, capability)` equals the
+  maximum change in a capability-relevant transition probability caused by varying that claim,
+  holding everything else fixed. A `0` for a claim against an unreachable capability makes the
+  topology guarantee legible. A high sensitivity against something like `human_review` surfaces
+  real operational influence. This measures policy influence, explicitly not `TrustClass`, a new
+  metric nothing in the codebase currently produces. Unlike the two constraints above, which
+  bound the semantic space itself, this measures whether the space, once bounded, still lets one
+  distinction matter disproportionately. It is the priority investigation target of the four
+  layers, precisely because passing the first two constraints says nothing about this one.
 
 ### `stag analyze`'s job, now three layers
 
