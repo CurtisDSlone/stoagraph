@@ -16,14 +16,22 @@ The seed and full design writeup live in
 [`scratch/idea-probabilistic-transition-static-topology.md`](scratch/idea-probabilistic-transition-static-topology.md).
 This README is a condensed, reviewable version of that note.
 
-## The invariant
+## The invariants
 
 > **The model may determine probability; the recipe determines possibility.**
+> **The model may assign probability to transitions; it may not create transitions.**
 
 StoaGraph's existing trust boundary: the model proposes, the kernel decides what is executable.
 The recipe graph — what steps can follow which — is statically verified at parse/compose time,
 and that's what makes `SemanticHash` meaningful as a signed-policy identity. Everything below is
 designed to sit on the **model/context side** of that boundary, not to change it.
+
+The sentence to hold every design decision against: **"We have a StoaGraph state machine whose
+transition policy happens to be probabilistic" — not "we have a probabilistic agent whose outputs
+happen to be constrained by StoaGraph."** In the first framing the recipe is the machine and the
+model is a policy *over* it; in the second the model is primary and StoaGraph is demoted to a
+guardrail. Every implementation choice below should be checked against which framing it moves
+toward.
 
 Confirmed still true on pushed `main` (verified 2026-09-18, not just asserted from the note):
 
@@ -88,9 +96,13 @@ of this feature:
   value. This is the same shape `propose` already has: the model fills in a declared slot, it
   doesn't invent the slot.
 
-Combined state `X = (S, C)` — policy step × context — is finite and enumerable ahead of a run.
-`Reachable(X0)` becomes a static, precomputable property of the compiled recipe plus the declared
-context domains, not an empirical claim about model behavior.
+Combined state `X = (S, C)` — policy step × context — is finite and enumerable ahead of a run
+**only if the context graph itself is closed**: `C' ∈ Next_C(C)` where `Next_C` is
+recipe-defined, never model-defined. Given that, `Next(X)` is statically enumerable; the model
+supplies `P(X' | X, E)` — a probability over already-enumerated next-states given evidence `E` —
+but never defines `Next(X)` itself. `Reachable(X0)` is then a static, precomputable property of
+the compiled recipe plus the declared context domains, not an empirical claim about model
+behavior. This closure requirement is the mathematical core of the whole feature.
 
 ## The controller shape
 
@@ -108,6 +120,32 @@ declared by the recipe. Ordinary LLM inference can produce this distribution fro
 a drop-in replacement for the same interface later, with no change to the controller. Multiple
 models or policies can sit behind the same interface unmodified, because StoaGraph only ever sees
 `(state, proposed transition)` — never an arbitrary model-generated call.
+
+**Probability must never become an authorization primitive.** `confidence = .97` must never mean
+"therefore authorized" — probability answers "what does the model currently believe," never "what
+may the system do." Confidence can shape which transition gets *proposed*, or bias toward an
+explicit `ESCALATE`/`REVIEW` transition, but authorization still runs through the deterministic
+recipe topology and gate unconditionally on the confidence value:
+
+```
+model -> probability distribution -> probabilistic controller -> candidate
+      -> recipe topology -> legal transition? -> no: stop
+                                               -> yes: deterministic policy -> action
+```
+
+### Reuses the existing `propose` architecture — not a new trust mechanism
+
+This doesn't need an entirely new mechanism. It extends the existing
+`propose -> constrained slot -> gate -> invoke` shape from VALUES to TRANSITION PREFERENCE:
+
+```
+read -> propose context claim -> finite-domain / ReleaseRule -> probabilistic transition
+     -> recipe transition -> gate -> invoke
+```
+
+Open implementation question worth resolving early: is a context claim best implemented as
+literally another kind of `propose` step, rather than a new step kind? That would keep the
+grammar surface smaller and inherit the existing `propose`/rule-clearance discipline for free.
 
 ## What this does NOT change
 
@@ -127,18 +165,108 @@ and audited precisely because it is not trusted (`docs/context-binding.md`). In 
 `context:` slot's value is derived by the model FROM that untrusted content — so it is a
 model-produced summarization/classification of untrusted input, not a clean new fact.
 
-That makes a `context:` assignment structurally an attack surface, the same shape as a `propose`
-step: the topology invariant still holds (the model can't reach a transition the recipe didn't
-declare), but a manipulated assignment can shift the *probability distribution* over which legal
-transition looks likely — the thesis's claim (2) above, not yet closed. The finite domain on a
-`context:` slot is therefore not just a tractability convenience — it's the safety mechanism
-against this, the same role `set_membership` already plays for a `propose`d value.
+### Three different questions, kept sharply separate
 
-**Undecided:** must a `context:` slot's fill clear a rule before it's allowed to influence
-transition weighting — the same gate discipline a `propose → invoke` argument already goes
-through before reaching a tool — or can it be assigned straight from untrusted `read` content?
-Given the above, it almost certainly needs the former. This should be resolved before any
-implementation work starts, not discovered afterward.
+- **Provenance** — "where did this value originate?" — answered today by `TrustClass`
+  (`Untrusted` / `Caller` / `Authoritative`).
+- **Semantics** — "what does this evidence mean?" — answered by model inference. New; nothing
+  answers this today.
+- **Authority** — "what is this value allowed to influence?" — answered by the gate /
+  `ReleaseRule`.
+
+`TrustClass`/`SinkSensitivity` are real and live (`GateSink` already denies an
+authoritative-sensitivity crossing unless the value's `TrustClass` is `Authoritative` or a human
+explicitly released it) — but they classify **provenance**, not **semantics**. A CRM record can be
+`TrustClass = Authoritative` (it genuinely came from the CRM) while the model's *classification*
+of that record ("customer is suspicious") is not itself authoritative just because its source was.
+`TrustClass` classifies the pipe, not the payload's meaning, so it does not close this gap on its
+own — the design must not try to stretch it to cover semantics.
+
+### Context should be a first-class CLAIM, not a promoted fact
+
+Instead of `context.customer_status = verified` (implying a fact), model the output of
+interpretation as a claim with its own epistemic status:
+
+```
+model_claim:
+    slot: customer_status
+    value: verified
+    confidence: 0.83
+    evidence: [...]
+```
+
+This distinguishes a SOURCE FACT (`customer_status = verified`, `TrustClass = Authoritative`)
+from a MODEL CLAIM (same value, `derived_from = [source facts]`, `confidence = .83`) — a claim
+never gets silently promoted to authoritative merely because the source facts it was derived from
+were. This is the missing type between `TrustClass` and transition policy, and it's the concrete
+mechanism the open question below resolves into: a `model_claim` is the thing that should need to
+clear a `ReleaseRule` before it's allowed to influence weighting — not the raw value, and not an
+inherited trust level.
+
+A manipulated claim can shift the *probability distribution* over which legal transition looks
+likely — the thesis's claim (2) below, not yet closed by any of this. The finite domain on a
+`context:` slot is not just a tractability convenience — it's the safety mechanism against this,
+the same role `set_membership` already plays for a `propose`d value. And this stays deliberately
+inside claim (2)'s scope, not claim (1)'s: the topology invariant holds regardless (the model
+can't reach a transition the recipe didn't declare) — what's at stake here is *which legal*
+transition looks attractive, never an escape from the legal set.
+
+**Resolved direction, still to be implemented:** a `context:`/`model_claim` fill must clear a
+rule before it's allowed to influence transition weighting — the same discipline a
+`propose → invoke` argument already goes through before reaching a tool — reusing
+`ReleaseRule`/`set_membership` machinery rather than inheriting safety from the source value's
+`TrustClass`. This should land before any implementation work starts, not be discovered
+afterward.
+
+## `SemanticHash` binds the machine, not the model's output
+
+Sharpened from an open question into a design position: the hash should be
+`Hash(topology, context domains, constraints, capabilities)` — never
+`Hash(topology, model output)`. Two different models producing opposite distributions
+(`VERIFY .8 / ESCALATE .2` vs. `VERIFY .2 / ESCALATE .8`) must still verify against the *same*
+hash — it means "this is the machine I authorized," not "this is the probability distribution the
+model will produce." Distribution is runtime behavior; the hash is a policy-artifact identity and
+must stay blind to it, the same way it's already blind to which values a session happens to
+propose.
+
+## Claim B stays outside the security guarantee, on purpose
+
+The thesis above already separates two claims of different strength. Claim A (topology can't be
+escaped) is the actual security guarantee, and it's fully architectural. Claim B (the model
+chooses *well* among the legal options) is deliberately left OUTSIDE that guarantee — this is a
+scope boundary, not a weakness:
+
+> "The model may be manipulated into preferring a legal but undesirable transition. However,
+> manipulation cannot cause an undeclared capability."
+
+Claim B is then improvable separately — better models, better evidence, multiple inference
+passes, confidence thresholds, human review, disagreement detection, adversarial testing — without
+ever needing to become part of the capability guarantee itself. This is also why the "no RL yet"
+choice above is a measurement design, not just caution: the controller can be evaluated as a
+**fixed policy over a changing context distribution** (run model `M` against recipe `R` over N
+sampled contexts, measure calibration, transition entropy, escalation frequency, adversarial
+susceptibility; swap in `M2` against the same `R`, repeat — the graph hasn't changed, so the
+comparison is clean). Online RL breaks that comparison, because the measured thing changes in
+response to being measured.
+
+## `stag analyze` — likely the actual product story
+
+Deserves more weight than a line item. Two reports, kept visibly distinct, answering two
+different questions:
+
+- **Static analysis** (`stag analyze incident-response.yaml`, compiled from the recipe alone —
+  no model involved): states/transitions/context-dimension/combined-state counts, read-only vs.
+  mutating vs. privileged tool counts, explicit reachability of named capabilities ("production
+  restart: YES", "credential access: NO"), how many states reach human review vs. bypass it, max
+  tool calls / max mutations / unbounded paths. Answers **"what can the agent ever do?"** — a
+  natural extension of the existing bounded-leakage check (`requireBounded`), not a new
+  philosophy.
+- **Probabilistic telemetry** (runtime, per-context): the model's actual transition distribution
+  given a specific context. Answers **"what does this model tend to do given this context?"**
+
+Never conflate the two in any report/UI. The guaranteed-capability bound and the observed
+behavioral tendency are different kinds of claim, and this separation — not the controller
+mechanism itself — may be the most compelling reason to build this at all.
 
 ## Open design questions
 
@@ -148,13 +276,10 @@ Not yet decided — see the scratch note for the full list:
   slot/rule machinery with a "finite domain" constraint kind).
 - Whether the transition-probability interface is a new rule `kind` (returns a distribution
   instead of a boolean) or a distinct step-level construct.
-- Whether `SemanticHash` needs to bind declared context *domains* (not the probabilities/weights
-  themselves) to keep "signed = what can happen" true.
+- Whether a `model_claim` is best implemented as another kind of `propose` step or a new step
+  kind.
 - Whether `Reachable(X0)` over the combined (policy state × context) space extends the existing
   leakage-analysis code in `stag/recipe`, or wants a separate pass.
-- A possible `stag analyze recipe.yaml` CLI report (state/transition counts, reachable tools,
-  write-capable tools, human-approval paths, max irreversible actions, unbounded paths) — a
-  natural extension of the existing bounded-leakage check, not a new philosophy.
 
 ## Why this direction, not something else
 
