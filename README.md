@@ -16,6 +16,36 @@ The seed and full design writeup live in
 [`scratch/idea-probabilistic-transition-static-topology.md`](scratch/idea-probabilistic-transition-static-topology.md).
 This README is a condensed, reviewable version of that note.
 
+## Origin intent: where branching + context alone falls short
+
+StoaGraph already has two tools for making a decision depend on something: a `branch` step
+choosing among cases via a `set_membership`-style rule over a proposed value, and a `read` step
+pulling in provider-sourced context to feed that decision. Together they cover a lot of ground —
+but they share one requirement: **somebody has to write the predicate.** `branch` can only choose
+among cases whose *conditions* are already expressed as rules over already-known values. `read`
+enriches what the recipe can see; it does not change what the recipe can *decide with*. Feeding a
+branch richer context doesn't help if the branch still needs a hand-authored rule to act on it —
+it just means the predicate has to work harder.
+
+That's fine, and often better, when the deciding condition really is a predicate:
+`amount > $10,000` is exact, cheap to write, and should stay a `branch`. It breaks down when the
+condition itself requires *interpretation* rather than comparison — a messy incident report, an
+ambiguous support message, "which of these leads is worth investigating next." Converting that
+into `branch` rules means enumerating every combination of `region`, `payment_method`,
+`error_rate`, `deadline_sensitive`, ... by hand — at which point you are hand-building a semantic
+reasoning system one `set_membership` rule at a time, and the rule set grows combinatorially with
+every new distinction someone notices matters.
+
+**This is the exact gap this feature is built to close**: keep `branch`'s topology (a fixed,
+statically-verified set of legal next steps) but let *which* legal case looks right be a learned
+weighting over that same fixed set, instead of a hand-authored predicate. The recipe still decides
+what's *possible* — the case list doesn't change, no new step gets invented — the model just gets
+to bring judgment to which of those already-legal cases fits messy, real input, instead of an
+author trying to anticipate every combination in advance. That's the whole thesis below in one
+sentence: branching decides what CAN happen and does it well; it was never meant to decide what
+SHOULD happen when the right answer depends on interpreting something ambiguous, and that's
+exactly the seam this feature sits in.
+
 ## The invariants
 
 > **The model may determine probability; the recipe determines possibility.**
