@@ -1,23 +1,29 @@
-// Package store is the SQLite config store behind the gate's /api/mcp-servers and /api/routes
+// Package store is the config store behind the gate's /api/mcp-servers and /api/routes
 // (Planning/18): the persisted, RELATIONAL config that the file-based recipes bind
 // to — MCP servers (+ their tools), context providers, and routes (tool → recipe →
-// gated arg). Persistence only, typed fail-closed CRUD, the whole schema in ONE
-// embedded DDL file (store/schema.sql). NO MIGRATIONS: edit the DDL and re-init.
-// modernc.org/sqlite (pure Go) is quarantined here; the kernel/gate never import a
-// DB driver. All queries are parameterized — arbitrary strings are inert data.
+// gated arg) — plus the approval queue and one-shot grants. Persistence only, typed
+// fail-closed CRUD, the whole schema in ONE embedded DDL file (store/schema.sql).
+// NO MIGRATIONS: edit the DDL and re-init.
+//
+// Two backends behind one type. A plain path opens SQLite (the default; `stoagraph up` and every
+// single-host install), a postgres:// DSN opens Postgres (the cluster deployment, where
+// stag-serve and stag-proxy must be independent replicas and a shared file cannot be). The SQL
+// is the same for both; see dialect.go for the little that is not. Both drivers (modernc.org/sqlite,
+// pgx) are quarantined here; the kernel/gate never import one. All queries are parameterized —
+// arbitrary strings are inert data.
 package store
 
-// file-kw: sqlite config store mcp-server context-provider route ddl no-migrations quarantined
+// file-kw: config store sqlite postgres mcp-server context-provider route approval grant ddl no-migrations quarantined
 
 import (
 	"context"
-	"database/sql"
 	_ "embed"
 	"fmt"
 	"os"
 	"sort"
 
-	_ "modernc.org/sqlite" // driver "sqlite", quarantined to this package
+	_ "github.com/jackc/pgx/v5/stdlib" // driver "pgx", quarantined to this package
+	_ "modernc.org/sqlite"             // driver "sqlite", quarantined to this package
 )
 
 //go:embed schema.sql
@@ -77,22 +83,25 @@ type Route struct {
 	Sequenced bool
 }
 
-// kw: store sqlite db handle
+// kw: store db handle dialect
 type Store struct {
-	db *sql.DB
+	db *conn
 }
 
-// kw: open create run ddl fail-closed no-migrations single-conn
-func Open(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", path)
+// Open opens the store named by dsn: a SQLite file path (or ":memory:"), or a postgres:// DSN.
+// The backend is chosen by the DSN alone so no caller needs a second flag, and every existing
+// `-store data/config.db` keeps meaning exactly what it did.
+// kw: open create run ddl fail-closed no-migrations backend-by-dsn
+func Open(dsn string) (*Store, error) {
+	d := dialectFor(dsn)
+	db, err := d.open(dsn)
 	if err != nil {
-		return nil, fmt.Errorf("store: open: %w", err)
+		return nil, fmt.Errorf("store: open (%s): %w", d.name, err)
 	}
-	// SQLite is single-writer; one connection also keeps an in-memory DB consistent.
-	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(schemaSQL); err != nil { // the ONE DDL (no migrations)
+	c := &conn{db: db, d: d}
+	if _, err := db.Exec(schemaSQL); err != nil { // the ONE DDL (no migrations); no placeholders
 		_ = db.Close()
-		return nil, fmt.Errorf("store: schema: %w", err)
+		return nil, fmt.Errorf("store: schema (%s): %w", d.name, err)
 	}
 	// NO MIGRATIONS means CREATE TABLE IF NOT EXISTS leaves an OLDER table exactly as it was, so a
 	// database written before a column existed opens cleanly and then fails on the first query that
@@ -100,17 +109,20 @@ func Open(path string) (*Store, error) {
 	// operator learns about it from a broken request rather than from startup.
 	//
 	// So check the columns the current DDL needs and refuse up front, with what to do about it.
-	if err := checkSchema(db); err != nil {
+	if err := checkSchema(context.Background(), c); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
-	return &Store{db: db}, nil
+	return &Store{db: c}, nil
 }
+
+// Driver names the backend in use ("sqlite" or "postgres"), for the startup log line.
+func (s *Store) Driver() string { return s.db.d.name }
 
 // checkSchema verifies that pre-existing tables carry the columns this build queries. It names
 // the missing column and the remedy, because "no such column" from a live request does neither.
 // kw: schema guard no-migrations stale database refuse up-front actionable
-func checkSchema(db *sql.DB) error {
+func checkSchema(ctx context.Context, c *conn) error {
 	// column -> the DDL type it must have, so the suggested remedy is actually correct: a hint
 	// that produces a WRONG column is worse than no hint at all.
 	required := map[string]map[string]string{
@@ -118,7 +130,7 @@ func checkSchema(db *sql.DB) error {
 		"authorization_grant": {"session": "TEXT NOT NULL DEFAULT ''", "run": "TEXT NOT NULL DEFAULT ''"},
 	}
 	for _, table := range sortedTables(required) {
-		have, err := tableColumns(db, table)
+		have, err := c.d.columns(ctx, c.db, table)
 		if err != nil {
 			return fmt.Errorf("store: inspect %s: %w", table, err)
 		}
@@ -160,26 +172,13 @@ func sortedCols(m map[string]string) []string {
 	return out
 }
 
-// kw: table columns pragma introspect
-func tableColumns(db *sql.DB, table string) (map[string]bool, error) {
-	rows, err := db.Query("SELECT name FROM pragma_table_info(?)", table)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := map[string]bool{}
-	for rows.Next() {
-		var n string
-		if err := rows.Scan(&n); err != nil {
-			return nil, err
-		}
-		out[n] = true
-	}
-	return out, rows.Err()
-}
-
 // kw: close db
 func (s *Store) Close() error { return s.db.Close() }
+
+// Ping reports whether the database is reachable. It is the store's readiness check: a SQLite file
+// on a mount that fell away, or later a Postgres that went down, shows up here as 503 on /ready
+// instead of as the first failed request.
+func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
 
 func boolToInt(b bool) int {
 	if b {
@@ -354,7 +353,9 @@ func (s *Store) PutRoute(ctx context.Context, r Route) error {
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO route(tool_name,server_name,recipe_name,gate_arg,sequenced) VALUES(?,?,?,?,?)
 		 ON CONFLICT(tool_name,server_name) DO UPDATE SET recipe_name=excluded.recipe_name,gate_arg=excluded.gate_arg,sequenced=excluded.sequenced`,
-		r.Tool, r.Server, r.Recipe, r.GateArg, r.Sequenced)
+		// boolToInt, like the other two bool columns: SQLite's driver coerces a Go bool into an
+		// INTEGER column silently, pgx refuses. One encoding for both backends.
+		r.Tool, r.Server, r.Recipe, r.GateArg, boolToInt(r.Sequenced))
 	if err != nil {
 		return fmt.Errorf("store: put route: %w", err)
 	}

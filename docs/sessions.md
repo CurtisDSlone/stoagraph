@@ -12,7 +12,7 @@ The word is overloaded, and the overload has already caused one real bug, so sta
 | named by | the opaque token in `/mcp/<token>` | the `Mcp-Session-Id` header |
 | holds the recipes | **yes** — compiled once, at bind | no |
 | holds the crossing budget | **yes** — one counter, shared | no |
-| lifetime | until revoked, or the daemon restarts | 30 minutes idle |
+| lifetime | until revoked (stored; survives daemon restarts, shared by every daemon replica) | 30 minutes idle |
 | revocable | **yes** (`stoa-approve revoke`) | n/a — the client just reconnects |
 | appears in the audit as | `session=<digest>` | not recorded |
 

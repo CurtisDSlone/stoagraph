@@ -79,6 +79,23 @@ CREATE TABLE IF NOT EXISTS approval (
   decided_at   TEXT NOT NULL DEFAULT ''
 );
 
+-- A bound SESSION (Planning/25): the dispatcher's grant of a tool surface to one agent token. The
+-- row is everything a daemon replica needs to rebuild the gate for a token it has never seen: the
+-- routes as declared, the READ-channel providers, the SOURCE of every recipe named (captured at
+-- bind, so a replica compiles what the binder compiled, not what is on its disk today), and the
+-- crossing budget. `id` is sha256(token)[:16] — the audit `session=` digest — never the token, so
+-- reading this table cannot impersonate an agent. budget_used is drawn down by ONE atomic UPDATE
+-- per crossing so replicas share one counter; that is the whole reason this is a row and not a map.
+CREATE TABLE IF NOT EXISTS session (
+  id             TEXT PRIMARY KEY,
+  routes_json    TEXT NOT NULL,
+  providers_json TEXT NOT NULL DEFAULT '[]',
+  recipes_json   TEXT NOT NULL DEFAULT '{}',
+  budget_limit   INTEGER NOT NULL DEFAULT 0,   -- <= 0 is unlimited
+  budget_used    INTEGER NOT NULL DEFAULT 0,
+  created_at     TEXT NOT NULL DEFAULT ''
+);
+
 -- An EPHEMERAL, one-shot authorization minted by a recipe's `invoke` step: it makes a sequenced
 -- tool reachable for exactly one call and is deleted on use. Deliberately a SEPARATE table from
 -- `approval`: both are grants bound to a fingerprint and spent on use, but one is minted by a

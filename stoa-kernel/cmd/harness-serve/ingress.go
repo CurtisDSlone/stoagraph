@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"runtime/debug"
 	"time"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/agent"
@@ -97,9 +98,24 @@ func (s *Server) webhook(w http.ResponseWriter, r *http.Request) {
 				// queueing it: the sender is told (disposition), the ingress chain records it, and the
 				// operator can see the cap biting. A silently queued burst looks identical to a healthy
 				// system right up until it is not.
+				// Counted here, not in acquireRun/releaseRun: releaseRun tolerates an unpaired call
+				// by design, a WaitGroup does not. This is the only place a governed run is launched,
+				// so it is the one place shutdown needs to know about.
+				s.runs.Add(1)
 				go func() {
+					defer s.runs.Done()
 					defer s.releaseRun() // deferred so a panicking run cannot leak its slot
 					defer s.releaseRecipe(def.Recipe)
+					// Registered LAST so it runs FIRST: a panic in one governed run must not take the
+					// process, every other in-flight run, and every bound MCP session down with it.
+					// Contain it, log it against the event that caused it, and let the deferreds above
+					// return the slot and the claim exactly as they would for a run that returned.
+					defer func() {
+						if r := recover(); r != nil {
+							log.Printf("ingress[%s/%s]: run of %s PANICKED: %v\n%s",
+								env.Source, env.ID, def.Recipe, r, debug.Stack())
+						}
+					}()
 					s.runEvent(dec, event, env)
 				}()
 			} else {

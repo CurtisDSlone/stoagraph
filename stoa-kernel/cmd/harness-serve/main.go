@@ -13,6 +13,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/agent"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/dispatch"
@@ -28,6 +30,8 @@ import (
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/harness/store"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/auth"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/egress"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/graceful"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/health"
 )
 
 type Server struct {
@@ -111,6 +115,8 @@ type Server struct {
 	// nil => unbounded (the zero value keeps existing tests and any embedder that builds a Server
 	// literal working unchanged).
 	runSem chan struct{}
+	// runs counts governed runs in flight so shutdown can wait for them. See ingress.go's launch site.
+	runs sync.WaitGroup
 }
 
 // Default and ceiling for the in-flight run cap. Same fail-safe discipline as provider.Bounds()
@@ -225,6 +231,14 @@ func main() {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
+	// Readiness follows the gate's. harness-serve can be alive and structurally unable to do its job
+	// (nothing to bind sessions on, nowhere to poll approvals); that used to surface as a failed
+	// request. Now it surfaces as 503 here, and k8s holds traffic until both halves of the gate are
+	// themselves ready, not merely live.
+	mux.HandleFunc("GET /ready", health.Ready(3*time.Second,
+		health.Check{Name: "stag-serve", Fn: health.HTTPOK(s.approvals + "/ready")},
+		health.Check{Name: "stag-proxy", Fn: health.HTTPOK(s.daemon + "/ready")},
+	))
 	// Everything below is the operator's control plane: models hold provider API KEYS, and
 	// dispatch/run SPEND them and act on the real world. `operator` role required.
 	mux.HandleFunc("GET /api/models", operator(s.listModels))
@@ -239,7 +253,74 @@ func main() {
 	mux.HandleFunc("POST /api/ingress/{source}", s.webhook)
 
 	log.Printf("harness-serve on %s — models in %s (API only; console is the Next.js app)", *addr, *modelsPath)
-	log.Fatal(http.ListenAndServe(*addr, cors(mux)))
+
+	// This is the binary that runs unattended, so it is the one where dying mid-run costs the most:
+	// a governed agent loop killed between "tool call cleared" and "result recorded" leaves the
+	// audit trail saying one thing and the world saying another. First signal: stop taking events,
+	// let the HTTP server drain, then wait for every in-flight run inside the same grace window.
+	ctx, stop := graceful.Context()
+	defer stop()
+	// Startup dependency probe, NON-FATAL. /ready already tells k8s the truth on every probe; this
+	// tells the operator, once, in the log, so "harness-serve is up" and "harness-serve can dispatch"
+	// stop being the same line. Not fail-fast on purpose: crash-looping until the gate happens to
+	// start first would fight the scheduler's ordering for no gain. stag-proxy's awaitFleet set the
+	// house pattern: come up, say what you are waiting for, say when it arrives.
+	go awaitGate(ctx, 5*time.Second, []dep{{"stag-serve", s.approvals}, {"stag-proxy", s.daemon}})
+	grace := graceful.Grace()
+	if err := graceful.Serve(ctx, &http.Server{Addr: *addr, Handler: cors(mux)}, grace); err != nil {
+		log.Fatalf("harness-serve: %v", err)
+	}
+	dctx, dcancel := context.WithTimeout(context.Background(), grace)
+	defer dcancel()
+	if !graceful.Wait(dctx, &s.runs) {
+		log.Printf("harness-serve: shutdown grace %s elapsed with governed run(s) still in flight; exiting anyway", grace)
+		os.Exit(1)
+	}
+	log.Printf("harness-serve: drained, exiting")
+}
+
+// dep is one service this orchestrator cannot do its job without, by name and base URL.
+type dep struct{ name, base string }
+
+// awaitGate polls each dependency's /ready until all answer 2xx, logging what is being waited for
+// (once) and each arrival (once). An empty base URL is skipped: an empty -approvals-url disables
+// that loop, so there is nothing to wait for. Returns when every dependency is ready or ctx ends.
+// It is a log line, not a gate: readiness enforcement lives in /ready.
+func awaitGate(ctx context.Context, every time.Duration, deps []dep) {
+	pending := make([]dep, 0, len(deps))
+	for _, d := range deps {
+		if d.base != "" {
+			pending = append(pending, d)
+		}
+	}
+	first := true
+	for len(pending) > 0 {
+		still := pending[:0]
+		for _, d := range pending {
+			cctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			err := health.HTTPOK(d.base + "/ready")(cctx)
+			cancel()
+			switch {
+			case err == nil:
+				log.Printf("gate: %s ready at %s", d.name, d.base)
+			case first:
+				log.Printf("gate: %s not ready at %s (%v) — dispatch fails until it is; retrying every %s", d.name, d.base, err, every)
+				still = append(still, d)
+			default:
+				still = append(still, d)
+			}
+		}
+		pending = still
+		first = false
+		if len(pending) == 0 {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(every):
+		}
+	}
 }
 
 // cors lets the console (a different origin, e.g. :3000) call this API. Authorization MUST be an

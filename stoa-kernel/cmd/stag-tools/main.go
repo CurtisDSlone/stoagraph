@@ -30,8 +30,11 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/localtools"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/graceful"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/health"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -66,6 +69,10 @@ func main() {
 	}
 	log.Printf("stag-tools: %d tools from %s [%s] — root %s", len(cfg.Tools), *configPath, strings.Join(names, ", "), cfg.Root)
 
+	// First SIGTERM/SIGINT cancels ctx; second exits. Both serving modes honor it below.
+	ctx, stop := graceful.Context()
+	defer stop()
+
 	if *httpAddr != "" {
 		h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, nil)
 		mux := http.NewServeMux()
@@ -74,13 +81,18 @@ func main() {
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprintln(w, `{"ok":true}`)
 		})
+		// Readiness: the workspace the tools run in must be mounted. A missing volume is a 503 here,
+		// not an "exit 1: no such directory" on the model's first tool call.
+		mux.HandleFunc("GET /ready", health.Ready(2*time.Second, health.Check{Name: "root", Fn: health.Dir(cfg.Root)}))
 		log.Printf("stag-tools on %s (POST /mcp)", *httpAddr)
-		if err := http.ListenAndServe(*httpAddr, mux); err != nil {
+		// SIGTERM stops accepting; a tool call mid-exec finishes (its child process runs to its own
+		// deadline) inside the grace window, so the caller gets a real result, not a severed socket.
+		if err := graceful.Serve(ctx, &http.Server{Addr: *httpAddr, Handler: mux}, graceful.Grace()); err != nil {
 			log.Fatal(err)
 		}
 		return
 	}
-	if err := srv.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+	if err := srv.Run(ctx, &mcp.StdioTransport{}); err != nil {
 		log.Fatal(err)
 	}
 }

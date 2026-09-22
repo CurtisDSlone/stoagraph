@@ -511,13 +511,13 @@ func gatingHandler(gate proxy.Gate, fleet Fleet, read ReadChannel, downstream *m
 		// forward-and-record a crossing it is about to block (no double record). A non-forwarded
 		// decision returns the reservation below, so only ACTUAL crossings consume the budget. The
 		// budget is the DISPATCHED token's (shared across the agent's MCP reconnects), not this server's.
-		if !gate.Budget.Reserve() {
+		if !gate.Reserve() {
 			over := gate.RecordDenied(ctx, call, "session crossing budget exhausted")
 			return refusal(over), nil
 		}
 		dec := gate.Decide(ctx, call)
 		if !dec.Forward {
-			gate.Budget.Release() // deny/escalate is not a crossing — give the reservation back
+			gate.Release() // deny/escalate is not a crossing — give the reservation back
 			// a tool-level error the agent sees; the downstream server is never called.
 			//
 			// The recipe's authorized READS are still served: a read cannot cause a refusal, and
@@ -529,7 +529,7 @@ func gatingHandler(gate proxy.Gate, fleet Fleet, read ReadChannel, downstream *m
 		// back through the gate against its OWN route and recipe, so the plan's clearance is
 		// never the target's clearance and a policy cannot launder an action by naming it.
 		if len(dec.Authorized) > 0 {
-			gate.Budget.Release() // the plan itself does not cross; each executed step reserves its own
+			gate.Release() // the plan itself does not cross; each executed step reserves its own
 			return withReads(ctx, withSinks(executeAuthorized(ctx, gate, fleet, dec), dec), dec, read), nil
 		}
 		// cleared: forward under the DOWNSTREAM's own tool name, with the ORIGINAL raw arguments to
@@ -601,7 +601,7 @@ func executeAuthorized(ctx context.Context, gate proxy.Gate, fleet Fleet, dec pr
 	halted := ""
 	for _, c := range dec.Authorized {
 		// each step reserves its own crossing: a sequence of N costs N against the budget.
-		if !gate.Budget.Reserve() {
+		if !gate.Reserve() {
 			over := gate.RecordDenied(ctx, proxy.ToolCall{Tool: c.Tool, Args: c.Args}, "session crossing budget exhausted")
 			fmt.Fprintf(&b, "  %-10s %-16s NOT MADE (%s)\n", c.StepID, c.Tool, over.Fault)
 			halted = c.StepID
@@ -622,7 +622,7 @@ func executeAuthorized(ctx context.Context, gate proxy.Gate, fleet Fleet, dec pr
 		}
 		sd := gate.Decide(ctx, sub) // THE re-crossing: the target's own route and recipe
 		if !sd.Forward {
-			gate.Budget.Release()
+			gate.Release()
 			fmt.Fprintf(&b, "  %-10s %-16s NOT MADE (%v)\n", c.StepID, c.Tool, sd.Verdict)
 			halted = c.StepID
 			break
@@ -650,7 +650,7 @@ func executeAuthorized(ctx context.Context, gate proxy.Gate, fleet Fleet, dec pr
 					break
 				}
 				// every attempt is a fresh crossing: reserved, decided, and recorded
-				if !gate.Budget.Reserve() {
+				if !gate.Reserve() {
 					break
 				}
 				// EVERY ATTEMPT NEEDS ITS OWN GRANT. A grant is one-shot and Decide spends it,
@@ -670,7 +670,7 @@ func executeAuthorized(ctx context.Context, gate proxy.Gate, fleet Fleet, dec pr
 				}
 				sd := gate.Decide(ctx, sub)
 				if !sd.Forward {
-					gate.Budget.Release()
+					gate.Release()
 					break
 				}
 				attempts++

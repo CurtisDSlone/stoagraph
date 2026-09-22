@@ -21,6 +21,7 @@ import (
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/adapterauth"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/auth"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/egress"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/graceful"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/oauth"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy/mcpgate"
@@ -42,10 +43,10 @@ func main() {
 	// The recipe store is RUNTIME STATE, not shipped content: the gate reads AND writes it (the console's
 	// editor saves .yaml here). It lives under data/ with the config DB and the audit log.
 	recipesDir := flag.String("recipes-dir", "data/recipes", "recipe store (the gate reads + writes it)")
-	storePath := flag.String("store", "data/config.db", "SQLite config store (routes, adapters)")
+	storePath := flag.String("store", "data/config.db", "config store (routes, adapters): a SQLite file path, or a postgres:// DSN")
 	oauthDir := flag.String("oauth-dir", "data/oauth", "per-server OAuth token store (shared with stag-proxy)")
 	publicURL := flag.String("public-url", envOr("STAG_PUBLIC_URL", "http://localhost:8080"), "externally-reachable base URL of this server (for the OAuth redirect_uri)")
-	approvalKey := flag.String("approval-key", "data/approval.key", "Ed25519 key for signing approval releases (auto-generated if absent)")
+	approvalKey := flag.String("approval-key", "data/approval.key", "Ed25519 key for signing approval releases (auto-generated if absent; STAG_APPROVAL_KEY env overrides the file)")
 	approvalWebhook := flag.String("approval-webhook", os.Getenv("STAG_APPROVAL_WEBHOOK"), "optional URL POSTed a notice when the gate escalates a fresh action")
 	addr := flag.String("addr", ":8080", "listen address")
 	tokensPath := flag.String("tokens", "data/control.tokens", "control-plane role tokens (auto-generated 0600 if absent)")
@@ -55,6 +56,9 @@ func main() {
 	// Create our own directories so a fresh clone (which has no data/) just works — in a container
 	// there is nobody to run mkdir for us.
 	for _, p := range []string{*logPath, *storePath, *tokensPath, *approvalKey} {
+		if store.IsPostgres(p) {
+			continue // a DSN has no parent directory; filepath.Dir would mint a junk "postgres:" dir
+		}
 		die(os.MkdirAll(filepath.Dir(p), 0o755))
 	}
 	die(os.MkdirAll(*recipesDir, 0o755))
@@ -75,7 +79,10 @@ func main() {
 	oauthStore := oauth.Store{Dir: *oauthDir}
 	die(serr)
 	defer st.Close()
-	ctx := context.Background()
+	// First SIGTERM/SIGINT cancels ctx: the listener stops accepting, in-flight requests finish
+	// inside the grace window, then the deferred Close calls above actually run. Second signal exits.
+	ctx, stop := graceful.Context()
+	defer stop()
 
 	recipes := recipestore.Store{
 		Dir: *recipesDir,
@@ -183,8 +190,9 @@ func main() {
 		return tools, nil
 	}
 
-	log.Printf("stag-serve on %s — routes from %s, recipes in %s (log %s)", *addr, *storePath, *recipesDir, *logPath)
-	die(http.ListenAndServe(*addr, srv.Handler()))
+	// store.Describe, never *storePath: a postgres DSN carries the password.
+	log.Printf("stag-serve on %s — routes from %s (%s), recipes in %s (log %s)", *addr, store.Describe(*storePath), st.Driver(), *recipesDir, *logPath)
+	die(graceful.Serve(ctx, &http.Server{Addr: *addr, Handler: srv.Handler()}, graceful.Grace()))
 }
 
 func loadPub(path string) (ed25519.PublicKey, error) {
@@ -204,7 +212,20 @@ func envOr(key, def string) string {
 }
 
 // loadOrGenPriv loads the approval signing key, generating + persisting one (0600) on first run.
+//
+// Precedence: STAG_APPROVAL_KEY env var, then the file at path, then generate. The env var holds
+// the same base64 string the file does (egress.MarshalPrivate), so a Secret can carry it verbatim.
+// It exists for one reason: every replica of stag-serve must sign with the SAME key, or a release
+// minted on one replica fails verification on another. Self-generation is correct for a single
+// host and stays the default; a fleet injects the key and never writes it to disk.
 func loadOrGenPriv(path string) (ed25519.PrivateKey, error) {
+	if v := os.Getenv("STAG_APPROVAL_KEY"); v != "" {
+		priv, err := egress.ParsePrivate([]byte(v))
+		if err != nil {
+			return nil, fmt.Errorf("STAG_APPROVAL_KEY: %w", err)
+		}
+		return priv, nil
+	}
 	if b, err := os.ReadFile(path); err == nil {
 		return egress.ParsePrivate(b)
 	}

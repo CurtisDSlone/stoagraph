@@ -3,6 +3,8 @@ package mcpgate
 // file-kw: fleet downstreams multi-server tool owner route dispatch ambiguous fail-closed
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -52,6 +54,30 @@ func NewFleet(downs []Downstream) Fleet {
 		f.tools[d.Name] = m
 	}
 	return f
+}
+
+// Ping asks every connected downstream whether it is still there. It is the fleet's readiness check,
+// and it is what turns "ready" from a latch into a measurement: before this, the daemon flipped ready
+// once at connect and never looked again, so a downstream that died at 3am left a gate advertising
+// tools it could no longer forward. An empty fleet is not ready: a gate with nothing to mediate must
+// not pretend it is mediating. Failures name the server so the operator knows which one is gone.
+// kw: fleet ping readiness downstream liveness re-check fail-closed
+func (f Fleet) Ping(ctx context.Context) error {
+	if len(f.byName) == 0 {
+		return errors.New("no downstream MCP server connected")
+	}
+	names := make([]string, 0, len(f.byName))
+	for n := range f.byName {
+		names = append(names, n)
+	}
+	slices.Sort(names) // deterministic error text
+	var errs []error
+	for _, n := range names {
+		if err := f.byName[n].Session.Ping(ctx, nil); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", n, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // Server resolves a downstream by name (no tool required), for the mcp_resource context provider

@@ -218,6 +218,56 @@ type Authorizations interface {
 	Sweep(ctx context.Context, session, run string) error
 }
 
+// Binding is the DURABLE half of a bound session: everything a daemon replica needs to rebuild the
+// gate for a token it has never seen. It is what POST /sessions persists and what /mcp/<token> on any
+// replica reads back. The token itself is never stored; ID is SessionID(token), the same digest every
+// audit leaf carries as session=, so a row and its decisions share one name and the store cannot be
+// read to impersonate an agent.
+//
+// Recipes is the SOURCE of every recipe the routes name, captured at bind. A binding holds a compiled
+// copy of its policy (editing a recipe never reaches an open session; only revocation does), and a
+// replica rebuilding the gate must compile the same text the binder did, not whatever is on its disk
+// today. The snapshot is what makes that true across processes.
+// kw: binding durable session row token-digest recipe-snapshot compiled-copy replicas
+type Binding struct {
+	ID        string
+	Routes    []BindingRoute
+	Providers []BindingProvider
+	Recipes   map[string]string // recipe name -> source text at bind
+	Budget    int               // crossing cap N; <= 0 is unlimited
+	CreatedAt string
+}
+
+// BindingRoute is one route as the dispatcher declared it (tool, the server that serves it, the recipe
+// that governs it, the argument it judges). Same shape as the store's route row, on purpose.
+type BindingRoute struct {
+	Tool, Server, Recipe, GateArg string
+	Sequenced                     bool
+}
+
+// BindingProvider is one READ-channel provider spec as the dispatcher declared it.
+type BindingProvider struct {
+	Name, Kind, Config string
+}
+
+// Sessions persists bindings and their crossing counters. *store.Store satisfies it without either
+// package importing the other, like Approvals and Authorizations. ReserveCrossing is the one method
+// with a correctness requirement beyond persistence: it must be ATOMIC (one statement: increment iff
+// under the limit), because two replicas reserving the last crossing at once must not both succeed.
+// kw: sessions interface persist binding reserve-crossing atomic replicas
+type Sessions interface {
+	PutBinding(ctx context.Context, b Binding) error
+	GetBinding(ctx context.Context, id string) (Binding, bool, error)
+	HasBinding(ctx context.Context, id string) (bool, error)
+	DeleteBinding(ctx context.Context, id string) (bool, error)
+	CountBindings(ctx context.Context) (int, error)
+	// ReserveCrossing increments the binding's used count iff it is under its limit, atomically.
+	// false when the cap is reached OR the binding no longer exists (a revoked session crosses nothing).
+	ReserveCrossing(ctx context.Context, id string) (bool, error)
+	// ReleaseCrossing returns one reservation (a call that did not forward). Never below zero.
+	ReleaseCrossing(ctx context.Context, id string) error
+}
+
 // kw: gate routes sink deterministic tool-boundary approvals notify crossing-budget
 type Gate struct {
 	Routes    Router
@@ -232,13 +282,16 @@ type Gate struct {
 	// reference harness's maxTurns is client-side and an injected agent need not honour it. nil means
 	// unlimited (the budget is off).
 	//
-	// It is a POINTER, and its lifetime is the dispatcher's session binding — NOT the MCP transport
-	// session. The untrusted agent can re-initialize the MCP transport at will (drop the Mcp-Session-Id,
-	// POST initialize again), which mints a fresh gating server; if the counter lived in the gating server
-	// the agent would reset N to zero every reconnect. So the same *CrossingBudget is created once per
-	// bound token (sessiond.Registry) and shared across every gating server built for that token. Decide
-	// itself stays stateless; the budget is consulted in the transport layer (mcpgate.gatingHandler).
-	Budget *CrossingBudget
+	// Its lifetime is the dispatcher's session binding — NOT the MCP transport session. The untrusted
+	// agent can re-initialize the MCP transport at will (drop the Mcp-Session-Id, POST initialize
+	// again), which mints a fresh gating server; if the counter lived in the gating server the agent
+	// would reset N to zero every reconnect. So ONE Budget is created per bound token and shared across
+	// every gating server built for that token. It is an interface because the same argument applies
+	// across REPLICAS of the daemon: a counter that lived in one process would reset whenever the
+	// agent's next request landed on another, so the daemon's Budget draws down a row in the store
+	// (sessiond), while stdio mode and tests use the in-memory *CrossingBudget. Decide itself stays
+	// stateless; the budget is consulted in the transport layer via Gate.Reserve/Release.
+	Budget Budget
 	// Session is the non-reversible id of the bound session this gate serves, stamped onto every
 	// decision it records so the audit can group runs by agent. Empty for a gate that is not serving a
 	// bound session (the control plane's preview gate).
@@ -251,6 +304,22 @@ type Gate struct {
 	//
 	// nil means "always live" — a gate with no session to revoke (the control plane's preview gate).
 	Live func() bool
+}
+
+// Reserve claims one crossing against the gate's budget; a nil Budget is unlimited. The transport
+// layer calls this unconditionally, so the nil case lives here rather than at four call sites.
+func (g Gate) Reserve() bool {
+	if g.Budget == nil {
+		return true
+	}
+	return g.Budget.Reserve()
+}
+
+// Release gives back a reservation for a call that did not cross (deny/escalate). nil-safe.
+func (g Gate) Release() {
+	if g.Budget != nil {
+		g.Budget.Release()
+	}
 }
 
 // kw: revoked session withdrawn per-request live evict already-connected
@@ -271,10 +340,18 @@ func SessionID(token string) string {
 	return hex.EncodeToString(sum[:16])
 }
 
-// CrossingBudget is a session's forwarded-crossing counter. Reserve() is taken before a decision and
-// Release()d if the call does not forward, so the count tracks ACTUAL crossings. A nil *CrossingBudget,
-// or one with limit <= 0, is unlimited (the budget is off). It is safe for concurrent use and for a nil
-// receiver, so the transport layer can call it unconditionally.
+// Budget is a session's forwarded-crossing counter. Reserve is taken before a decision and Release
+// returns the reservation if the call does not forward, so the count tracks ACTUAL crossings. Two
+// implementations: *CrossingBudget (in-process; stdio mode, tests) and sessiond's store-backed one
+// (the daemon, where the count must be shared by every replica serving the token).
+// kw: budget interface reserve release crossing cap
+type Budget interface {
+	Reserve() bool
+	Release()
+}
+
+// CrossingBudget is the in-memory Budget. A nil *CrossingBudget, or one with limit <= 0, is unlimited
+// (the budget is off). It is safe for concurrent use and for a nil receiver.
 type CrossingBudget struct {
 	mu    sync.Mutex
 	count int

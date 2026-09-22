@@ -17,9 +17,11 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/auth"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/egress"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/health"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/notify"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/oauth"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/proxy"
@@ -171,6 +173,18 @@ func (s *Server) Handler() http.Handler {
 	// kept because the console already calls it.
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/api/health", s.handleHealth)
+	// Readiness. Also OPEN, also normalized (/ready everywhere). 503 until the config store answers
+	// and the recipe directory is readable: a gate whose route table or policies are unreachable
+	// must be taken out of the Service, not restarted (that is /health's job, and it stays 200).
+	mux.HandleFunc("/ready", health.Ready(2*time.Second,
+		health.Check{Name: "store", Fn: func(ctx context.Context) error {
+			if s.Store == nil {
+				return nil // no route table in use (policies-only gate); nothing to reach
+			}
+			return s.Store.Ping(ctx)
+		}},
+		health.Check{Name: "recipes", Fn: health.Dir(s.Recipes.Dir)},
+	))
 	// recipe authoring — method+path patterns (Go 1.22+)
 	mux.HandleFunc("POST /api/recipes/validate", admin(s.handleRecipeValidate))
 	mux.HandleFunc("GET /api/recipes", read(s.handleRecipeList))

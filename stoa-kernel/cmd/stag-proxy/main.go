@@ -14,6 +14,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -28,6 +29,8 @@ import (
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/adapterauth"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/auth"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/egress"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/graceful"
+	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/health"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/notify"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/oauth"
 	"github.com/CurtisDSlone/stoagraph/stoa-kernel/stag/provider"
@@ -58,7 +61,7 @@ func die(err error) {
 }
 
 func main() {
-	storePath := flag.String("store", "data/config.db", "SQLite config store (routes, downstream servers)")
+	storePath := flag.String("store", "data/config.db", "config store (routes, downstream servers): a SQLite file path, or a postgres:// DSN")
 	recipesDir := flag.String("recipes-dir", "data/recipes", "recipe store (shared with stag-serve)")
 	logPath := flag.String("log", "data/decisions.jsonl", "hash-chained egress log for cleared crossings")
 	readLogPath := flag.String("read-log", "data/reads.jsonl", "audit log for READ crossings (context provider reads)")
@@ -74,7 +77,11 @@ func main() {
 
 	// stdio carries the MCP protocol on stdout; logs go to stderr.
 	log.SetOutput(os.Stderr)
-	ctx := context.Background()
+	// First SIGTERM/SIGINT cancels ctx. Daemon mode: the listener drains, the fleet goroutine
+	// falls out of <-ctx.Done() and closes its downstream sessions. Stdio mode: gatingSrv.Run
+	// returns and the deferred session.Close finally runs — today it never does.
+	ctx, stop := graceful.Context()
+	defer stop()
 
 	st, err := store.Open(*storePath)
 	die(err)
@@ -168,7 +175,11 @@ func main() {
 		// it does not bind sessions. That is fail-closed: a gate with nothing to mediate must not
 		// pretend it is mediating.
 		var ready atomic.Pointer[http.Handler]
-		reg := sessiond.NewRegistry()
+		var fleetRef atomic.Pointer[mcpgate.Fleet] // for /ready: re-pinged every probe, not latched
+		// Bindings live in the store, not in this process: a restart keeps every live session, and
+		// any replica of this daemon can serve any token. The per-token crossing budget is a row
+		// too, so N is one number across replicas.
+		reg := sessiond.NewRegistryWith(st)
 
 		go func() {
 			fleet, downs := awaitFleet(ctx, st, oauthStore, *downstream)
@@ -183,17 +194,30 @@ func main() {
 				CrossingBudget: *crossingBudget,
 				RequireBounded: *requireBounded,
 			})
+			fleetRef.Store(&fleet)
 			ready.Store(&h)
 			log.Printf("fleet ready: %d server(s) %v — POST /sessions to bind, connect /mcp/<token>",
 				len(downs), fleet.Servers())
-			select {} // the connections are held for the process lifetime
+			<-ctx.Done() // the connections are held until shutdown; then the deferred Closes run
 		}()
 
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintf(w, `{"ok":true,"ready":%t}`+"\n", ready.Load() != nil)
-		})
+		// Liveness keeps its shape ({"ok":true,"ready":bool}) and stays 200: a probe that restarts the
+		// pod must never fire because a DOWNSTREAM went away. Readiness is where that belongs.
+		mux.HandleFunc("GET /health", health.Live(func() bool { return ready.Load() != nil }))
+		// Readiness re-pings every downstream on each probe. Before this, `ready` was a latch: set once
+		// at connect, never re-checked, so a dead downstream left the gate in the Service advertising
+		// tools it could not forward. 503 until the fleet is connected AND answering, and the store is up.
+		mux.HandleFunc("GET /ready", health.Ready(2*time.Second,
+			health.Check{Name: "fleet", Fn: func(ctx context.Context) error {
+				f := fleetRef.Load()
+				if f == nil {
+					return errors.New("no downstream MCP server connected yet")
+				}
+				return f.Ping(ctx)
+			}},
+			health.Check{Name: "store", Fn: st.Ping},
+		))
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			h := ready.Load()
 			if h == nil {
@@ -207,7 +231,7 @@ func main() {
 
 		log.Printf("stag-proxy DAEMON on %s — waiting for a downstream; /health is live, /sessions 503s until ready",
 			*httpAddr)
-		die(http.ListenAndServe(*httpAddr, mux))
+		die(graceful.Serve(ctx, &http.Server{Addr: *httpAddr, Handler: mux}, graceful.Grace()))
 		return
 	}
 
